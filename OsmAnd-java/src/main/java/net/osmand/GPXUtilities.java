@@ -638,6 +638,25 @@ public class GPXUtilities {
 		}
 	}
 
+	public static class PointsGroup {
+
+		public String name;
+		public int color;
+		public String iconName;
+		public String backgroundType;
+
+		public PointsGroup() {}
+
+		public StringBundle toStringBundle() {
+			StringBundle bundle = new StringBundle();
+			bundle.putString("name", name);
+			bundle.putString("color", Algorithms.colorToString(color));
+			bundle.putString(ICON_NAME_EXTENSION, iconName);
+			bundle.putString(BACKGROUND_TYPE_EXTENSION, backgroundType);
+			return bundle;
+		}
+	}
+
 	public static class GPXTrackAnalysis {
 		public float totalDistance = 0;
 		public float totalDistanceWithoutGaps = 0;
@@ -1267,6 +1286,7 @@ public class GPXUtilities {
 		public Metadata metadata = new Metadata();
 		public List<Track> tracks = new ArrayList<>();
 		private List<WptPt> points = new ArrayList<>();
+		private List<PointsGroup> pointsGroups = new ArrayList<>();
 		public List<Route> routes = new ArrayList<>();
 
 		public Exception error = null;
@@ -2066,6 +2086,29 @@ public class GPXUtilities {
 			serializer.attribute(null, "xsi:schemaLocation",
 					"http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd");
 
+			if (!Algorithms.isEmpty(file.pointsGroups)) {
+				final List<PointsGroup> pointsGroups = new ArrayList<>(file.pointsGroups);
+				file.setExtensionsWriter(new GPXExtensionsWriter() {
+					@Override
+					public void writeExtensions(XmlSerializer serializer) {
+						try {
+							StringBundle bundle = new StringBundle();
+
+							List<StringBundle> bundledGroups = new ArrayList<>();
+							for (PointsGroup group : pointsGroups) {
+								bundledGroups.add(group.toStringBundle());
+							}
+							bundle.putBundleList("osmand:types", "osmand:type", bundledGroups);
+
+							StringBundleWriter bundleWriter = new StringBundleXmlWriter(bundle, serializer);
+							bundleWriter.writeBundle();
+						} catch (Exception e) {
+							log.error("Failed to write points groups", e);
+						}
+					}
+				});
+			}
+
 			writeMetadata(serializer, file, progress);
 			writePoints(serializer, file, progress);
 			writeRoutes(serializer, file, progress);
@@ -2450,6 +2493,7 @@ public class GPXUtilities {
 			boolean routePointExtension = false;
 			List<RouteSegment> routeSegments = new ArrayList<>();
 			List<RouteType> routeTypes = new ArrayList<>();
+			List<PointsGroup> pointsGroups = new ArrayList<>();
 			boolean routeExtension = false;
 			boolean typesExtension = false;
 			parserState.push(gpxFile);
@@ -2467,8 +2511,12 @@ public class GPXUtilities {
 							}
 						} else if (typesExtension) {
 							if (tagName.equals("type")) {
-								RouteType type = parseRouteTypeAttributes(parser);
-								routeTypes.add(type);
+								if (parse instanceof GPXFile) {
+									pointsGroups.add(parsePointsGroupAttributes(parser));
+								} else {
+									RouteType type = parseRouteTypeAttributes(parser);
+									routeTypes.add(type);
+								}
 							}
 						}
 						switch (tagName) {
@@ -2778,7 +2826,10 @@ public class GPXUtilities {
 				firstSegment.routeSegments = routeSegments;
 				firstSegment.routeTypes = routeTypes;
 			}
-		gpxFile.addGeneralTrack();
+			if (!pointsGroups.isEmpty()) {
+				gpxFile.pointsGroups.addAll(pointsGroups);
+			}
+			gpxFile.addGeneralTrack();
 		} catch (Exception e) {
 			gpxFile.error = e;
 			log.error("Error reading gpx", e); //$NON-NLS-1$
@@ -2835,6 +2886,19 @@ public class GPXUtilities {
 		type.tag = parser.getAttributeValue("", "t");
 		type.value = parser.getAttributeValue("", "v");
 		return type;
+	}
+
+	private static PointsGroup parsePointsGroupAttributes(XmlPullParser parser) {
+		PointsGroup category = new PointsGroup();
+		category.name = parser.getAttributeValue("", "name");
+		try {
+			category.color = Algorithms.parseColor(parser.getAttributeValue("", "color"));
+		} catch (IllegalArgumentException e) {
+			log.error("Invalid hex color string", e);
+		}
+		category.iconName = parser.getAttributeValue("", ICON_NAME_EXTENSION);
+		category.backgroundType = parser.getAttributeValue("", BACKGROUND_TYPE_EXTENSION);
+		return category;
 	}
 
 	private static Bounds parseBoundsAttributes(XmlPullParser parser) {

@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat;
 
 import net.osmand.GPXUtilities;
 import net.osmand.GPXUtilities.GPXFile;
+import net.osmand.GPXUtilities.PointsCategory;
 import net.osmand.GPXUtilities.WptPt;
 import net.osmand.PlatformUtil;
 import net.osmand.data.FavouritePoint;
@@ -156,6 +157,11 @@ public class FavouritesDbHelper {
 
 		public String getDisplayName(Context ctx) {
 			return getDisplayName(ctx, name);
+		}
+
+		@NonNull
+		public PointsCategory toPointsCategory() {
+			return new PointsCategory(name == null ? "" : name, color, iconName, shape == null ? null : shape.getTypeName());
 		}
 
 		public static String convertDisplayNameToGroupIdName(Context context, String name) {

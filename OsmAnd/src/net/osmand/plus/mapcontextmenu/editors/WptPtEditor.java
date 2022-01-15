@@ -5,6 +5,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import net.osmand.GPXUtilities.GPXFile;
+import net.osmand.GPXUtilities.PointsCategory;
 import net.osmand.GPXUtilities.WptPt;
 import net.osmand.data.LatLon;
 import net.osmand.plus.myplaces.FavouritesDbHelper;
@@ -13,6 +14,7 @@ import net.osmand.plus.activities.MapActivity;
 import net.osmand.util.Algorithms;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class WptPtEditor extends PointEditor {
@@ -22,8 +24,8 @@ public class WptPtEditor extends PointEditor {
 
 	private GPXFile gpxFile;
 	private WptPt wpt;
-	@ColorInt
-	private int categoryColor;
+	@Nullable
+	private PointsCategory predefinedCategory;
 
 	private boolean gpxSelected;
 
@@ -85,18 +87,26 @@ public class WptPtEditor extends PointEditor {
 	}
 
 	@NonNull
-	public Map<String, Integer> getColoredWaypointCategories() {
+	public Map<String, PointsCategory> getWaypointCategories() {
 		if (gpxFile != null) {
-			return gpxFile.getWaypointCategoriesWithColors(false);
-		}
-		if (isProcessingTemplate() && !Algorithms.isEmpty(wpt.category) && categoryColor != 0) {
-			Map<String, Integer> predefinedCategory = new HashMap<>();
-			predefinedCategory.put(wpt.category, categoryColor);
-			return predefinedCategory;
+			Map<String, PointsCategory> categories = new LinkedHashMap<>();
+			for (Map.Entry<String, PointsCategory> entry : gpxFile.getCategories().entrySet()) {
+				PointsCategory category = entry.getValue();
+				boolean defaultCategory = Algorithms.isEmpty(category.getName());
+				if (!defaultCategory && category.getColor() != 0) {
+					categories.put(category.getName(), category);
+				}
+			}
+			return categories;
+		} else if (isProcessingTemplate() && predefinedCategory != null
+				&& !Algorithms.isEmpty(predefinedCategory.getName())
+				&& predefinedCategory.getColor() != 0) {
+			Map<String, PointsCategory> categories = new HashMap<>();
+			categories.put(predefinedCategory.getName(), predefinedCategory);
+			return categories;
 		}
 		return new HashMap<>();
 	}
-
 
 	public boolean isGpxSelected() {
 		return gpxSelected;
@@ -127,7 +137,7 @@ public class WptPtEditor extends PointEditor {
 			return;
 		}
 		isNew = true;
-		categoryColor = 0;
+		predefinedCategory = null;
 
 		this.gpxFile = gpxFile;
 		SelectedGpxFile selectedGpxFile =
@@ -151,7 +161,7 @@ public class WptPtEditor extends PointEditor {
 			return;
 		}
 		isNew = true;
-		this.categoryColor = 0;
+		predefinedCategory = null;
 
 		this.gpxFile = gpxFile;
 		SelectedGpxFile selectedGpxFile =
@@ -194,7 +204,7 @@ public class WptPtEditor extends PointEditor {
 			return;
 		}
 		isNew = false;
-		categoryColor = 0;
+		predefinedCategory = null;
 		SelectedGpxFile selectedGpxFile =
 				mapActivity.getMyApplication().getSelectedGpxHelper().getSelectedGPXFile(wpt);
 		if (selectedGpxFile != null) {
@@ -213,14 +223,14 @@ public class WptPtEditor extends PointEditor {
 
 		this.isNew = true;
 		this.processedObject = ProcessedObject.WAYPOINT_TEMPLATE;
-		this.categoryColor = 0;
+		this.predefinedCategory = null;
 		this.gpxSelected = mapActivity.getMyApplication().getSelectedGpxHelper().getSelectedFileByPath(gpxFile.path) != null;
 		this.gpxFile = gpxFile;
 		this.wpt = from != null ? from : new WptPt();
 		showEditorFragment();
 	}
 
-	public void addWaypointTemplate(@Nullable WptPt from, @ColorInt int categoryColor) {
+	public void addWaypointTemplate(@Nullable WptPt from, @Nullable PointsCategory category) {
 		MapActivity mapActivity = getMapActivity();
 		if (mapActivity == null) {
 			return;
@@ -228,7 +238,7 @@ public class WptPtEditor extends PointEditor {
 
 		this.isNew = true;
 		this.processedObject = ProcessedObject.WAYPOINT_TEMPLATE;
-		this.categoryColor = categoryColor;
+		this.predefinedCategory = category;
 		this.gpxSelected = false;
 		this.gpxFile = null;
 		this.wpt = from != null ? from : new WptPt();
@@ -251,6 +261,6 @@ public class WptPtEditor extends PointEditor {
 
 	public interface OnTemplateAddedListener {
 
-		void onAddWaypointTemplate(@NonNull WptPt waypoint, @ColorInt int categoryColor);
+		void onAddWaypointTemplate(@NonNull WptPt waypoint, @Nullable PointsCategory category);
 	}
 }

@@ -8,6 +8,7 @@ import android.os.AsyncTask;
 import android.os.Bundle;
 
 import net.osmand.GPXUtilities.GPXFile;
+import net.osmand.GPXUtilities.PointsCategory;
 import net.osmand.GPXUtilities.WptPt;
 import net.osmand.data.FavouritePoint.BackgroundType;
 import net.osmand.data.LatLon;
@@ -62,7 +63,7 @@ public class WptPtEditorFragmentNew extends PointEditorFragmentNew {
 	@NonNull
 	private String backgroundTypeName = DEFAULT_BACKGROUND_TYPE.getTypeName();
 
-	private Map<String, Integer> categoriesMap;
+	private Map<String, PointsCategory> categoriesMap;
 	private OsmandApplication app;
 
 	@Override
@@ -110,7 +111,7 @@ public class WptPtEditorFragmentNew extends PointEditorFragmentNew {
 			this.wpt = wpt;
 			color = wpt.getColor(0);
 			iconName = getInitialIconName(wpt);
-			categoriesMap = editor.getColoredWaypointCategories();
+			categoriesMap = editor.getWaypointCategories();
 			backgroundTypeName = wpt.getBackgroundType();
 		}
 	}
@@ -254,13 +255,13 @@ public class WptPtEditorFragmentNew extends PointEditorFragmentNew {
 		}
 	}
 
-	private void doAddWaypointTemplate(String name, String address, String category, String description) {
+	private void doAddWaypointTemplate(String name, String address, String categoryName, String description) {
 		WptPt wpt = getWpt();
 		WptPtEditor editor = getWptPtEditor();
 		if (wpt != null && editor != null && editor.getOnWaypointTemplateAddedListener() != null) {
 			wpt.name = name;
 			wpt.setAddress(address);
-			wpt.category = category;
+			wpt.category = categoryName;
 			wpt.desc = description;
 			if (color != 0) {
 				wpt.setColor(color);
@@ -270,15 +271,11 @@ public class WptPtEditorFragmentNew extends PointEditorFragmentNew {
 			wpt.setBackgroundType(backgroundTypeName);
 			wpt.setIconName(iconName);
 
-			int categoryColor;
-			if (categoriesMap == null) {
-				categoryColor = 0;
-			} else {
-				Integer color = categoriesMap.get(category);
-				categoryColor = color != null ? color : 0;
-			}
+			PointsCategory category = categoriesMap == null || Algorithms.isEmpty(categoryName)
+					? null
+					: categoriesMap.get(categoryName);
 
-			editor.getOnWaypointTemplateAddedListener().onAddWaypointTemplate(wpt, categoryColor);
+			editor.getOnWaypointTemplateAddedListener().onAddWaypointTemplate(wpt, category);
 		}
 	}
 
@@ -393,12 +390,11 @@ public class WptPtEditorFragmentNew extends PointEditorFragmentNew {
 	}
 
 	@Override
-	public void setCategory(String name, int color) {
+	public void setCategory(@NonNull PointsCategory category) {
 		if (categoriesMap != null) {
-			categoriesMap.put(name, color);
+			categoriesMap.put(category.getName(), category);
 		}
-		this.color = this.color == 0 ? color : this.color;
-		super.setCategory(name, color);
+		super.setCategory(category);
 	}
 
 	@Override
@@ -493,11 +489,11 @@ public class WptPtEditorFragmentNew extends PointEditorFragmentNew {
 
 	@Override
 	@ColorInt
-	public int getCategoryColor(String category) {
+	public int getCategoryColor(String categoryName) {
 		if (categoriesMap != null) {
-			Integer color = categoriesMap.get(category);
-			if (color != null) {
-				return color;
+			PointsCategory category = categoriesMap.get(categoryName);
+			if (category != null) {
+				return category.getColor();
 			}
 		}
 		return defaultColor;

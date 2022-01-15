@@ -96,7 +96,7 @@ public class WptPtEditorFragment extends PointEditorFragment {
 			WptPt wpt = editor.getWptPt();
 			color = wpt.getColor(0);
 			this.wpt = wpt;
-			categoriesMap = editor.getColoredWaypointCategories();
+			categoriesMap = editor.getWaypointCategories();
 		}
 	}
 

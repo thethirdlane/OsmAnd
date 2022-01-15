@@ -2,6 +2,7 @@ package net.osmand.plus.mapcontextmenu.editors;
 
 import android.app.Activity;
 
+import net.osmand.GPXUtilities.PointsCategory;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
@@ -92,7 +93,7 @@ public abstract class PointEditor {
 		}
 	}
 
-	public void setCategory(String name, int color) {
+	public void setCategory(@NonNull PointsCategory category) {
 		MapActivity mapActivity = getMapActivity();
 		if (mapActivity != null) {
 			Fragment fragment = mapActivity.getSupportFragmentManager().findFragmentByTag(getFragmentTag());

@@ -27,6 +27,7 @@ import net.osmand.CallbackWithObject;
 import net.osmand.GPXUtilities;
 import net.osmand.GPXUtilities.GPXFile;
 import net.osmand.GPXUtilities.GPXTrackAnalysis;
+import net.osmand.GPXUtilities.PointsCategory;
 import net.osmand.GPXUtilities.WptPt;
 import net.osmand.data.FavouritePoint.BackgroundType;
 import net.osmand.data.LatLon;
@@ -78,11 +79,15 @@ public class GPXAction extends QuickAction {
 
 	public static final String KEY_CATEGORY_NAME = "category_name";
 	public static final String KEY_CATEGORY_COLOR = "category_color";
+	public static final String KEY_CATEGORY_ICON_NAME = "category_icon_name";
+	public static final String KEY_CATEGORY_BACKGROUND = "category_background";
 
 	private transient String selectedGpxFilePath;
 	private transient WptPt predefinedWaypoint;
 	@ColorInt
 	private transient int predefinedCategoryColor;
+	private transient String predefinedCategoryIconName;
+	private transient String predefinedCategoryBackground;
 
 	private transient TextToggleButton trackToggleButton;
 	private transient TextToggleButton appearanceToggleButton;
@@ -396,15 +401,33 @@ public class GPXAction extends QuickAction {
 					: null;
 			String gpxFilePath = getSelectedGpxFilePath(true);
 			waypointEditor.setOnDismissListener(showDialogAfterTemplateEditing(mapActivity));
-			waypointEditor.setOnWaypointTemplateAddedListener((waypoint, categoryColor) -> {
+			waypointEditor.setOnWaypointTemplateAddedListener((waypoint, category) -> {
 				predefinedWaypoint = waypoint;
-				predefinedCategoryColor = categoryColor;
+				if (category != null) {
+					predefinedCategoryColor = category.getColor();
+					predefinedCategoryIconName = category.getIconName();
+					predefinedCategoryBackground = category.getBackgroundType();
+				} else {
+					predefinedCategoryColor = 0;
+					predefinedCategoryIconName = null;
+					predefinedCategoryBackground = null;
+				}
 				setupWaypointAppearanceToggle(container, mapActivity);
 			});
 
 			if (gpxFilePath == null) {
-				int categoryColor = getColorFromParams(KEY_CATEGORY_COLOR, 0);
-				waypointEditor.addWaypointTemplate(source, categoryColor);
+				PointsCategory category;
+				if (source != null) {
+					int categoryColor = getColorFromParams(KEY_CATEGORY_COLOR, 0);
+					String categoryIconName = getParams().get(KEY_CATEGORY_ICON_NAME);
+					String categoryBackground = getParams().get(KEY_CATEGORY_BACKGROUND);
+					category = Algorithms.isEmpty(source.category) || categoryColor == 0
+							? null
+							: new PointsCategory(source.category, categoryColor, categoryIconName, categoryBackground);
+				} else {
+					category = null;
+				}
+				waypointEditor.addWaypointTemplate(source, category);
 				hideDialog(mapActivity);
 			} else {
 				getGpxFile(gpxFilePath, mapActivity, gpxFile -> {
@@ -515,6 +538,8 @@ public class GPXAction extends QuickAction {
 			getParams().put(KEY_WPT_BACKGROUND_TYPE, predefinedWaypoint.getBackgroundType());
 			getParams().put(KEY_CATEGORY_NAME, predefinedWaypoint.category);
 			getParams().put(KEY_CATEGORY_COLOR, String.valueOf(predefinedCategoryColor));
+			getParams().put(KEY_CATEGORY_ICON_NAME, predefinedCategoryIconName);
+			getParams().put(KEY_CATEGORY_BACKGROUND, predefinedCategoryBackground);
 		}
 
 		return true;

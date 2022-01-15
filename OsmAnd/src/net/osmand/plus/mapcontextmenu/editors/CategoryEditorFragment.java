@@ -6,8 +6,6 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
-import com.google.android.material.textfield.TextInputLayout;
-
 import net.osmand.data.FavouritePoint.BackgroundType;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
@@ -249,7 +247,10 @@ public class CategoryEditorFragment extends EditorFragment {
 		if (mapActivity != null) {
 			String iconName = iconsCard.getSelectedIconName();
 
-			if (!isGpxCategory) {
+
+			if (isGpxCategory) {
+
+			} else  {
 				favoritesHelper.addEmptyCategory(getNameTextValue(), color, iconName, shape, true);
 			}
 			PointEditor editor = getEditor();

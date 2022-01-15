@@ -18,6 +18,8 @@ import androidx.core.content.ContextCompat;
 import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.fragment.app.FragmentActivity;
 
+import net.osmand.GPXUtilities.PointsCategory;
+import net.osmand.GPXUtilities.WptPt;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.GPXUtilities;
 import net.osmand.plus.utils.ColorUtilities;
@@ -49,7 +51,7 @@ public class SelectFavoriteCategoryBottomSheet extends MenuBottomSheetDialogFrag
 	private static String selectedCategory;
 	private OsmandApplication app;
 	private GPXUtilities.GPXFile gpxFile;
-	private Map<String, Integer> gpxCategories;
+	private Map<String, PointsCategory> gpxCategories;
 	private SelectFavoriteCategoryBottomSheet.CategorySelectionListener selectionListener;
 
 
@@ -85,7 +87,7 @@ public class SelectFavoriteCategoryBottomSheet extends MenuBottomSheetDialogFrag
 		this.gpxFile = gpxFile;
 	}
 
-	public void setGpxCategories(Map<String, Integer> gpxCategories) {
+	public void setGpxCategories(Map<String, PointsCategory> gpxCategories) {
 		this.gpxCategories = gpxCategories;
 	}
 
@@ -146,15 +148,16 @@ public class SelectFavoriteCategoryBottomSheet extends MenuBottomSheetDialogFrag
 		final FavouritesDbHelper favoritesHelper = app.getFavorites();
 		if (gpxFile != null) {
 			if (gpxCategories != null) {
-				Map<String, List<GPXUtilities.WptPt>> pointsCategories = gpxFile.getPointsByCategories();
-				for (Map.Entry<String, Integer> e : gpxCategories.entrySet()) {
-					String favoriteCategoryCount;
-					if (Algorithms.isEmpty(pointsCategories.get(e.getKey()))) {
-						favoriteCategoryCount = app.getString(R.string.shared_string_empty);
-					} else {
-						favoriteCategoryCount = String.valueOf(pointsCategories.get(e.getKey()).size());
-					}
-					favoriteCategoryContainer.addView(createCategoryItem(activity, nightMode, e.getKey(), e.getValue(), favoriteCategoryCount, false));
+				Map<String, List<GPXUtilities.WptPt>> pointsByCategories = gpxFile.getPointsByCategories();
+				for (Map.Entry<String, PointsCategory> entry : gpxCategories.entrySet()) {
+					String categoryName = entry.getKey();
+					PointsCategory category = entry.getValue();
+					List<WptPt> categoryPoints = pointsByCategories.get(categoryName);
+					String categorySize = Algorithms.isEmpty(categoryPoints)
+							? app.getString(R.string.shared_string_empty)
+							: String.valueOf(categoryPoints.size());
+					favoriteCategoryContainer.addView(createCategoryItem(categoryName,
+							category, categorySize, false));
 				}
 			}
 		} else {
@@ -166,8 +169,8 @@ public class SelectFavoriteCategoryBottomSheet extends MenuBottomSheetDialogFrag
 				} else {
 					favoriteCategoryCount = String.valueOf(category.getPoints().size());
 				}
-				favoriteCategoryContainer.addView(createCategoryItem(activity, nightMode, category.getDisplayName(getContext()),
-						category.getColor(), favoriteCategoryCount, !category.isVisible()));
+				favoriteCategoryContainer.addView(createCategoryItem(category.getDisplayName(getContext()),
+						category.toPointsCategory(), favoriteCategoryCount, !category.isVisible()));
 			}
 		}
 		items.add(new BaseBottomSheetItem.Builder()
@@ -175,8 +178,11 @@ public class SelectFavoriteCategoryBottomSheet extends MenuBottomSheetDialogFrag
 				.create());
 	}
 
-	private View createCategoryItem(@NonNull final Activity activity, boolean nightMode, final String categoryName, final int categoryColor, String categoryPointCount, boolean isHidden) {
-		View itemView = UiUtilities.getInflater(activity, nightMode).inflate(R.layout.bottom_sheet_item_with_descr_and_radio_btn, null);
+	private View createCategoryItem(@NonNull String displayName, @NonNull PointsCategory category,
+	                                @NonNull String categorySize, boolean isHidden) {
+		Activity activity = requireActivity();
+		View itemView = UiUtilities.getInflater(activity, nightMode)
+				.inflate(R.layout.bottom_sheet_item_with_descr_and_radio_btn, null);
 		final AppCompatImageView button = (AppCompatImageView) itemView.findViewById(R.id.icon);
 		final int dp8 = AndroidUtils.dpToPx(app, 8f);
 		final int dp16 = AndroidUtils.dpToPx(app, 16f);
@@ -189,22 +195,20 @@ public class SelectFavoriteCategoryBottomSheet extends MenuBottomSheetDialogFrag
 		if (isHidden) {
 			button.setImageResource(R.drawable.ic_action_hide);
 		} else {
-			if (categoryColor != 0) {
-				button.setImageDrawable(getIcon(activity, R.drawable.ic_action_folder, categoryColor));
-			} else {
-				button.setImageDrawable(getIcon(activity, R.drawable.ic_action_folder, ContextCompat.getColor(activity,
-						gpxFile != null ? R.color.gpx_color_point : R.color.color_favorite)));
-			}
+			int displayColor = category.getColor() != 0
+					? category.getColor()
+					: ContextCompat.getColor(activity, gpxFile != null ? R.color.gpx_color_point : R.color.color_favorite);
+			button.setImageDrawable(getIcon(activity, R.drawable.ic_action_folder, displayColor));
 		}
 		RadioButton compoundButton = itemView.findViewById(R.id.compound_button);
-		compoundButton.setChecked(Algorithms.stringsEqual(selectedCategory, categoryName));
+		compoundButton.setChecked(Algorithms.stringsEqual(selectedCategory, displayName));
 		UiUtilities.setupCompoundButton(nightMode, ContextCompat.getColor(app,
 				activeColorId), compoundButton);
-		String name = categoryName.length() == 0 ? getString(R.string.shared_string_favorites) : categoryName;
+		String name = displayName.length() == 0 ? getString(R.string.shared_string_favorites) : displayName;
 		TextView text = itemView.findViewById(R.id.title);
 		TextView description = itemView.findViewById(R.id.description);
 		text.setText(name);
-		description.setText(String.valueOf(categoryPointCount));
+		description.setText(categorySize);
 		itemView.setOnClickListener(new View.OnClickListener() {
 			@Override
 			public void onClick(View v) {
@@ -212,10 +216,10 @@ public class SelectFavoriteCategoryBottomSheet extends MenuBottomSheetDialogFrag
 				if (a instanceof MapActivity) {
 					PointEditor pointEditor = ((MapActivity) a).getContextMenu().getPointEditor(editorTag);
 					if (pointEditor != null) {
-						pointEditor.setCategory(categoryName, categoryColor);
+						pointEditor.setCategory(category);
 					}
 					if (selectionListener != null) {
-						selectionListener.onCategorySelected(categoryName, categoryColor);
+						selectionListener.onCategorySelected(category);
 					}
 				}
 				dismiss();
@@ -231,7 +235,6 @@ public class SelectFavoriteCategoryBottomSheet extends MenuBottomSheetDialogFrag
 
 	public interface CategorySelectionListener {
 
-		void onCategorySelected(String category, int color);
+		void onCategorySelected(@NonNull PointsCategory category);
 	}
-
 }

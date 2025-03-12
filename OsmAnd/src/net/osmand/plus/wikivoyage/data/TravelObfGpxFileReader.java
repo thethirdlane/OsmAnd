@@ -321,9 +321,16 @@ public class TravelObfGpxFileReader extends BaseLoadAsyncTask<Void, Void, GpxFil
                 0, 0, Algorithms.emptyIfNull(travelGpx.title), left, right, top, bottom, poiTypeFilter,
                 getAmenityMatcher(travelGpx, amenityMap, currentAmenities, isCancelled), null);
 
+        if (travelGpx.bboxCollection != null) {
+            pointRequest.setSearchBoxes(travelGpx.bboxCollection);
+            pointRequest.log = true;
+        }
+
         SearchRequest<BinaryMapDataObject> mapRequest = BinaryMapIndexReader
                 .buildSearchRequest(left, right, top, bottom, 15, mapRequestFilter,
                         matchSegmentsByRefTitleRouteId(travelGpx, geometryMap, isCancelled));
+
+        long time = System.currentTimeMillis();
 
         // ResourceManager.getAmenityRepositories() returns OBF files list in Z-A order.
         // Live updates require A-Z order, so use reverted iterator as the easiest way.
@@ -337,7 +344,8 @@ public class TravelObfGpxFileReader extends BaseLoadAsyncTask<Void, Void, GpxFil
                 continue; // speed up reading (skip inappropriate obf files)
             }
             currentAmenities.clear();
-
+            long poiTime = 0;
+            long mapTime = 0;
             if (travelGpx.routeRadius > 0 && !travelGpx.hasBbox31()) {
                 mapRequest.setBBoxRadius(travelGpx.lat, travelGpx.lon, travelGpx.routeRadius);
                 pointRequest.setBBoxRadius(travelGpx.lat, travelGpx.lon, travelGpx.routeRadius);
@@ -348,6 +356,8 @@ public class TravelObfGpxFileReader extends BaseLoadAsyncTask<Void, Void, GpxFil
             }
 
             repo.searchPoi(pointRequest);
+            poiTime = System.currentTimeMillis() - time;
+            time = System.currentTimeMillis();
             if (currentAmenities.isEmpty()) {
                 continue;
             }
@@ -355,6 +365,11 @@ public class TravelObfGpxFileReader extends BaseLoadAsyncTask<Void, Void, GpxFil
             mapRequest.clearSearchBoxes();
             mapRequest.setSearchBoxes(getGroupedPoints(currentAmenities));
             repo.searchMapIndex(mapRequest);
+
+            mapTime = System.currentTimeMillis() - time;
+
+            System.out.println("XXX " + repo.getFile().getName() + " : poi time:" + poiTime + "ms, map time:" + mapTime + "ms, poi size:" + amenityMap.size());
+            time = System.currentTimeMillis();
         }
 
         pointList.addAll(getPointList(amenityMap, gpxFileExtensions, pgNames, pgIcons, pgColors, pgBackgrounds));

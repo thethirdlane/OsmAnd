@@ -1060,6 +1060,10 @@ public class BinaryMapPoiReaderAdapter {
 						codedIS.skipRawBytes(codedIS.getBytesUntilLimit());
 						return false;
 					}
+					if (req.hasSearchBoxes() && !req.intersectsSearchBox(xL, yT, xR, yB)) {
+						codedIS.skipRawBytes(codedIS.getBytesUntilLimit());
+						return false;
+					}
 					req.numberOfAcceptedSubtrees++;
 					checkBox = false;
 					region.bboxIndexCache.insert(null, rect);

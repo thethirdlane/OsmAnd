@@ -36,6 +36,9 @@ import java.io.File;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 
 public class TravelArticle {
 
@@ -69,10 +72,12 @@ public class TravelArticle {
 
 	int routeRadius = -1;
 	private QuadRect bbox31;
+	public Collection<QuadRect> bboxCollection;
 	public final static int TRAVEL_GPX_DEFAULT_SEARCH_RADIUS = 50 * 1000;
 
 	public void initShortLinkTiles(@NonNull String shortLinkTiles) {
 		this.bbox31 = new QuadRect();
+		bboxCollection = new ArrayList<>();
 		for (String shortLink : shortLinkTiles.split(",")) {
 			QuadRect bbox = MapUtils.decodeShortLinkToQuadRect(shortLink);
 			int left = MapUtils.get31TileNumberX(bbox.left);
@@ -80,6 +85,7 @@ public class TravelArticle {
 			int right = MapUtils.get31TileNumberX(bbox.right);
 			int bottom = MapUtils.get31TileNumberY(bbox.bottom);
 			this.bbox31.expand(left, top, right, bottom);
+			bboxCollection.add(new QuadRect(left, top, right, bottom));
 		}
 	}
 

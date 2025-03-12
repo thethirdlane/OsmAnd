@@ -1968,8 +1968,8 @@ public class BinaryMapIndexReader {
 			return left != 0 || right != 0;
 		}
 
-		private boolean hasSearchBoxes() {
-			return searchBoxes != null;
+		public boolean hasSearchBoxes() {
+			return !Algorithms.isEmpty(searchBoxes);
 		}
 
 		private boolean containsSearchBox(int left, int top, int right, int bottom) {
@@ -1979,6 +1979,19 @@ public class BinaryMapIndexReader {
 			QuadRect searchRect = new QuadRect(left, top, right, bottom);
 			for (QuadRect box : searchBoxes) {
 				if (searchRect.contains(box)) {
+					return true;
+				}
+			}
+			return false;
+		}
+
+		public boolean intersectsSearchBox(int left, int top, int right, int bottom) {
+			if (Algorithms.isEmpty(searchBoxes)) {
+				return false;
+			}
+			QuadRect searchRect = new QuadRect(left, top, right, bottom);
+			for (QuadRect box : searchBoxes) {
+				if (QuadRect.intersects(box, searchRect)) {
 					return true;
 				}
 			}

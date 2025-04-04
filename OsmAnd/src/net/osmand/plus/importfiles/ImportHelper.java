@@ -110,6 +110,7 @@ public class ImportHelper {
 
 	private FragmentActivity activity;
 	private GpxImportListener gpxImportListener;
+	private Intent pendingImportIntent;
 
 	public ImportHelper(@NonNull OsmandApplication app) {
 		this.app = app;
@@ -117,6 +118,10 @@ public class ImportHelper {
 
 	public void setUiActivity(@NonNull FragmentActivity activity) {
 		this.activity = activity;
+		if (pendingImportIntent != null) {
+			handleImport(pendingImportIntent);
+			pendingImportIntent = null;
+		}
 	}
 
 	public void resetUIActivity(@NonNull FragmentActivity uiActivity) {
@@ -216,16 +221,20 @@ public class ImportHelper {
 	}
 
 	public void handleImport(@NonNull Intent intent) {
-		Uri uri = intent.getData();
-		if (uri != null) {
-			String scheme = intent.getScheme();
-			if ("file".equals(scheme)) {
-				String path = uri.getPath();
-				if (!Algorithms.isEmpty(path)) {
-					handleFileImport(uri, new File(path).getName(), intent.getExtras(), true);
+		if (activity == null) {
+			pendingImportIntent = intent;
+		} else {
+			Uri uri = intent.getData();
+			if (uri != null) {
+				String scheme = intent.getScheme();
+				if ("file".equals(scheme)) {
+					String path = uri.getPath();
+					if (!Algorithms.isEmpty(path)) {
+						handleFileImport(uri, new File(path).getName(), intent.getExtras(), true);
+					}
+				} else if ("content".equals(scheme)) {
+					handleContentImport(uri, intent.getExtras(), true);
 				}
-			} else if ("content".equals(scheme)) {
-				handleContentImport(uri, intent.getExtras(), true);
 			}
 		}
 	}

@@ -98,15 +98,26 @@
 		<meta-data android:name="com.sec.minimode.icon.landscape.normal" android:resource="@mipmap/icon" android:value="" />
 		<meta-data android:name="android.webkit.WebView.MetricsOptOut" android:value="true" />
 
+		<!-- AP - changed authorities -->
 		<provider
 			android:name="androidx.core.content.FileProvider"
-			android:authorities="net.osmand.plus.fileprovider"
+			android:authorities="net.osmand.plus.fileprovider.anilfourninef"
 			android:exported="false"
 			android:grantUriPermissions="true" >
 			<meta-data
 				android:name="android.support.FILE_PROVIDER_PATHS"
 				android:resource="@xml/paths" />
 		</provider>
+		<!--		<provider-->
+		<!--			android:name="androidx.core.content.FileProvider"-->
+		<!--			android:authorities="net.osmand.plus.fileprovider"-->
+		<!--			android:exported="false"-->
+		<!--			android:grantUriPermissions="true" >-->
+		<!--			<meta-data-->
+		<!--				android:name="android.support.FILE_PROVIDER_PATHS"-->
+		<!--				android:resource="@xml/paths" />-->
+		<!--		</provider>-->
+		<!-- END AP -->
 
 		<receiver android:name="net.osmand.plus.mapcontextmenu.other.ShareSheetReceiver" android:exported="false" />
 		<receiver android:name="net.osmand.plus.notifications.NotificationDismissReceiver" android:exported="false" />

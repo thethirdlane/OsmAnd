@@ -588,7 +588,10 @@ public class MapControlsLayer extends OsmandMapLayer {
 				touchEvent = 0;
 				app.logEvent("start_navigation");
 //				settings.setApplicationMode(routingHelper.getAppMode(), false);
-				app.getMapViewTrackingUtilities().backToLocationImpl(17, true);
+				//AP changed second argument to false, and added third argument
+//				app.getMapViewTrackingUtilities().backToLocationImpl(17, true);
+				app.getMapViewTrackingUtilities().backToLocationImpl(17, false, false);
+				//END AP
 				settings.FOLLOW_THE_ROUTE.set(true);
 				routingHelper.setFollowingMode(true);
 				routingHelper.setRoutePlanningMode(false);

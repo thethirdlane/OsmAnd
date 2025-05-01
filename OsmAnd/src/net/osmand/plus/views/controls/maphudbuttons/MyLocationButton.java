@@ -18,8 +18,12 @@ public class MyLocationButton extends MapButton {
 
 	private final boolean contextMenuAllowed;
 
-	private final OnClickListener backToLocationListener = v -> moveBackToLocation(false);
-	private final OnLongClickListener backToLocationWithMenu = v -> moveBackToLocation(true);
+	//private final OnLongClickListener backToLocationWithMenu = v -> moveBackToLocation(true);
+	//AP
+	private final OnLongClickListener backToLocationListener = v -> moveBackToLocation(false, false);
+	private final OnClickListener backToLocationSameSpot = v -> moveBackToLocation(false, true);
+
+	private final OnLongClickListener backToLocationWithMenu = v -> moveBackToLocation(true, false);
 
 	public MyLocationButton(@NonNull MapActivity mapActivity, @NonNull ImageView view, @NonNull String id, boolean contextMenuAllowed) {
 		this(mapActivity, view, id, contextMenuAllowed, false);
@@ -34,12 +38,14 @@ public class MyLocationButton extends MapButton {
 		updateState(app.getDaynightHelper().isNightModeForMapControls());
 	}
 
-	private boolean moveBackToLocation(boolean showLocationMenu) {
+	//AP
+	private boolean moveBackToLocation(boolean showLocationMenu, boolean resetRatios) {
 		if (OsmAndLocationProvider.isLocationPermissionAvailable(mapActivity)) {
 			if (showLocationMenu) {
 				showContextMenuForMyLocation();
 			} else if (!mapActivity.getContextMenu().isVisible()) {
-				app.getMapViewTrackingUtilities().backToLocationImpl();
+//				app.getMapViewTrackingUtilities().backToLocationImpl();
+				app.getMapViewTrackingUtilities().backToLocationImpl(15, false, resetRatios);
 			}
 		} else {
 			ActivityCompat.requestPermissions(mapActivity,
@@ -48,6 +54,22 @@ public class MyLocationButton extends MapButton {
 		}
 		return false;
 	}
+
+//	private boolean moveBackToLocation(boolean showLocationMenu) {
+//		if (OsmAndLocationProvider.isLocationPermissionAvailable(mapActivity)) {
+//			if (showLocationMenu) {
+//				showContextMenuForMyLocation();
+//			} else if (!mapActivity.getContextMenu().isVisible()) {
+//				app.getMapViewTrackingUtilities().backToLocationImpl();
+//			}
+//		} else {
+//			ActivityCompat.requestPermissions(mapActivity,
+//					new String[] {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION},
+//					OsmAndLocationProvider.REQUEST_LOCATION_PERMISSION);
+//		}
+//		return false;
+//	}
+	//END AP
 
 	private void showContextMenuForMyLocation() {
 		ContextMenuLayer contextMenuLayer = app.getOsmandMap().getMapLayers().getContextMenuLayer();
@@ -107,10 +129,13 @@ public class MyLocationButton extends MapButton {
 	}
 
 	private void setMyLocationListeners() {
-		setOnClickListener(backToLocationListener);
-		if (contextMenuAllowed) {
-			setOnLongClickListener(backToLocationWithMenu);
-		}
+		//AP
+//		setOnClickListener(backToLocationListener);
+		setOnClickListener(backToLocationSameSpot);
+//		if (contextMenuAllowed) {
+			setOnLongClickListener(backToLocationListener);
+//		}
+		//END AP
 	}
 
 	@Override

@@ -2763,6 +2763,9 @@ You need to activate the sensor so OsmAnd can find it.</string>
     <string name="modify_the_search_query">Change your search.</string>
     <string name="shared_string_actions">Actions</string>
     <string name="shared_string_marker">Marker</string>
+<!--    AP-->
+    <string name="shared_string_destination">Dest</string>
+<!--    End AP-->
     <string name="empty_state_osm_edits">Create or modify OpenStreetMap objects</string>
     <string name="empty_state_osm_edits_descr">Create or modify OpenStreetMap POIs, open or comment on OSM notes, and contribute recorded GPX files.</string>
     <string name="shared_string_deleted">Deleted</string>
@@ -3313,6 +3316,7 @@ You need to activate the sensor so OsmAnd can find it.</string>
     <string name="clear_markers_history_q">Clear map marker history?</string>
     <string name="active_markers">Active markers</string>
     <string name="map_markers">Map markers</string>
+    <string name="dest_arrow">Dest Arrow</string>
     <string name="map_marker">Map marker</string>
     <string name="consider_turning_polygons_off">It is recommended to turn off polygon rendering.</string>
     <string name="rendering_attr_showMtbRoutes_name">Mountain bike routes</string>

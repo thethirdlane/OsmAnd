@@ -28,6 +28,7 @@ import static net.osmand.aidlapi.OsmAndCustomizationConstants.DRAWER_TRIP_RECORD
 import static net.osmand.aidlapi.OsmAndCustomizationConstants.MAP_CONTEXT_MENU_ADD_GPX_WAYPOINT;
 import static net.osmand.aidlapi.OsmAndCustomizationConstants.MAP_CONTEXT_MENU_ADD_ID;
 import static net.osmand.aidlapi.OsmAndCustomizationConstants.MAP_CONTEXT_MENU_AVOID_ROAD;
+import static net.osmand.aidlapi.OsmAndCustomizationConstants.MAP_CONTEXT_MENU_DESTINATION_ID;
 import static net.osmand.aidlapi.OsmAndCustomizationConstants.MAP_CONTEXT_MENU_DIRECTIONS_FROM_ID;
 import static net.osmand.aidlapi.OsmAndCustomizationConstants.MAP_CONTEXT_MENU_MARKER_ID;
 import static net.osmand.aidlapi.OsmAndCustomizationConstants.MAP_CONTEXT_MENU_MEASURE_DISTANCE;
@@ -249,18 +250,27 @@ public class MapActivityActions extends MapActions {
 				.setTitleId(selectedObj instanceof FavouritePoint ? R.string.favourites_context_menu_edit : R.string.shared_string_add, mapActivity)
 				.setIcon(selectedObj instanceof FavouritePoint ? R.drawable.ic_action_edit_dark : R.drawable.ic_action_favorite_stroke)
 				.setOrder(10));
+		//AP Add destination ContextMenu
+		if(!(selectedObj instanceof MapMarker)) {
+			adapter.addItem(new ContextMenuItem(MAP_CONTEXT_MENU_DESTINATION_ID)
+					.setTitleId(R.string.shared_string_destination, mapActivity)
+					.setIcon(R.drawable.ic_action_flag_stroke)
+					.setOrder(20)
+			);
+		}
+		//End AP
 		adapter.addItem(new ContextMenuItem(MAP_CONTEXT_MENU_MARKER_ID)
 				.setTitleId(selectedObj instanceof MapMarker ? R.string.shared_string_edit : R.string.shared_string_marker, mapActivity)
 				.setIcon(selectedObj instanceof MapMarker ? R.drawable.ic_action_edit_dark : R.drawable.ic_action_flag_stroke)
-				.setOrder(20));
+				.setOrder(30));
 		adapter.addItem(new ContextMenuItem(MAP_CONTEXT_MENU_SHARE_ID)
 				.setTitleId(R.string.shared_string_share, mapActivity)
 				.setIcon(R.drawable.ic_action_gshare_dark)
-				.setOrder(30));
+				.setOrder(40));
 		adapter.addItem(new ContextMenuItem(MAP_CONTEXT_MENU_MORE_ID)
 				.setTitleId(R.string.shared_string_actions, mapActivity)
 				.setIcon(R.drawable.ic_actions_menu)
-				.setOrder(40));
+				.setOrder(50));
 
 		adapter.addItem(new ContextMenuItem(MAP_CONTEXT_MENU_DIRECTIONS_FROM_ID)
 				.setTitleId(R.string.context_menu_item_directions_from, mapActivity)
@@ -273,7 +283,8 @@ public class MapActivityActions extends MapActions {
 
 		PluginsHelper.registerMapContextMenu(mapActivity, latitude, longitude, adapter, selectedObj, configureMenu);
 
-		ItemClickListener listener = (callback, view, item, isChecked) -> {
+		ItemClickListener listener =
+				(callback, view, item, isChecked) -> {
 			int resId = item.getTitleId();
 			if (resId == R.string.context_menu_item_add_waypoint) {
 				mapActivity.getContextMenu().addWptPt();
@@ -359,7 +370,13 @@ public class MapActivityActions extends MapActions {
 					mapActivity.getContextMenu().buttonFavoritePressed();
 				} else if (standardId == R.string.shared_string_marker || standardId == R.string.shared_string_edit) {
 					mapActivity.getContextMenu().buttonWaypointPressed();
-				} else if (standardId == R.string.shared_string_share) {
+				}
+				//AP
+				else if (standardId == R.string.shared_string_destination) {
+					mapActivity.getContextMenu().buttonDestinationPressed();
+				}
+				//End AP
+				else if (standardId == R.string.shared_string_share) {
 					mapActivity.getContextMenu().buttonSharePressed();
 				}
 			}

@@ -7,6 +7,7 @@ import static net.osmand.aidlapi.OsmAndCustomizationConstants.FAVORITES_ID;
 import static net.osmand.aidlapi.OsmAndCustomizationConstants.GPX_FILES_ID;
 import static net.osmand.aidlapi.OsmAndCustomizationConstants.HIDE_ID;
 import static net.osmand.aidlapi.OsmAndCustomizationConstants.MAP_BORDERS_ID;
+import static net.osmand.aidlapi.OsmAndCustomizationConstants.MAP_DESTINATION_ID;
 import static net.osmand.aidlapi.OsmAndCustomizationConstants.MAP_LANGUAGE_ID;
 import static net.osmand.aidlapi.OsmAndCustomizationConstants.MAP_MAGNIFIER_ID;
 import static net.osmand.aidlapi.OsmAndCustomizationConstants.MAP_MARKERS_ID;
@@ -225,6 +226,7 @@ public class ConfigureMapMenu {
 				.setIcon(R.drawable.ic_action_flag)
 				.setItemDeleteAction(settings.SHOW_MAP_MARKERS)
 				.setListener(listener));
+
 
 		String mapSourceTitle = settings.getSelectedMapSourceTitle();
 		adapter.addItem(new ContextMenuItem(MAP_SOURCE_ID)

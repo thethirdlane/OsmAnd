@@ -954,6 +954,15 @@ public class MapContextMenu extends MenuTitleController implements StateChangedL
 		return false;
 	}
 
+	//AP
+	public void buttonDestinationPressed() {
+		mapActivity.getMapActions().addAsTarget(latLon.getLatitude(), latLon.getLongitude(),
+				getPointDescriptionForTarget());
+
+		close();
+	}
+	//End AP
+
 	public void buttonWaypointPressed() {
 		MapActivity mapActivity = getMapActivity();
 		if (mapActivity != null) {
@@ -1040,7 +1049,8 @@ public class MapContextMenu extends MenuTitleController implements StateChangedL
 			for (OsmandMapLayer layer : mapActivity.getMapView().getLayers()) {
 				layer.populateObjectContextMenu(latLon, getObject(), menuAdapter);
 			}
-			mapActivity.getMapActions().addActionsToAdapter(configure ? 0 : latLon.getLatitude(), configure ? 0 : latLon.getLongitude(), menuAdapter, configure ? null : getObject(), configure);
+			mapActivity.getMapActions().addActionsToAdapter(configure ? 0 : latLon.getLatitude(),
+					configure ? 0 : latLon.getLongitude(), menuAdapter, configure ? null : getObject(), configure);
 		}
 		return menuAdapter;
 	}

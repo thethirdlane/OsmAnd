@@ -46,6 +46,8 @@ public interface OsmAndCustomizationConstants {
 	String GPX_FILES_ID = SHOW_ITEMS_ID_SCHEME + "gpx_files";
 	String WIKIPEDIA_ID = SHOW_ITEMS_ID_SCHEME + "wikipedia";
 	String MAP_MARKERS_ID = SHOW_ITEMS_ID_SCHEME + "map_markers";
+
+	String MAP_DESTINATION_ID = SHOW_ITEMS_ID_SCHEME + "destination";
 	String MAP_SOURCE_ID = SHOW_ITEMS_ID_SCHEME + "map_source";
 	String MAP_BORDERS_ID = SHOW_ITEMS_ID_SCHEME + "map_borders";
 	String RECORDING_LAYER = SHOW_ITEMS_ID_SCHEME + "recording_layer";
@@ -100,6 +102,7 @@ public interface OsmAndCustomizationConstants {
 	String MAP_CONTEXT_MENU_ACTIONS = "point.actions.";
 	String MAP_CONTEXT_MENU_ADD_ID = MAP_CONTEXT_MENU_ACTIONS + "add";
 	String MAP_CONTEXT_MENU_MARKER_ID = MAP_CONTEXT_MENU_ACTIONS + "marker";
+	String MAP_CONTEXT_MENU_DESTINATION_ID = MAP_CONTEXT_MENU_ACTIONS + "destination";
 	String MAP_CONTEXT_MENU_SHARE_ID = MAP_CONTEXT_MENU_ACTIONS + "share";
 	String MAP_CONTEXT_MENU_MORE_ID = MAP_CONTEXT_MENU_ACTIONS + "more";
 	String MAP_CONTEXT_MENU_DIRECTIONS_FROM_ID = MAP_CONTEXT_MENU_ACTIONS + "directions_from";

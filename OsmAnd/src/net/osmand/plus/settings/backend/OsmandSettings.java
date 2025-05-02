@@ -853,8 +853,10 @@ public class OsmandSettings {
 
 	public final OsmandPreference<Boolean> SHOW_DISTANCE_RULER = new BooleanPreference(this, "show_distance_ruler", false).makeProfile();
 
-	public final CommonPreference<Boolean> SHOW_LINES_TO_FIRST_MARKERS = new BooleanPreference(this, "show_lines_to_first_markers", false).makeProfile();
-	public final CommonPreference<Boolean> SHOW_ARROWS_TO_FIRST_MARKERS = new BooleanPreference(this, "show_arrows_to_first_markers", false).makeProfile();
+	public final CommonPreference<Boolean> SHOW_LINES_TO_FIRST_MARKERS =
+			new BooleanPreference(this, "show_lines_to_first_markers", false).makeProfile();
+	public final CommonPreference<Boolean> SHOW_ARROWS_TO_FIRST_MARKERS =
+			new BooleanPreference(this, "show_arrows_to_first_markers", true).makeProfile();
 
 	public final CommonPreference<Boolean> WIKI_ARTICLE_SHOW_IMAGES_ASKED = new BooleanPreference(this, "wikivoyage_show_images_asked", false).makeGlobal();
 	public final CommonPreference<WikiArticleShowImages> WIKI_ARTICLE_SHOW_IMAGES = new EnumStringPreference<>(this, "wikivoyage_show_imgs", WikiArticleShowImages.OFF, WikiArticleShowImages.values()).makeGlobal().makeShared();
@@ -2920,7 +2922,8 @@ public class OsmandSettings {
 			(ContextMenuItemsPreference) new ContextMenuItemsPreference(this, "context_menu_items", MAP_CONTEXT_MENU_ACTIONS, new MainContextMenuItemsSettings())
 					.makeProfile().cache();
 
-	public final List<ContextMenuItemsPreference> CONTEXT_MENU_ITEMS_PREFERENCES = Arrays.asList(DRAWER_ITEMS, CONFIGURE_MAP_ITEMS, CONTEXT_MENU_ACTIONS_ITEMS);
+	public final List<ContextMenuItemsPreference> CONTEXT_MENU_ITEMS_PREFERENCES =
+			Arrays.asList(DRAWER_ITEMS, CONFIGURE_MAP_ITEMS, CONTEXT_MENU_ACTIONS_ITEMS);
 
 	@Nullable
 	public ContextMenuItemsPreference getContextMenuItemsPreference(@NonNull String id) {
@@ -3241,4 +3244,14 @@ public class OsmandSettings {
 			new BooleanPreference(this, "configure_profile_free_account_card_dismissed", false).makeGlobal();
 
 	public final OsmandPreference<Boolean> TRIPLTEK_PROMO_SHOWED = new BooleanPreference(this, "tripltek_promo_showed", false).makeGlobal().makeShared();
+
+	//AP
+	public final OsmandPreference<Boolean> USE_MAP_MARKERS = new BooleanPreference(this, "use_map_markers", true).makeGlobal().cache();
+	public final CommonPreference<Boolean> SHOW_DESTINATION_ARROW = new BooleanPreference(this, "show_destination_arrow", true).makeProfile();
+
+	{
+		SHOW_DESTINATION_ARROW.setModeDefaultValue(ApplicationMode.CAR, true);
+		SHOW_DESTINATION_ARROW.setModeDefaultValue(ApplicationMode.PEDESTRIAN, true);
+	}
+	//End AP
 }

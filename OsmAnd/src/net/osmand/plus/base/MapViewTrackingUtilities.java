@@ -2,9 +2,11 @@ package net.osmand.plus.base;
 
 import static net.osmand.plus.settings.enums.CompassMode.COMPASS_DIRECTION;
 import static net.osmand.plus.views.AnimateDraggingMapThread.SKIP_ANIMATION_DP_THRESHOLD;
+import static net.osmand.plus.views.layers.ContextMenuLayer.VIBRATE_SHORT;
 
 import android.content.Context;
 import android.os.AsyncTask;
+import android.os.Vibrator;
 import android.view.WindowManager;
 
 import androidx.annotation.NonNull;
@@ -476,6 +478,13 @@ public class MapViewTrackingUtilities implements OsmAndLocationListener, IMapLoc
 					setMapLinkedToLocation(true);
 				}
 				mapView.refreshMap();
+
+				//AP - buzz if we moved
+				Vibrator vibrator = (Vibrator) app.getSystemService(Context.VIBRATOR_SERVICE);
+				if(vibrator != null) {
+					vibrator.vibrate(VIBRATE_SHORT);
+				}
+				//END AP
 			}
 			if (location == null) {
 				//Hardy, 2019-12-15: Inject A-GPS data if backToLocationImpl fails with no fix:

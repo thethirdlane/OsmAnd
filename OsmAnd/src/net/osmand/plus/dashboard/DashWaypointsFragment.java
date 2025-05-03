@@ -149,9 +149,14 @@ public class DashWaypointsFragment extends DashLocationFragment {
 			
 			view.setOnClickListener(v -> {
 				if (getActivity() != null) {
-					getMyApplication().getSettings().setMapLocationToShow(point.getLatitude(), point.getLongitude(),
-							15, point.getPointDescription(getActivity()), false,
-							point);
+					//AP - Do NOT Zoom on selecting favorite
+//					getMyApplication().getSettings().setMapLocationToShow(point.getLatitude(), point.getLongitude(),
+//							15, point.getPointDescription(getActivity()), false,
+//							point);
+					app.getSettings().setMapLocationToShow(point.getLatitude(), point.getLongitude(),
+							settings.getLastKnownMapZoom(),
+							point.getPointDescription(getActivity()), true, point);
+					//END AP
 					MapActivity.launchMapActivityMoveToTop(getActivity());
 				}
 			});

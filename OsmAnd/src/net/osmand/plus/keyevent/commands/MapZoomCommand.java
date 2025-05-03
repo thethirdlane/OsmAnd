@@ -1,7 +1,9 @@
 package net.osmand.plus.keyevent.commands;
 
 import android.content.Context;
+import android.view.Gravity;
 import android.view.KeyEvent;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 

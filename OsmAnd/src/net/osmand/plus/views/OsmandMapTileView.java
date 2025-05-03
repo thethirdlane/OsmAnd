@@ -19,6 +19,7 @@ import android.os.SystemClock;
 import android.util.DisplayMetrics;
 import android.view.GestureDetector;
 import android.view.GestureDetector.SimpleOnGestureListener;
+import android.view.Gravity;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -562,6 +563,12 @@ public class OsmandMapTileView implements IMapDownloaderCallback {
 		for (ManualZoomListener listener : manualZoomListeners) {
 			listener.onManualZoomChange();
 		}
+		//AP
+		int newZoom = zoom.getBaseZoom();
+		Toast t = Toast.makeText(application, "Zoom " + newZoom, Toast.LENGTH_SHORT);
+		t.setGravity(Gravity.CENTER, 0, 0);
+		t.show();
+		//End AP
 	}
 
 	public void setIntZoom(int zoom) {

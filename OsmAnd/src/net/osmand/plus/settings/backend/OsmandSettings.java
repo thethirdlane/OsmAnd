@@ -1379,7 +1379,7 @@ public class OsmandSettings {
 	public final CommonPreference<Boolean> AUTO_ZOOM_MAP = new BooleanPreference(this, "auto_zoom_map_on_off", false).makeProfile().cache();
 
 	{
-		AUTO_ZOOM_MAP.setModeDefaultValue(ApplicationMode.CAR, true);
+		AUTO_ZOOM_MAP.setModeDefaultValue(ApplicationMode.CAR, false);
 		AUTO_ZOOM_MAP.setModeDefaultValue(ApplicationMode.BICYCLE, false);
 		AUTO_ZOOM_MAP.setModeDefaultValue(ApplicationMode.PEDESTRIAN, false);
 	}

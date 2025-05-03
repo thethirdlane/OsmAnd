@@ -138,6 +138,7 @@ android {
 //		}
 		androidFull {
 			dimension "version"
+//			applicationId "net.osmand.plus.anilfourfive"
 			applicationId "net.osmand.plus.anilfoursix"
 			resValue "string", "app_name", "OsmAndFourSix"
 			resValue "string", "app_edition", System.getenv("APP_EDITION") ? System.getenv("APP_EDITION") : ""

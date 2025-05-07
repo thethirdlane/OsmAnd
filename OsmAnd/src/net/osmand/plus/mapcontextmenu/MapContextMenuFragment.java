@@ -2236,15 +2236,25 @@ public class MapContextMenuFragment extends BaseOsmAndFragment implements Downlo
 	}
 
 	private void doBeforeMenuStateChange(int previousState, int newState) {
-		if (newState == MenuState.HALF_SCREEN) {
+		boolean autoZoom = settings.AUTO_ZOOM_MAP.get();
+		//AP DO NOT zoom if autoZoom is off
+		if (autoZoom && newState == MenuState.HALF_SCREEN) {
 			centered = true;
 			if (!zoomIn && menu.supportZoomIn()) {
 				if (getZoom() < ZOOM_IN_STANDARD) {
 					zoomIn = true;
 				}
 			}
-			calculateCenterLatLon(menu.getLatLon(), getZoom(), true);
 		}
+//		if (newState == MenuState.HALF_SCREEN) {
+//			if (!zoomIn && menu.supportZoomIn()) {
+//				if (getZoom() < ZOOM_IN_STANDARD) {
+//					zoomIn = true;
+//				}
+//			}
+//			calculateCenterLatLon(menu.getLatLon(), getZoom(), true);
+//		}
+		//END AP
 	}
 
 	private void doAfterMenuStateChange(int previousState, int newState) {

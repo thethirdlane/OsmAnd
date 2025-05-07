@@ -276,8 +276,13 @@ public class MapMarkersGroupsFragment extends Fragment implements OsmAndCompassL
 			}
 
 			private void showMap(LatLon latLon, PointDescription desc, Object objToShow) {
+				//AP dont zoom
+				int zoom = mapActivity.getMyApplication().getSettings().getLastKnownMapZoom();
+//				mapActivity.getMyApplication().getSettings().setMapLocationToShow(latLon.getLatitude(),
+//						latLon.getLongitude(), 15, desc, true, objToShow);
 				mapActivity.getMyApplication().getSettings().setMapLocationToShow(latLon.getLatitude(),
-						latLon.getLongitude(), 15, desc, true, objToShow);
+						latLon.getLongitude(), zoom, desc, true, objToShow);
+				//END AP
 				MapActivity.launchMapActivityMoveToTop(mapActivity);
 				((DialogFragment) getParentFragment()).dismiss();
 			}

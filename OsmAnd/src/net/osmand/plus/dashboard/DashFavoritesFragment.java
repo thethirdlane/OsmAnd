@@ -160,8 +160,12 @@ public class DashFavoritesFragment extends DashLocationFragment {
 				if (getActivity() != null) {
 					PointDescription pointDescription = new PointDescription(
 							PointDescription.POINT_TYPE_FAVORITE, point.getDisplayName(app));
+					//AP - Do NOT Zoom on selecting favorite
+//					app.getSettings().setMapLocationToShow(point.getLatitude(), point.getLongitude(),
+//							15, pointDescription, true, point);
 					app.getSettings().setMapLocationToShow(point.getLatitude(), point.getLongitude(),
-							15, pointDescription, true, point);
+							settings.getLastKnownMapZoom(), pointDescription, true, point);
+					//END AP
 					MapActivity.launchMapActivityMoveToTop(getActivity());
 				}
 			});

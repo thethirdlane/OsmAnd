@@ -1236,14 +1236,25 @@ public class OsmandAidlApi {
 					}
 				}
 			}
+			//AP Dont zoom
+//			app.getSettings().setMapLocationToShow(
+//					point.getLocation().getLatitude(),
+//					point.getLocation().getLongitude(),
+//					DEFAULT_ZOOM,
+//					new PointDescription(PointDescription.POINT_TYPE_MARKER, point.getFullName()),
+//					false,
+//					point
+//			);
 			app.getSettings().setMapLocationToShow(
 					point.getLocation().getLatitude(),
 					point.getLocation().getLongitude(),
-					DEFAULT_ZOOM,
+					app.getSettings().getLastKnownMapZoom(),
 					new PointDescription(PointDescription.POINT_TYPE_MARKER, point.getFullName()),
 					false,
 					point
 			);
+			//END AP
+
 			MapActivity.launchMapActivityMoveToTop(app);
 
 			return true;

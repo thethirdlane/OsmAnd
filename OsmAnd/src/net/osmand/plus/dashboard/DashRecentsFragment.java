@@ -205,8 +205,13 @@ public class DashRecentsFragment extends DashLocationFragment implements OnSegme
 				closeDashboard();
 			}
 		} else {
-			app.getSettings().setMapLocationToShow(historyEntry.getLat(), historyEntry.getLon(),
-					15, historyEntry.getName(), true, historyEntry);
+			//AP - don't Zoom on selecting favorite
+//			app.getSettings().setMapLocationToShow(historyEntry.getLat(), historyEntry.getLon(),
+//					15, historyEntry.getName(), true, historyEntry);
+			app.getSettings().setMapLocationToShow(historyEntry.getLat(),
+					historyEntry.getLon(),
+					settings.getLastKnownMapZoom(), pointDescription, true, historyEntry);
+			//END AP
 			MapActivity.launchMapActivityMoveToTop(getActivity());
 		}
 	}

@@ -632,9 +632,15 @@ public class OsmandMapTileView implements IMapDownloaderCallback {
 		if (!linkedToLocation) {
 			showAndHideMapPosition();
 		}
-		if (application.accessibilityEnabled()) {
-			Toast.makeText(application, application.getString(R.string.zoomIs) + " " + zoom.getBaseZoom(), Toast.LENGTH_SHORT).show();
-		}
+		//AP - Always show zoom toast
+//		if (application.accessibilityEnabled()) {
+//			Toast.makeText(application, application.getString(R.string.zoomIs) + " " + zoom.getBaseZoom(), Toast.LENGTH_SHORT).show();
+			int newZoom = zoom.getBaseZoom();
+			Toast t = Toast.makeText(application, "Zoom " + newZoom, Toast.LENGTH_SHORT);
+			t.setGravity(Gravity.CENTER, 0, 0);
+			t.show();
+//		}
+		//End AP
 
 		for (ManualZoomListener listener : manualZoomListeners) {
 			listener.onManualZoomChange();

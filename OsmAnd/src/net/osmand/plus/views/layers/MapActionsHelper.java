@@ -310,7 +310,11 @@ public class MapActionsHelper {
 			} else {
 				layer.resetTouchEvent();
 				app.logEvent("start_navigation");
-				app.getMapViewTrackingUtilities().backToLocationImpl(17, true);
+				//AP changed second argument to false, and added third argument
+//				app.getMapViewTrackingUtilities().backToLocationImpl(17, true);
+				app.getMapViewTrackingUtilities().backToLocationImpl(17, false, false);
+				//END AP
+//				app.getMapViewTrackingUtilities().backToLocationImpl(17, true);
 				settings.FOLLOW_THE_ROUTE.set(true);
 				routingHelper.setFollowingMode(true);
 				routingHelper.setRoutePlanningMode(false);

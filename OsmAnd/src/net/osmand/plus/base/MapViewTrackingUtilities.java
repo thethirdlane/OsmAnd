@@ -5,8 +5,11 @@ import static net.osmand.plus.settings.enums.CompassMode.MANUALLY_ROTATED;
 import static net.osmand.plus.settings.enums.CompassMode.NORTH_IS_UP;
 import static net.osmand.plus.views.AnimateDraggingMapThread.SKIP_ANIMATION_DP_THRESHOLD;
 import static net.osmand.plus.views.OsmandMapTileView.DEFAULT_ELEVATION_ANGLE;
+import static net.osmand.plus.views.layers.ContextMenuLayer.VIBRATE_SHORT;
 
+import android.content.Context;
 import android.os.AsyncTask;
+import android.os.Vibrator;
 import android.view.Display;
 
 import androidx.annotation.NonNull;
@@ -468,23 +471,58 @@ public class MapViewTrackingUtilities implements OsmAndLocationListener, IMapLoc
 				: now - lastTimeAutoZooming > autoZoomFrequency;
 	}
 
+	//AP
 	public void backToLocationImpl() {
-		backToLocationImpl(15, true);
+		//AP
+		//The default mode will "center" the map at the pointer's current
+		//location.  That's the way we like it.
+		//As of ver3.6 they have added a boolean forceZoom, so now we
+		//have to have a 3 argument backtoLocationImpl method
+		backToLocationImpl(15, false, true);
 	}
 
-	public void backToLocationImpl(int zoom, boolean forceZoom) {
+	//AP
+	public void backToLocationImpl(int zoom, boolean forceZoom, boolean resetRatios) {
 		if (mapView != null) {
 			OsmAndLocationProvider locationProvider = app.getLocationProvider();
 			Location lastKnownLocation = locationProvider.getLastKnownLocation();
 			Location lastStaleKnownLocation = locationProvider.getLastStaleKnownLocation();
 			Location location = lastKnownLocation != null ? lastKnownLocation : lastStaleKnownLocation;
 			if (!isMapLinkedToLocation()) {
+				//AP
+				if(resetRatios) {
+					if (locationProvider.getLastKnownLocation() != null) {
+						double newLatitude = lastKnownLocation.getLatitude();
+						double newLongitude = lastKnownLocation.getLongitude();
+						RotatedTileBox viewPort = mapView.getCurrentRotatedTileBox();
+						float currX = viewPort.getPixXFromLatLon(newLatitude, newLongitude);
+						float currY = viewPort.getPixYFromLatLon(newLatitude, newLongitude);
+						int width = viewPort.getPixWidth();
+						int height = viewPort.getPixHeight();
+						float ratioX = currX / width;
+						float ratioY = currY / height;
+
+						mapDisplayPositionManager.setCustomMapRatio(ratioX, ratioY);
+					}
+				}
+				else {
+					//Reset the "center" to be at the actual center
+					mapDisplayPositionManager.setCustomMapRatio(.5f, .5f);
+				}
+				//End AP
 				if (location != null) {
 					animateBackToLocation(location, zoom, forceZoom);
 				} else {
 					setMapLinkedToLocation(true);
 				}
 				mapView.refreshMap();
+
+				//AP - buzz if we moved
+				Vibrator vibrator = (Vibrator) app.getSystemService(Context.VIBRATOR_SERVICE);
+				if(vibrator != null) {
+					vibrator.vibrate(VIBRATE_SHORT);
+				}
+				//END AP
 			}
 			if (location == null) {
 				//Hardy, 2019-12-15: Inject A-GPS data if backToLocationImpl fails with no fix:
@@ -497,6 +535,36 @@ public class MapViewTrackingUtilities implements OsmAndLocationListener, IMapLoc
 			}
 		}
 	}
+
+//	public void backToLocationImpl() {
+//		backToLocationImpl(15, true);
+//	}
+//
+//	public void backToLocationImpl(int zoom, boolean forceZoom) {
+//		if (mapView != null) {
+//			OsmAndLocationProvider locationProvider = app.getLocationProvider();
+//			Location lastKnownLocation = locationProvider.getLastKnownLocation();
+//			Location lastStaleKnownLocation = locationProvider.getLastStaleKnownLocation();
+//			Location location = lastKnownLocation != null ? lastKnownLocation : lastStaleKnownLocation;
+//			if (!isMapLinkedToLocation()) {
+//				if (location != null) {
+//					animateBackToLocation(location, zoom, forceZoom);
+//				} else {
+//					setMapLinkedToLocation(true);
+//				}
+//				mapView.refreshMap();
+//			}
+//			if (location == null) {
+//				//Hardy, 2019-12-15: Inject A-GPS data if backToLocationImpl fails with no fix:
+//				if (app.getSettings().isInternetConnectionAvailable(true)) {
+//					locationProvider.redownloadAGPS();
+//					app.showToastMessage(app.getString(R.string.unknown_location) + "\n\n" + app.getString(R.string.agps_data_last_downloaded, (new SimpleDateFormat("yyyy-MM-dd  HH:mm")).format(app.getSettings().AGPS_DATA_LAST_TIME_DOWNLOADED.get())));
+//				} else {
+//					app.showToastMessage(R.string.unknown_location);
+//				}
+//			}
+//		}
+//	}
 
 	private void animateBackToLocation(@NonNull Location location, int zoom, boolean forceZoom) {
 		AnimateDraggingMapThread thread = mapView.getAnimatedDraggingThread();
@@ -524,7 +592,10 @@ public class MapViewTrackingUtilities implements OsmAndLocationListener, IMapLoc
 		app.runMessageInUIThreadAndCancelPrevious(AUTO_FOLLOW_MSG_ID, () -> {
 			if (mapView != null && !isMapLinkedToLocation() && contextMenu == null) {
 				app.showToastMessage(R.string.auto_follow_location_enabled);
-				backToLocationImpl(15, false);
+				//AP
+//				backToLocationImpl(15, false);
+				backToLocationImpl(15, false, true);
+				//END AP
 			}
 		}, delay * 1000L);
 	}

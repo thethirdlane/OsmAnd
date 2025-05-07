@@ -135,7 +135,10 @@ public final class SurfaceRenderer implements DefaultLifecycleObserver, MapRende
 						cachedRatioY = ratioY;
 						cachedDefaultRatioY = defaultRatioY;
 					}
-					displayPositionManager.setCustomMapRatio(ratioX, ratioY);
+					//AP commented this out because it interferes with
+					//our approach of centering at a fixed spot
+//					displayPositionManager.setCustomMapRatio(ratioX, ratioY);
+					//END AP
 				}
 				renderFrame();
 			}

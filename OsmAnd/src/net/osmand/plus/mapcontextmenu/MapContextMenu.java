@@ -957,6 +957,15 @@ public class MapContextMenu extends MenuTitleController implements StateChangedL
 		return false;
 	}
 
+	//AP
+	public void buttonDestinationPressed() {
+		mapActivity.getMapActions().addAsTarget(latLon.getLatitude(), latLon.getLongitude(),
+				getPointDescriptionForTarget());
+
+		close();
+	}
+	//End AP
+
 	public void buttonWaypointPressed() {
 		MapActivity mapActivity = getMapActivity();
 		if (mapActivity != null) {

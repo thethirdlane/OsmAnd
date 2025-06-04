@@ -3344,4 +3344,15 @@ public class OsmandSettings {
 	public final OsmandPreference<Boolean> HUGEROCK_PROMO_SHOWED = new BooleanPreference(this, "hugerock_promo_showed", false).makeGlobal().makeShared();
 	public final CommonPreference<Integer> CONTEXT_GALLERY_SPAN_GRID_COUNT = new IntPreference(this, "context_gallery_span_grid_count", 3).makeProfile();
 	public final CommonPreference<Integer> CONTEXT_GALLERY_SPAN_GRID_COUNT_LANDSCAPE = new IntPreference(this, "context_gallery_span_grid_count_landscape", 7).makeProfile();
+
+
+	//AP
+	public final OsmandPreference<Boolean> USE_MAP_MARKERS = new BooleanPreference(this, "use_map_markers", true).makeGlobal().cache();
+	public final CommonPreference<Boolean> SHOW_DESTINATION_ARROW = new BooleanPreference(this, "show_destination_arrow", true).makeProfile();
+
+	{
+		SHOW_DESTINATION_ARROW.setModeDefaultValue(ApplicationMode.CAR, true);
+		SHOW_DESTINATION_ARROW.setModeDefaultValue(ApplicationMode.PEDESTRIAN, true);
+	}
+	//End AP
 }

@@ -94,6 +94,10 @@ public class MapMarkersLayer extends OsmandMapLayer implements IContextMenuProvi
 	private Bitmap markerBitmapTeal;
 	private Bitmap markerBitmapPurple;
 
+	//AP
+	private Bitmap mArrowToDestination;
+	//End AP
+
 	private Paint bitmapPaintDestBlue;
 	private Paint bitmapPaintDestGreen;
 	private Paint bitmapPaintDestOrange;
@@ -467,6 +471,35 @@ public class MapMarkersLayer extends OsmandMapLayer implements IContextMenuProvi
 		if (this.movableObject != null && !contextMenuLayer.isInChangeMarkerPositionMode()) {
 			cancelMovableObject();
 		}
+
+		//AP
+		TargetPoint pointToNavigate = app.getTargetPointsHelper().getPointToNavigate();
+		if (pointToNavigate != null && !isLocationVisible(tileBox, pointToNavigate)) {
+			OsmandMapTileView mView = getMapView();
+			boolean show = mView.getSettings().SHOW_DESTINATION_ARROW.get();
+			if (show) {
+				canvas.save();
+
+				float[] mCalculations = new float[2];
+				net.osmand.Location.distanceBetween(mView.getLatitude(), mView.getLongitude(),
+						pointToNavigate.getLatitude(),
+						pointToNavigate.getLongitude(),
+						mCalculations);
+				float bearing = mCalculations[1] - 90;
+				float radiusBearing = DIST_TO_SHOW * tileBox.getDensity();
+				final QuadPoint cp = tileBox.getCenterPixelPoint();
+				canvas.rotate(bearing, cp.x, cp.y);
+				canvas.translate(-24 * tileBox.getDensity() + radiusBearing,
+						-22 * tileBox.getDensity());
+
+				canvas.drawBitmap(arrowShadow, cp.x, cp.y, bitmapPaint);
+				canvas.drawBitmap(arrowToDestination, cp.x, cp.y, bitmapPaintDestRed);
+				canvas.drawBitmap(arrowLight, cp.x, cp.y, bitmapPaint);
+
+				canvas.restore();
+			}
+		}
+		//END AP
 	}
 
 	private void updateBitmaps(boolean forceUpdate) {
@@ -497,6 +530,12 @@ public class MapMarkersLayer extends OsmandMapLayer implements IContextMenuProvi
 		arrowLight = getScaledBitmap(R.drawable.map_marker_direction_arrow_p1_light);
 		arrowToDestination = getScaledBitmap(R.drawable.map_marker_direction_arrow_p2_color);
 		arrowShadow = getScaledBitmap(R.drawable.map_marker_direction_arrow_p3_shadow);
+
+		//AP
+		mArrowToDestination = getScaledBitmap(R.drawable.map_arrow_to_destination);
+		//End ap
+
+
 	}
 
 	@Nullable
@@ -512,6 +551,21 @@ public class MapMarkersLayer extends OsmandMapLayer implements IContextMenuProvi
 	private boolean isInMotion(@NonNull MapMarker marker) {
 		return marker.equals(contextMenuLayer.getMoveableObject());
 	}
+
+	//AP
+	public boolean isLocationVisible(RotatedTileBox tb, TargetPoint p) {
+		if (contextMenuLayer.getMoveableObject() != null
+				&& p == contextMenuLayer.getMoveableObject()) {
+			return true;
+		} else if (p == null || tb == null) {
+			return false;
+		}
+		double tx = tb.getPixXFromLatLon(p.getLatitude(), p.getLongitude());
+		double ty = tb.getPixYFromLatLon(p.getLatitude(), p.getLongitude());
+		double pointSizePx = 10;
+		return tx >= -pointSizePx && tx <= tb.getPixWidth() + pointSizePx && ty >= -pointSizePx && ty <= tb.getPixHeight() + pointSizePx;
+	}
+	//End AP
 
 	public boolean isLocationVisible(RotatedTileBox tb, MapMarker marker) {
 		//noinspection SimplifiableIfStatement

@@ -3,10 +3,12 @@ package net.osmand.plus.views.layers;
 import static net.osmand.plus.settings.backend.OsmAndAppCustomizationFields.ROUTE_INTERMEDIATE_POINT;
 import static net.osmand.plus.settings.backend.OsmAndAppCustomizationFields.ROUTE_START_POINT;
 import static net.osmand.plus.settings.backend.OsmAndAppCustomizationFields.ROUTE_TARGET_POINT;
+import static net.osmand.plus.views.layers.MapMarkersLayer.DIST_TO_SHOW;
 
 import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Paint.Align;
@@ -23,6 +25,7 @@ import net.osmand.core.jni.PointI;
 import net.osmand.core.jni.TextRasterizer;
 import net.osmand.data.LatLon;
 import net.osmand.data.PointDescription;
+import net.osmand.data.QuadPoint;
 import net.osmand.data.RotatedTileBox;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
@@ -55,6 +58,11 @@ public class PointNavigationLayer extends OsmandMapLayer implements
 	private Paint mBitmapPaint;
 	private Paint mTextPaint;
 
+	//AP
+	private Bitmap mArrowToDestination;
+	//End AP
+
+
 	private ContextMenuLayer contextMenuLayer;
 
 	//OpenGL
@@ -79,6 +87,11 @@ public class PointNavigationLayer extends OsmandMapLayer implements
 
 		updateTextSize();
 		updateBitmaps(true);
+
+		//AP
+		mArrowToDestination = BitmapFactory.decodeResource(getMapView().getResources(),
+				R.drawable.map_arrow_to_destination);
+		//End AP
 	}
 
 	@Override
@@ -137,6 +150,27 @@ public class PointNavigationLayer extends OsmandMapLayer implements
 		TargetPoint pointToNavigate = targetPoints.getPointToNavigate();
 		if (isLocationVisible(tb, pointToNavigate)) {
 			drawPointToNavigate(canvas, tb, pointToNavigate);
+
+			//AP
+			boolean show = !getApplication().getRoutingHelper().isRouteCalculated();
+			OsmandMapTileView mView = getMapView();
+
+			if (getMapView().getSettings().SHOW_DESTINATION_ARROW.isSet()) {
+				show = getMapView().getSettings().SHOW_DESTINATION_ARROW.get();
+			}
+			if (show) {
+				float [] mCalculations = new float[2];
+				net.osmand.Location.distanceBetween(mView.getLatitude(), mView.getLongitude(),
+						pointToNavigate.getLatitude(), pointToNavigate.getLongitude(),
+						mCalculations);
+				float bearing = mCalculations[1] - 90;
+				float radiusBearing = DIST_TO_SHOW * tb.getDensity();
+				final QuadPoint cp = tb.getCenterPixelPoint();
+				canvas.rotate(bearing, cp.x, cp.y);
+				canvas.translate(-24 * tb.getDensity() + radiusBearing, -22 * tb.getDensity());
+				canvas.drawBitmap(mArrowToDestination, cp.x, cp.y, mBitmapPaint);
+			}
+			//END AP
 		}
 	}
 

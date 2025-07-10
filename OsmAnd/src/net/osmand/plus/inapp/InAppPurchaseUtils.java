@@ -66,7 +66,9 @@ public class InAppPurchaseUtils {
 	}
 
 	public static boolean isOsmAndProAvailable(@NonNull OsmandApplication app) {
-		return isOsmAndProAvailable(app, true);
+		//AP
+		return true;
+//		return isOsmAndProAvailable(app, true);
 	}
 
 	public static boolean isOsmAndProAvailable(@NonNull OsmandApplication app, boolean checkDevBuild) {

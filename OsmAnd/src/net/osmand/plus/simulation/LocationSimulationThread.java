@@ -30,7 +30,10 @@ class LocationSimulationThread extends Thread {
 
 	private final List<SimulatedLocation> directions;
 	private final SimulationMode mode;
-	private final float speed;
+	//AP - set speed when running
+	private float speed;
+//	private final float speed;
+	//END AP
 	private final float coeff;
 	private final boolean realistic;
 	private final boolean locationTime;
@@ -157,5 +160,9 @@ class LocationSimulationThread extends Thread {
 		location.setLatitude(location.getLatitude() + d);
 		d = (random.nextInt((int) (DEVIATION_M + 1)) - DEVIATION_M / 2) * PRECISION_1_M;
 		location.setLongitude(location.getLongitude() + d);
+	}
+
+	public void setSpeed(float speed) {
+		this.speed = speed;
 	}
 }

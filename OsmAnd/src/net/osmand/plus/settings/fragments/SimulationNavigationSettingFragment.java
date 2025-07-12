@@ -31,6 +31,7 @@ import com.google.android.material.slider.Slider;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.OsmandActionBarActivity;
 import net.osmand.plus.settings.enums.SimulationMode;
+import net.osmand.plus.simulation.OsmAndLocationSimulation;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
 import net.osmand.plus.utils.UiUtilities;
@@ -223,6 +224,10 @@ public class SimulationNavigationSettingFragment extends BaseSettingsFragment {
 			title.setText(getString(R.string.ltr_or_rtl_combine_via_colon,
 					getString(titleRes), getFormattedSpeed(value, app)));
 			settings.simulateNavigationSpeed = value;
+			//AP - change speed when running
+			OsmAndLocationSimulation locationSimulation = app.getLocationProvider().getLocationSimulation();
+			locationSimulation.setSpeed(value);
+			//END AP
 		});
 		UiUtilities.setupSlider(slider, isNightMode(), getActiveProfileColor());
 	}

@@ -21,7 +21,10 @@ public class OsmAndLocationSimulation {
 
 	private final OsmandApplication app;
 
-	private Thread simulationThread;
+	//AP
+	private LocationSimulationThread simulationThread;
+//	private Thread simulationThread;
+	//END AP
 
 	private LoadSimulatedLocationsTask loadLocationsTask;
 	private List<LoadSimulatedLocationsListener> loadLocationsListeners = new ArrayList<>();
@@ -178,4 +181,12 @@ public class OsmAndLocationSimulation {
 	public interface LocationSimulationListener {
 		void onSimulationStateChanged(boolean simulating);
 	}
+
+	//AP - to try and change speed when running
+	public void setSpeed(float speed) {
+		if(simulationThread != null) {
+			simulationThread.setSpeed(speed);
+		}
+	}
+	//END AP
 }

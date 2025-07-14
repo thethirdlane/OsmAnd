@@ -183,6 +183,12 @@ public class OsmAndLocationSimulation {
 	}
 
 	//AP - to try and change speed when running
+	public float getSpeed() {
+		if(simulationThread != null) {
+			return simulationThread.getSpeed();
+		}
+		return 0;
+	}
 	public void setSpeed(float speed) {
 		if(simulationThread != null) {
 			simulationThread.setSpeed(speed);

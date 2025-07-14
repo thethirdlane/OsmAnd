@@ -5983,4 +5983,8 @@ Download tile maps directly, or copy them as SQLite database files to OsmAnd\'s 
     <string name="routing_attr_freeride_policy_name">Off-piste</string>
     <string name="routing_attr_freeride_policy_description">\'Freeride\' and \'Off-piste\' are unofficial routes and passages. Typically ungroomed, unmaintained and not checked in the evening. Enter at your own risk.</string>
     <string name="voice_prompts_timetable">Voice prompts times</string>
+    <string name="simSpeedInc">Sim Speed Increment</string>
+    <string name="simSpeedDec">Sim Speed Decrement</string>
+    <string name="sim_speed_inc_action_descr">Navigation Simulation Speed Increment</string>
+    <string name="sim_speed_dec_action_descr">Navigation Simulation Speed Decrement</string>
 </resources>

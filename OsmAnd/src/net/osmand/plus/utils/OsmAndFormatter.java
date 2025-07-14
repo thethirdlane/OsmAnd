@@ -424,11 +424,15 @@ public class OsmAndFormatter {
 		int decimalPrecision = pms.extraDecimalPrecision;
 		if(pms.forcePreciseValue) {
 			return formatValue(floatDistance, mainUnitStr, forceTrailingZeros, decimalPrecision, ctx);
-		} else if (meters >= 100 * mainUnitInMeters) {
+			//AP - show decimals for > 1000 meters
+//		} else if (meters >= 100 * mainUnitInMeters) {
+		} else if (meters >= 1000 * mainUnitInMeters) {
 			return formatValue((int) (meters / mainUnitInMeters + 0.5), mainUnitStr, forceTrailingZeros,
 					0, ctx);
 		} else if (meters > 9.99f * mainUnitInMeters) {
-			return formatValue(floatDistance, mainUnitStr, forceTrailingZeros, decimalPrecision, ctx);
+//			return formatValue(floatDistance, mainUnitStr, forceTrailingZeros, decimalPrecision, ctx);
+			return formatValue(floatDistance, mainUnitStr, forceTrailingZeros, Math.max(1, decimalPrecision), ctx);
+			//END AP
 		} else if (meters > 0.999f * mainUnitInMeters) {
 			return formatValue(floatDistance, mainUnitStr, forceTrailingZeros, 1 + decimalPrecision, ctx);
 		} else if (mc == MetricsConstants.MILES_AND_FEET && meters > 0.249f * mainUnitInMeters) {

@@ -66,7 +66,8 @@ public abstract class DistanceToPointWidget extends SimpleWidget {
 				setText(isVerticalWidget() ? NO_VALUE : null, null);
 			} else {
 				FormattedValue formattedDistance = OsmAndFormatter
-						.getFormattedDistanceValue(cachedMeters, app, OsmAndFormatter.OsmAndFormatterParams.USE_LOWER_BOUNDS);
+						.getFormattedDistanceValue(cachedMeters, app,
+								OsmAndFormatter.OsmAndFormatterParams.USE_LOWER_BOUNDS);
 				setText(formattedDistance.value, formattedDistance.unit);
 			}
 		}
@@ -103,9 +104,11 @@ public abstract class DistanceToPointWidget extends SimpleWidget {
 
 		@Override
 		public int getDistance() {
-			return routingHelper.isRouteCalculated()
+			var distance =  routingHelper.isRouteCalculated()
 					? routingHelper.getLeftDistance()
 					: super.getDistance();
+
+			return distance;
 		}
 	}
 

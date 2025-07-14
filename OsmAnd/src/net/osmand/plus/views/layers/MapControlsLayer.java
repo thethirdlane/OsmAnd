@@ -140,16 +140,31 @@ public class MapControlsLayer extends OsmandMapLayer {
 		boolean nightMode = app.getDaynightHelper().isNightMode();
 		LayoutInflater inflater = UiUtilities.getInflater(activity, nightMode);
 
+
 		addMapButton(createMapButton(inflater, R.layout.configure_map_button));
 		addMapButton(createMapButton(inflater, R.layout.map_search_button));
 		addMapButton(createMapButton(inflater, R.layout.map_compass_button));
+
 
 		addMapButton(createMapButton(inflater, R.layout.map_zoom_out_button));
 		addMapButton(createMapButton(inflater, R.layout.map_zoom_in_button));
 		addMapButton(createMapButton(inflater, R.layout.my_location_button));
 
+		//AP - buttons for simulation speed
+
+		var dec_speed_btn = createMapButton(inflater, R.layout.sim_speed_dec_button);
+//		dec_speed_btn.setUseCustomPosition(true);
+		addMapButton(dec_speed_btn);
+
+		var inc_speed_btn = (createMapButton(inflater, R.layout.sim_speed_inc_button));
+//		inc_speed_btn.setUseCustomPosition(true);
+		addMapButton(inc_speed_btn);
+		//END AP
+
+
 		addMapButton(createMapButton(inflater, R.layout.drawer_menu_button));
 		addMapButton(createMapButton(inflater, R.layout.navigation_menu_button));
+
 
 		MapButton button = createMapButton(inflater, R.layout.map_3d_button);
 		button.setUseCustomPosition(true);

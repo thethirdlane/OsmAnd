@@ -13,6 +13,8 @@ import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.enums.SimulationMode;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Random;
 
@@ -69,7 +71,9 @@ class LocationSimulationThread extends Thread {
 
 		int stopDelayCount = 0;
 		while (!directions.isEmpty() && locationSimulation.isRouteAnimating()) {
+			Instant start = Instant.now();
 			long timeout = (long) (LOCATION_TIMEOUT * 1000);
+//			long timeout = 800;
 			float intervalTime = LOCATION_TIMEOUT;
 			if (stopDelayCount == 0) {
 				if (useLocationTime) {
@@ -106,7 +110,10 @@ class LocationSimulationThread extends Thread {
 			}
 			app.runInUIThread(() -> provider.setLocationFromSimulation(toSet));
 			try {
-				long time = (long) (timeout / coeff);
+				long dur = start.until(Instant.now(), ChronoUnit.MILLIS);
+				long timeToSleep = Math.max(0, timeout - dur);
+				long time = (long) (timeToSleep / coeff);
+//				long time = (long) (timeout / coeff);
 				Thread.sleep(time);
 			} catch (InterruptedException e) {
 				// do nothing
@@ -160,6 +167,11 @@ class LocationSimulationThread extends Thread {
 		location.setLatitude(location.getLatitude() + d);
 		d = (random.nextInt((int) (DEVIATION_M + 1)) - DEVIATION_M / 2) * PRECISION_1_M;
 		location.setLongitude(location.getLongitude() + d);
+	}
+
+
+	public float getSpeed() {
+		return this.speed;
 	}
 
 	public void setSpeed(float speed) {

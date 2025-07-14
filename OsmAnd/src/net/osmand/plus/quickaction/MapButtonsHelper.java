@@ -108,6 +108,10 @@ public class MapButtonsHelper {
 	private QuickSearchButtonState quickSearchButtonState;
 	private ZoomInButtonState zoomInButtonState;
 	private ZoomOutButtonState zoomOutButtonState;
+	//AP Nav Simulation Speed
+	private SimSpeedIncButtonState simSpeedIncButtonState;
+	private SimSpeedDecButtonState simSpeedDecButtonState;
+	//END AP
 	private ConfigureMapButtonState configureMapButtonState;
 	private DrawerMenuButtonState drawerMenuButtonState;
 	private CompassButtonState compassButtonState;
@@ -136,6 +140,10 @@ public class MapButtonsHelper {
 		quickSearchButtonState = new QuickSearchButtonState(app);
 		zoomInButtonState = new ZoomInButtonState(app);
 		zoomOutButtonState = new ZoomOutButtonState(app);
+		//AP - Nav Simulation Speed
+		simSpeedIncButtonState = new SimSpeedIncButtonState(app);
+		simSpeedDecButtonState = new SimSpeedDecButtonState(app);
+		//AP
 	}
 
 	public void addUpdatesListener(@NonNull QuickActionUpdatesListener listener) {
@@ -191,6 +199,17 @@ public class MapButtonsHelper {
 		return zoomOutButtonState;
 	}
 
+	//AP - Nav Simulation Speed
+	@NonNull
+	public SimSpeedIncButtonState getSimSpeedIncButtonState() {
+		return simSpeedIncButtonState;
+	}
+	@NonNull
+	public SimSpeedDecButtonState getSimSpeedDecButtonState() {
+		return simSpeedDecButtonState;
+	}
+	//AP
+
 	@NonNull
 	public ConfigureMapButtonState getConfigureMapButtonState() {
 		return configureMapButtonState;
@@ -210,7 +229,10 @@ public class MapButtonsHelper {
 	public List<MapButtonState> getDefaultButtonsStates() {
 		return Arrays.asList(configureMapButtonState, quickSearchButtonState,
 				compassButtonState, drawerMenuButtonState, navigationMenuButtonState,
-				map3DButtonState, myLocationButtonState, zoomInButtonState, zoomOutButtonState
+				map3DButtonState, myLocationButtonState, zoomInButtonState, zoomOutButtonState,
+				//AP - Nav simulation speed
+				simSpeedIncButtonState, simSpeedDecButtonState
+				//End AP
 		);
 	}
 

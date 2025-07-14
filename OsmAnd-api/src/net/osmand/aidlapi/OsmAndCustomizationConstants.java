@@ -99,6 +99,10 @@ public interface OsmAndCustomizationConstants {
 	String ROUTE_PLANNING_HUD_ID = HUD_BTN_ID_SCHEME + "route_planning";
 	String ZOOM_IN_HUD_ID = HUD_BTN_ID_SCHEME + "zoom_id";
 	String ZOOM_OUT_HUD_ID = HUD_BTN_ID_SCHEME + "zoom_out";
+	//AP for Simulation speed
+	String SIM_SPEED_INC_HUD_ID = HUD_BTN_ID_SCHEME + "sim_speed_inc";
+	String SIM_SPEED_DEC_HUD_ID = HUD_BTN_ID_SCHEME + "sim_speed_dec";
+	//END AP
 	String QUICK_ACTION_HUD_ID = HUD_BTN_ID_SCHEME + "quick_action";
 
 	//Map Context Menu Actions:

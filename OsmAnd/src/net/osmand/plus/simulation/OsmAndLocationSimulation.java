@@ -194,5 +194,12 @@ public class OsmAndLocationSimulation {
 			simulationThread.setSpeed(speed);
 		}
 	}
+
+//	public float getLocationTimeout() {
+//		if(simulationThread != null) {
+//			simulationThread.set(speed);
+//		}
+//
+//	}
 	//END AP
 }

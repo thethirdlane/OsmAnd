@@ -20,10 +20,18 @@ import java.util.Random;
 
 import kotlin.Triple;
 
-class LocationSimulationThread extends Thread {
+//AP changed class to public to access LOCATION_TIMEOUT
+//class LocationSimulationThread extends Thread {
+public class LocationSimulationThread extends Thread {
+//END AP
 
 	private static final float PRECISION_1_M = 0.00001f;
-	private static final float LOCATION_TIMEOUT = 1.5f;
+//	private static final float LOCATION_TIMEOUT = 1.5f;
+//	private static final float LOCATION_TIMEOUT = 1.0f;
+	//AP make this variable changable
+	public static final float LOCATION_TIMEOUT_DEFAULT = 1.5f;
+	public static volatile float LOCATION_TIMEOUT = 0.03f;
+//	private static final float LOCATION_TIMEOUT = 0.03f;
 	private static final float DEVIATION_M = 6;
 
 	private final OsmandApplication app;
@@ -110,11 +118,13 @@ class LocationSimulationThread extends Thread {
 			}
 			app.runInUIThread(() -> provider.setLocationFromSimulation(toSet));
 			try {
+				//AP
 				long dur = start.until(Instant.now(), ChronoUnit.MILLIS);
 				long timeToSleep = Math.max(0, timeout - dur);
 				long time = (long) (timeToSleep / coeff);
 //				long time = (long) (timeout / coeff);
 				Thread.sleep(time);
+				//END AP
 			} catch (InterruptedException e) {
 				// do nothing
 			}
@@ -176,5 +186,13 @@ class LocationSimulationThread extends Thread {
 
 	public void setSpeed(float speed) {
 		this.speed = speed;
+	}
+
+	public static float getLocationTimeout() {
+		return LOCATION_TIMEOUT;
+	}
+
+	public static void setLocationTimeout(float locationTimeout) {
+		LOCATION_TIMEOUT = locationTimeout;
 	}
 }

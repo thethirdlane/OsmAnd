@@ -1496,6 +1496,11 @@ You need to activate the sensor so OsmAnd can find it.</string>
     <string name="simulation_preview_mode_desc">The speed of the simulation will be maximum on straight sections and slow down only at intersections.</string>
     <string name="simulation_preview_mode_title">Fast preview mode</string>
     <string name="speed_mode">Speed mode</string>
+    <string name="simulation_rate_title">Simulation Rate</string>
+    <string name="simulation_rate_description">The rate of simulation.  Works with Fixed Speed Mode.  Lower values give more realistic speed but less smooth animation.</string>
+    <string name="simulation_rate_title_format">%1$s: %2$d</string>
+    <string name="simulation_rate_min_format">%1$s</string>
+    <string name="simulation_rate_max_format">%1$s</string>
     <string name="rendering_attr_showRunningRoutes_name">Running routes</string>
     <string name="rendering_attr_showRunningRoutes_description">Show running routes</string>
     <string name="rendering_attr_showFitnessTrails_name">Fitness trails</string>

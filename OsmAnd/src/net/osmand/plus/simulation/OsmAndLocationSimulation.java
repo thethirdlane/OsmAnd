@@ -173,6 +173,7 @@ public class OsmAndLocationSimulation {
 
 	public void stop() {
 		gpxFile = null;
+//		simulationThread.keepGoing = false;
 		simulationThread = null;
 		stopLoadLocationsTask();
 		notifyListeners(false);

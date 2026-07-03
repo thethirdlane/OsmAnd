@@ -32,6 +32,8 @@ public class LocationSimulationThread extends Thread {
 	public static final float LOCATION_TIMEOUT_DEFAULT = 1.5f;
 	public static volatile float LOCATION_TIMEOUT = 0.03f;
 //	private static final float LOCATION_TIMEOUT = 0.03f;
+	public volatile boolean keepGoing = true;
+	//END AP
 	private static final float DEVIATION_M = 6;
 
 	private final OsmandApplication app;
@@ -78,7 +80,7 @@ public class LocationSimulationThread extends Thread {
 		Triple<Boolean, Boolean, Boolean> triple = getSimulationParams(directions, useLocationTime);
 
 		int stopDelayCount = 0;
-		while (!directions.isEmpty() && locationSimulation.isRouteAnimating()) {
+		while (keepGoing && !directions.isEmpty() && locationSimulation.isRouteAnimating()) {
 			Instant start = Instant.now();
 			long timeout = (long) (LOCATION_TIMEOUT * 1000);
 //			long timeout = 800;

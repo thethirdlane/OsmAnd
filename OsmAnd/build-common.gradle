@@ -173,17 +173,19 @@ tasks.register('validateTranslations') {
 	println "Translations validated in ${(validationEndTime - taskStartTime)} ms"
 }
 
-tasks.register('downloadWorldMiniBasemap', Download) {
-	src 'https://creator.osmand.net/basemap/World_basemap_mini_2.obf'
-	dest 'assets/World_basemap_mini.obf'
-	onlyIfModified true
-}
+//AP delete because creator.osmand.net is not there
+//tasks.register('downloadWorldMiniBasemap', Download) {
+//	src 'https://creator.osmand.net/basemap/World_basemap_mini_2.obf'
+//	dest 'assets/World_basemap_mini.obf'
+//	onlyIfModified true
+//}
 
-tasks.register('downloadWorldMiniBasemapAnt') {
-	doLast {
-		ant.get(src: 'https://creator.osmand.net/basemap/World_basemap_mini_2.obf', dest: 'assets/World_basemap_mini.obf', skipexisting: 'true')
-	}
-}
+//tasks.register('downloadWorldMiniBasemapAnt') {
+//	doLast {
+//		ant.get(src: 'https://creator.osmand.net/basemap/World_basemap_mini_2.obf', dest: 'assets/World_basemap_mini.obf', skipexisting: 'true')
+//	}
+//}
+//End AP
 
 tasks.register('collectVoiceAssets', Sync) {
 	from "../../resources/voice"
@@ -294,7 +296,9 @@ tasks.register('collectExternalResources') {
 			copyColorPalettes,
 			copyPoiCategories,
 			copyRouteActivities,
-			downloadWorldMiniBasemap,
+            //AP - bad url: creator.osmand.net
+//			downloadWorldMiniBasemap,
+            //End AP
 			collectTestResources,
 			copy3DModels
 }

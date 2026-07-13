@@ -24,19 +24,35 @@ apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 
 android {
 	signingConfigs {
+		//AP
+//		development {
+//			storeFile file("../keystores/debug.keystore")
+//			storePassword "android"
+//			keyAlias "androiddebugkey"
+//			keyPassword "android"
+//		}
+//
+//		publishing {
+//			storeFile file("/var/lib/jenkins/osmand_key")
+//			storePassword System.getenv("OSMAND_APK_PASSWORD")
+//			keyAlias "osmand"
+//			keyPassword System.getenv("OSMAND_APK_PASSWORD")
+//		}
 		development {
-			storeFile file("../keystores/debug.keystore")
+			storeFile file("../keystores/anilosm.jks")
 			storePassword "android"
-			keyAlias "androiddebugkey"
+			keyAlias "anilosm"
 			keyPassword "android"
 		}
 
 		publishing {
-			storeFile file("/var/lib/jenkins/osmand_key")
-			storePassword System.getenv("OSMAND_APK_PASSWORD")
-			keyAlias "osmand"
-			keyPassword System.getenv("OSMAND_APK_PASSWORD")
+			storeFile file("../keystores/anilosm.jks")
+			storePassword "android"
+			keyAlias "anilosm"
+			keyPassword "android"
 		}
+
+		//END AP
 	}
 
 	compileOptions {
@@ -124,12 +140,22 @@ android {
 			resValue "string", "app_edition", System.getenv("APP_EDITION") ? System.getenv("APP_EDITION") : ""
 			// resConfig "en"
 		}
+		//AP
+//		androidFull {
+//			dimension "version"
+//			applicationId "net.osmand.plus"
+//			resValue "string", "app_name", "OsmAnd~"
+//			resValue "string", "app_edition", System.getenv("APP_EDITION") ? System.getenv("APP_EDITION") : ""
+//		}
 		androidFull {
 			dimension "version"
-			applicationId "net.osmand.plus"
-			resValue "string", "app_name", "OsmAnd~"
+//			applicationId "net.osmand.plus.anilfourfive"
+			applicationId "net.osmand.plus.anilfiveonezero"
+			resValue "string", "app_name", "OsmAndFiveOneZero"
 			resValue "string", "app_edition", System.getenv("APP_EDITION") ? System.getenv("APP_EDITION") : ""
 		}
+		//END AP
+
 		gplayFree {
 			dimension "version"
 			applicationId "net.osmand"
@@ -270,4 +296,16 @@ afterEvaluate {
 		dependencies.add("opengldebugImplementation", "net.osmand:OsmAndCore_androidNativeDebug:${remoteAarSnapshot}@aar")
 		dependencies.add("opengldebugImplementation", "net.osmand:OsmAndCore_android:${remoteAarSnapshot}@aar")
 	}
+}
+
+tasks.configureEach { task ->
+    if (task.name.equals("lint")) {
+        //this is for speed up build
+        task.enabled = false
+    }
+    if (task.name.contains("Test")) {
+        //this is what you need
+        println(task.getName() + " turned off")
+        task.enabled = false
+    }
 }

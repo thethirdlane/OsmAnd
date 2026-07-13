@@ -16,42 +16,51 @@ public class InAppPurchaseUtils {
 	public static final int TRIPLTEK_PROMO_MONTHS = 12;
 	private static final long ANDROID_AUTO_START_DATE_MS = 10L * 1000L * 60L * 60L * 24L; // 10 days
 
-
-	protected static boolean isFullVersionPurchased(@NonNull OsmandApplication app) {
-		return app.getSettings().FULL_VERSION_PURCHASED.get();
+    //AP - all these function return true.  Super Power.
+	public static boolean isFullVersionPurchased(@NonNull OsmandApplication app) {
+//		return app.getSettings().FULL_VERSION_PURCHASED.get();
+        return true;
 	}
 
-	protected static boolean isLiveUpdatesPurchased(@NonNull OsmandApplication app) {
-		return app.getSettings().LIVE_UPDATES_PURCHASED.get();
+	public static boolean isLiveUpdatesPurchased(@NonNull OsmandApplication app) {
+//		return app.getSettings().LIVE_UPDATES_PURCHASED.get();
+        return true;
 	}
 
-	protected static boolean isMapsPlusPurchased(@NonNull OsmandApplication app) {
-		return app.getSettings().OSMAND_MAPS_PURCHASED.get();
+	public static boolean isMapsPlusPurchased(@NonNull OsmandApplication app) {
+//		return app.getSettings().OSMAND_MAPS_PURCHASED.get();
+        return true;
 	}
 
-	protected static boolean isOsmAndProPurchased(@NonNull OsmandApplication app) {
-		return app.getSettings().OSMAND_PRO_PURCHASED.get();
+	public static boolean isOsmAndProPurchased(@NonNull OsmandApplication app) {
+//		return app.getSettings().OSMAND_PRO_PURCHASED.get();
+        return true;
 	}
 
-	protected static boolean isContourLinesPurchased(@NonNull OsmandApplication app) {
-		return app.getSettings().CONTOUR_LINES_PURCHASED.get();
+	public static boolean isContourLinesPurchased(@NonNull OsmandApplication app) {
+//		return app.getSettings().CONTOUR_LINES_PURCHASED.get();
+        return true;
 	}
 
-	protected static boolean isDepthContoursPurchased(@NonNull OsmandApplication app) {
-		return app.getSettings().DEPTH_CONTOURS_PURCHASED.get();
+	public static boolean isDepthContoursPurchased(@NonNull OsmandApplication app) {
+//		return app.getSettings().DEPTH_CONTOURS_PURCHASED.get();
+        return true;
 	}
 
-	protected static boolean isPromoSubscribed(@NonNull OsmandApplication app) {
-		return app.getSettings().BACKUP_PURCHASE_ACTIVE.get();
+	public static boolean isPromoSubscribed(@NonNull OsmandApplication app) {
+//		return app.getSettings().BACKUP_PURCHASE_ACTIVE.get();
+        return true;
 	}
 
-	protected static boolean isMapperUpdatesSubscribed(@NonNull OsmandApplication app) {
-		return app.getSettings().MAPPER_LIVE_UPDATES_EXPIRE_TIME.get() > System.currentTimeMillis();
+	public static boolean isMapperUpdatesSubscribed(@NonNull OsmandApplication app) {
+//		return app.getSettings().MAPPER_LIVE_UPDATES_EXPIRE_TIME.get() > System.currentTimeMillis();
+        return true;
 	}
 
 
 	public static boolean isFullVersionAvailable(@NonNull OsmandApplication app) {
-		return isFullVersionAvailable(app, true);
+//		return isFullVersionAvailable(app, true);
+        return true;
 	}
 
 	public static boolean isFullVersionAvailable(@NonNull OsmandApplication app, boolean checkDevBuild) {

@@ -36,13 +36,11 @@ tasks.register('collectRenderingStylesResources', Sync) {
 	include "*.xml"
 }
 
-//AP delete because creator.osmand.net is not there
-//tasks.register('collectRegionsInfoResources', Download) {
-//	src 'https://creator.osmand.net/basemap/regions.ocbf'
-//	dest 'src/main/resources/net/osmand/map/regions.ocbf'
-//	onlyIfModified true
-//}
-//End AP
+tasks.register('collectRegionsInfoResources', Download) {
+	src 'https://builder.osmand.net/basemap/regions.ocbf'
+	dest 'src/main/resources/net/osmand/map/regions.ocbf'
+	onlyIfModified true
+}
 
 tasks.register('collectTestPhrasesResources', Copy) {
 	into "src/test/resources/phrases/en/"
@@ -67,9 +65,7 @@ tasks.register('collectTestResources', Copy) {
 processResources {
 	dependsOn collectRoutingResources,
 		collectRenderingStylesResources,
-            //AP
-		//collectRegionsInfoResources,
-            //End AP
+		collectRegionsInfoResources,
 		collectMiscResources
 }
 
@@ -80,9 +76,7 @@ processTestResources {
 tasks.register('collectExternalResources') {
 	dependsOn collectRoutingResources,
 			collectRenderingStylesResources,
-            //AP
-//			collectRegionsInfoResources,
-            //End AP
+			collectRegionsInfoResources,
 			collectTestResources,
 			collectTestPhrasesResources,
 			collectMiscResources

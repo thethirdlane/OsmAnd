@@ -28,8 +28,14 @@ import net.osmand.plus.R;
 import net.osmand.plus.Version;
 import net.osmand.plus.chooseplan.button.PriceButton;
 import net.osmand.plus.helpers.AndroidUiHelper;
+import net.osmand.plus.inapp.InAppPurchases.InAppPurchase;
+import net.osmand.plus.inapp.InAppPurchases.InAppSubscription;
+import net.osmand.plus.inapp.InAppPurchases.InAppSubscriptionIntroductoryInfo;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTargetsCollection;
+import net.osmand.plus.utils.InsetsUtils;
 import net.osmand.util.Algorithms;
 
 import org.apache.commons.logging.Log;
@@ -101,6 +107,14 @@ public abstract class SelectedPlanFragment extends BasePurchaseDialogFragment {
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
 		View view = super.onCreateView(inflater, container, savedInstanceState);
 
+		if (!InsetsUtils.isEdgeToEdgeSupported() && view != null) {
+			view.setFitsSystemWindows(true);
+			View appbar = view.findViewById(R.id.appbar);
+			if (appbar != null) {
+				appbar.setFitsSystemWindows(true);
+			}
+		}
+
 		setupToolbar();
 		setupHeader();
 		createFeaturesPreview();
@@ -113,6 +127,13 @@ public abstract class SelectedPlanFragment extends BasePurchaseDialogFragment {
 		fullUpdate();
 
 		return view;
+	}
+
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.replace(InsetTarget.createCollapsingAppBar(R.id.appbar));
+		return collection;
 	}
 
 	private void fullUpdate() {
@@ -164,7 +185,7 @@ public abstract class SelectedPlanFragment extends BasePurchaseDialogFragment {
 		if (dialog != null && dialog.getWindow() != null) {
 			Window window = dialog.getWindow();
 			window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-			window.setStatusBarColor(toolbarColor);
+			AndroidUiHelper.setStatusBarColor(window, toolbarColor);
 			AndroidUiHelper.setStatusBarContentColor(window.getDecorView(), mainView.getSystemUiVisibility(), !nightMode && !collapsed);
 		}
 
@@ -190,7 +211,7 @@ public abstract class SelectedPlanFragment extends BasePurchaseDialogFragment {
 	private void createFeaturesPreview() {
 		LinearLayout container = mainView.findViewById(R.id.features_list);
 		for (OsmAndFeature feature : previewFeatures) {
-			View itemView = themedInflater.inflate(R.layout.purchase_dialog_preview_list_item, container, false);
+			View itemView = inflate(R.layout.purchase_dialog_preview_list_item, container, false);
 			bindFeatureItem(itemView, feature);
 			container.addView(itemView);
 		}
@@ -222,7 +243,7 @@ public abstract class SelectedPlanFragment extends BasePurchaseDialogFragment {
 		container.removeAllViews();
 
 		for (PriceButton<?> button : priceButtons) {
-			View itemView = themedInflater.inflate(R.layout.purchase_dialog_btn_payment, container, false);
+			View itemView = inflate(R.layout.purchase_dialog_btn_payment, container, false);
 			TextView tvTitle = itemView.findViewById(R.id.title);
 			TextView tvPrice = itemView.findViewById(R.id.price);
 			TextView tvDiscount = itemView.findViewById(R.id.discount);
@@ -300,13 +321,15 @@ public abstract class SelectedPlanFragment extends BasePurchaseDialogFragment {
 	private void updateSelectedPriceButton() {
 		if (selectedPriceButton != null) {
 			View applyButton = mainView.findViewById(R.id.apply_button);
+			TextView tvTitle = applyButton.findViewById(R.id.title);
 			TextView tvPrice = applyButton.findViewById(R.id.description);
-			CharSequence price = selectedPriceButton.getPrice();
+			tvTitle.setText(getApplyButtonTitle(selectedPriceButton));
+			CharSequence price = getApplyButtonDescription(selectedPriceButton);
 			if (price instanceof SpannableStringBuilder) {
 				SpannableStringBuilder formattedPrice = (SpannableStringBuilder) price;
 				ForegroundColorSpan[] textColorSpans =
 						formattedPrice.getSpans(0, formattedPrice.length(), ForegroundColorSpan.class);
-				int textColor = ((TextView) applyButton.findViewById(R.id.title)).getCurrentTextColor();
+				int textColor = tvTitle.getCurrentTextColor();
 				if (textColorSpans.length > 0) {
 					updateSpanColor(formattedPrice, textColorSpans[0], textColor);
 				}
@@ -317,6 +340,36 @@ public abstract class SelectedPlanFragment extends BasePurchaseDialogFragment {
 			}
 			tvPrice.setText(price);
 		}
+	}
+
+	@NonNull
+	private CharSequence getApplyButtonTitle(@NonNull PriceButton<?> button) {
+		InAppSubscriptionIntroductoryInfo introductoryInfo = getFreeTrialInfo(button);
+		if (introductoryInfo != null) {
+			return getString(R.string.start_free_trial);
+		}
+		return getString(R.string.complete_purchase);
+	}
+
+	@NonNull
+	private CharSequence getApplyButtonDescription(@NonNull PriceButton<?> button) {
+		InAppSubscriptionIntroductoryInfo introductoryInfo = getFreeTrialInfo(button);
+		if (introductoryInfo != null) {
+			return introductoryInfo.getRenewDescription(app);
+		}
+		return button.getPrice();
+	}
+
+	@Nullable
+	private InAppSubscriptionIntroductoryInfo getFreeTrialInfo(@NonNull PriceButton<?> button) {
+		InAppPurchase purchaseItem = button.getPurchaseItem();
+		if (purchaseItem instanceof InAppSubscription subscription) {
+			InAppSubscriptionIntroductoryInfo introductoryInfo = subscription.getIntroductoryInfo();
+			if (introductoryInfo != null && introductoryInfo.isFreeTrial()) {
+				return introductoryInfo;
+			}
+		}
+		return null;
 	}
 
 	private void updateSpanColor(SpannableStringBuilder spannable, ForegroundColorSpan span, @ColorInt int color) {
@@ -380,13 +433,13 @@ public abstract class SelectedPlanFragment extends BasePurchaseDialogFragment {
 
 		for (String key : chapters.keySet()) {
 			List<OsmAndFeature> features = chapters.get(key);
-			if (features != null && features.size() > 0) {
-				View v = themedInflater.inflate(R.layout.purchase_dialog_includes_block_header, container, false);
+			if (features != null && !features.isEmpty()) {
+				View v = inflate(R.layout.purchase_dialog_includes_block_header, container, false);
 				TextView tvTitle = v.findViewById(R.id.title);
 				tvTitle.setText(key);
 				container.addView(v);
 				for (OsmAndFeature feature : features) {
-					View itemView = themedInflater.inflate(R.layout.purchase_dialog_includes_block_item, container, false);
+					View itemView = inflate(R.layout.purchase_dialog_includes_block_item, container, false);
 					if (features.indexOf(feature) == 0) {
 						itemView.findViewById(R.id.top_padding).setVisibility(View.GONE);
 					}

@@ -5,25 +5,36 @@ import android.content.Context;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import net.osmand.map.OsmandRegions;
 import net.osmand.map.WorldRegion;
 import net.osmand.plus.OsmandApplication;
+import net.osmand.plus.R;
 
 import java.io.File;
 import java.text.DateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 public class MultipleDownloadItem extends DownloadItem {
 
 	private final List<DownloadItem> items;
+	private final WorldRegion region;
 
 	public MultipleDownloadItem(@NonNull WorldRegion region,
 	                            @NonNull List<DownloadItem> items,
 	                            @NonNull DownloadActivityType type) {
 		super(type);
+		this.region = region;
 		this.items = items;
 	}
 
+	@NonNull
+	public WorldRegion getRelatedRegion() {
+		return region;
+	}
+
+	@NonNull
 	public List<IndexItem> getAllIndexes() {
 		List<IndexItem> indexes = new ArrayList<>();
 		for (DownloadItem item : items) {
@@ -35,6 +46,7 @@ public class MultipleDownloadItem extends DownloadItem {
 		return indexes;
 	}
 
+	@NonNull
 	public List<DownloadItem> getAllItems() {
 		return items;
 	}
@@ -172,7 +184,29 @@ public class MultipleDownloadItem extends DownloadItem {
 	}
 
 	@Override
+	public String getVisibleName(@NonNull Context ctx, @NonNull OsmandRegions regions,
+	                             boolean includingParent, @Nullable WorldRegion baseParentRegion,
+	                             boolean useShortName) {
+		String regionName = getRelatedRegion().getLocaleName();
+		String count = String.valueOf(getItemsToDownload().size());
+		return ctx.getString(R.string.ltr_or_rtl_combine_via_dash, regionName, count);
+	}
+
+	@Override
 	public String getDate(@NonNull DateFormat dateFormat, boolean remote) {
-		return "";
+		long lastTimestamp = getTimestamp(remote);
+		return lastTimestamp <= 0 ? "" : dateFormat.format(new Date(lastTimestamp));
+	}
+
+	@Override
+	public long getTimestamp(boolean remote) {
+		long lastTimestamp = -1;
+		for (DownloadItem item : items) {
+			long date = item.getTimestamp(remote);
+			if (lastTimestamp < date) {
+				lastTimestamp = date;
+			}
+		}
+		return lastTimestamp;
 	}
 }

@@ -34,10 +34,13 @@ public abstract class DistanceToPointWidget extends SimpleWidget {
 	public DistanceToPointWidget(@NonNull MapActivity mapActivity, @NonNull WidgetType widgetType, @Nullable String customId, @Nullable WidgetsPanel widgetsPanel) {
 		super(mapActivity, widgetType, customId, widgetsPanel);
 		this.view = mapActivity.getMapView();
+	}
 
+	@Override
+	protected void setupView(@NonNull View view) {
+		super.setupView(view);
 		setIcons(widgetType);
 		setText(null, null);
-		setOnClickListener(getOnClickListener());
 	}
 
 	@Override

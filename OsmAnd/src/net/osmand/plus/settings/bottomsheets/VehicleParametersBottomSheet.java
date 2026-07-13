@@ -13,24 +13,29 @@ import androidx.fragment.app.FragmentManager;
 
 import net.osmand.PlatformUtil;
 import net.osmand.plus.OsmandApplication;
+import net.osmand.plus.R;
 import net.osmand.plus.base.bottomsheetmenu.BaseBottomSheetItem;
 import net.osmand.plus.settings.backend.ApplicationMode;
-import net.osmand.plus.settings.vehiclesize.SizeData;
-import net.osmand.plus.settings.vehiclesize.SizeType;
-import net.osmand.plus.settings.vehiclesize.VehicleSizes;
+import net.osmand.shared.vehicle.specification.data.VehicleValueConverter;
+import net.osmand.shared.vehicle.specification.data.validator.SpecificationValidator;
+import net.osmand.shared.vehicle.specification.domain.SpecificationType;
+import net.osmand.shared.vehicle.specification.domain.profiles.VehicleSpecs;
 import net.osmand.plus.settings.fragments.ApplyQueryType;
 import net.osmand.plus.settings.fragments.OnConfirmPreferenceChange;
-import net.osmand.plus.settings.preferences.SizePreference;
-import net.osmand.plus.settings.vehiclesize.containers.Metric;
+import net.osmand.plus.settings.preferences.VehicleSpecificationPreference;
+import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.widgets.dialogbutton.DialogButtonType;
 import net.osmand.plus.widgets.chips.ChipItem;
 import net.osmand.plus.widgets.tools.SimpleTextWatcher;
+import net.osmand.shared.units.MeasurementUnit;
+import net.osmand.shared.util.SharedNumberFormatter;
 import net.osmand.util.Algorithms;
 
 import org.apache.commons.logging.Log;
 
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -38,29 +43,29 @@ public class VehicleParametersBottomSheet extends BaseTextFieldBottomSheet {
 	private static final Log LOG = PlatformUtil.getLog(VehicleParametersBottomSheet.class);
 	public static final String TAG = VehicleParametersBottomSheet.class.getSimpleName();
 
-	private SizePreference sizePreference;
+	private VehicleSpecificationPreference preference;
 
+	@NonNull
 	@SuppressLint("ClickableViewAccessibility")
 	protected BaseBottomSheetItem createBottomSheetItem(@NonNull OsmandApplication app, @NonNull View mainView) {
-		sizePreference = (SizePreference) getPreference();
-		VehicleSizes vehicleSizes = sizePreference.getVehicleSizes();
-		Metric metric = sizePreference.getMetric();
-		SizeType sizeType = sizePreference.getSizeType();
-		SizeData data = vehicleSizes.getSizeData(sizeType);
-		List<ChipItem> chips = vehicleSizes.collectChipItems(app, sizeType, metric);
+		preference = (VehicleSpecificationPreference) getPreference();
+		boolean useMetricSystem = preference.isMetric();
+		VehicleSpecs vehicleSpecs = preference.getSpecifications();
+		SpecificationType type = preference.getSpecificationType();
+		List<ChipItem> chips = collectChipItems(vehicleSpecs, type, useMetricSystem);
 
-		title.setText(sizePreference.getTitle().toString());
+		title.setText(preference.getTitle().toString());
 
-		Drawable icon = getIcon(data.assets().getIconId(nightMode));
+		Drawable icon = getIcon(vehicleSpecs.getIconName(type, nightMode));
 		ivImage.setImageDrawable(icon);
 
-		String description = getString(data.assets().getDescriptionId());
+		String description = vehicleSpecs.getSummary(type);
 		tvDescription.setText(description);
 
-		int metricStringId = vehicleSizes.getMetricStringId(sizeType, metric);
-		tvMetric.setText(metricStringId);
+		MeasurementUnit<?> units = vehicleSpecs.getMeasurementUnits(type, useMetricSystem);
+		tvMetric.setText(units.getName());
 
-		currentValue = vehicleSizes.readSavedValue(sizePreference);
+		currentValue = (float) VehicleValueConverter.readSavedValue(preference.getValue(), units);
 		etText.setText(formatInputValue(currentValue));
 		etText.clearFocus();
 		etText.setOnTouchListener((v, event) -> {
@@ -73,12 +78,13 @@ public class VehicleParametersBottomSheet extends BaseTextFieldBottomSheet {
 			@Override
 			public void afterTextChanged(Editable s) {
 				currentValue = (float) Algorithms.parseDoubleSilently(s.toString(), 0.0f);
-				StringBuilder error = new StringBuilder();
-				if (currentValue == 0.0f || vehicleSizes.verifyValue(app, sizeType, metric, currentValue, error)) {
+				String error;
+				SpecificationValidator validator = vehicleSpecs.getSpecification(type).getValidator();
+				if (currentValue == 0.0f || (error = validator.validate(currentValue, useMetricSystem)).isEmpty()) {
 					onCorrectInput();
 					updateChips();
 				} else {
-					onWrongInput(error.toString());
+					onWrongInput(error);
 				}
 			}
 		});
@@ -86,9 +92,36 @@ public class VehicleParametersBottomSheet extends BaseTextFieldBottomSheet {
 		chipsView.setItems(chips);
 		ChipItem selected = chipsView.findChipByTag(currentValue);
 		chipsView.setSelected(selected);
-		return new BaseBottomSheetItem.Builder()
-				.setCustomView(mainView)
-				.create();
+		return new BaseBottomSheetItem.Builder().setCustomView(mainView).create();
+	}
+
+	@NonNull
+	public List<ChipItem> collectChipItems(@NonNull VehicleSpecs vehicleSpecs,
+	                                       @NonNull SpecificationType type,
+	                                       boolean useMetricSystem) {
+		// Add "None"
+		List<ChipItem> chips = new ArrayList<>();
+		String none = app.getString(R.string.shared_string_none);
+		ChipItem chip = new ChipItem(none);
+		chip.title = none;
+		chip.contentDescription = none;
+		chip.tag = 0.0f;
+		chips.add(chip);
+
+		// Add predefined values
+		MeasurementUnit<?> units = vehicleSpecs.getMeasurementUnits(type, useMetricSystem);
+		String symbol = units.getSymbol();
+		for (Float value : vehicleSpecs.getPredefinedValues(type, units.isMetricSystem())) {
+			String pattern = getString(R.string.ltr_or_rtl_combine_via_space);
+			String valueStr = SharedNumberFormatter.formatDecimal(value, 1);
+			String title = String.format(pattern, valueStr, symbol);
+			chip = new ChipItem(title);
+			chip.title = title;
+			chip.contentDescription = title;
+			chip.tag = value;
+			chips.add(chip);
+		}
+		return chips;
 	}
 
 	private void onCorrectInput() {
@@ -110,14 +143,23 @@ public class VehicleParametersBottomSheet extends BaseTextFieldBottomSheet {
 
 	@Override
 	protected void onRightBottomButtonClick() {
-		Fragment target = getTargetFragment();
-		if (target instanceof OnConfirmPreferenceChange callback) {
+		if (getTargetFragment() instanceof OnConfirmPreferenceChange callback) {
 			String preferenceId = getPreference().getKey();
-			VehicleSizes vehicleSizes = sizePreference.getVehicleSizes();
-			String value = String.valueOf(vehicleSizes.prepareValueToSave(sizePreference, currentValue));
-			callback.onConfirmPreferenceChange(preferenceId, value, ApplyQueryType.SNACK_BAR);
+			SpecificationType type = preference.getSpecificationType();
+			VehicleSpecs specs = preference.getSpecifications();
+			MeasurementUnit<?> units = specs.getMeasurementUnits(type, preference.isMetric());
+
+			double value = VehicleValueConverter.prepareValueToSave(currentValue, units);
+			String valueStr = String.valueOf(value);
+			callback.onConfirmPreferenceChange(preferenceId, valueStr, ApplyQueryType.SNACK_BAR);
 		}
 		dismiss();
+	}
+
+	@Nullable
+	protected Drawable getIcon(@NonNull String iconName) {
+		int iconId = AndroidUtils.getDrawableId(app, iconName, R.drawable.ic_action_info_outlined);
+		return getIcon(iconId);
 	}
 
 	@Override
@@ -131,19 +173,15 @@ public class VehicleParametersBottomSheet extends BaseTextFieldBottomSheet {
 
 	public static void showInstance(@NonNull FragmentManager fm, String key, Fragment target,
 	                                boolean usedOnMap, @Nullable ApplicationMode appMode) {
-		try {
-			if (!fm.isStateSaved()) {
-				Bundle args = new Bundle();
-				args.putString(PREFERENCE_ID, key);
-				VehicleParametersBottomSheet fragment = new VehicleParametersBottomSheet();
-				fragment.setArguments(args);
-				fragment.setUsedOnMap(usedOnMap);
-				fragment.setAppMode(appMode);
-				fragment.setTargetFragment(target, 0);
-				fragment.show(fm, TAG);
-			}
-		} catch (RuntimeException e) {
-			LOG.error("showInstance", e);
+		if (AndroidUtils.isFragmentCanBeAdded(fm, TAG)) {
+			Bundle args = new Bundle();
+			args.putString(PREFERENCE_ID, key);
+			VehicleParametersBottomSheet fragment = new VehicleParametersBottomSheet();
+			fragment.setArguments(args);
+			fragment.setUsedOnMap(usedOnMap);
+			fragment.setAppMode(appMode);
+			fragment.setTargetFragment(target, 0);
+			fragment.show(fm, TAG);
 		}
 	}
 }

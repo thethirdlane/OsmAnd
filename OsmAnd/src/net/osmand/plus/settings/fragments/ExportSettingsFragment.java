@@ -24,30 +24,32 @@ import net.osmand.map.ITileSource;
 import net.osmand.map.TileSourceManager;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
+import net.osmand.plus.backup.BackupUtils;
+import net.osmand.plus.gallery.attached.helpers.AttachedMediaDataHelper;
 import net.osmand.plus.mapcontextmenu.other.ShareMenu.NativeShareDialogBuilder;
+import net.osmand.plus.myplaces.favorites.FavoriteGroup;
+import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.resources.SQLiteTileSource;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.ApplicationModeBean;
 import net.osmand.plus.settings.backend.backup.FileSettingsHelper.SettingsExportListener;
 import net.osmand.plus.settings.backend.backup.exporttype.ExportType;
 import net.osmand.plus.settings.backend.backup.exporttype.MapSourcesExportType;
+import net.osmand.plus.settings.backend.backup.items.AttachedMediaSettingsItem;
+import net.osmand.plus.settings.backend.backup.items.FavoritesSettingsItem;
 import net.osmand.plus.settings.backend.backup.items.FileSettingsItem;
 import net.osmand.plus.settings.backend.backup.items.SettingsItem;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.FileUtils;
+import net.osmand.shared.gpx.primitives.Link;
 import net.osmand.util.Algorithms;
 
 import org.apache.commons.logging.Log;
 
 import java.io.File;
+import java.lang.ref.WeakReference;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 
 public class ExportSettingsFragment extends BaseSettingsListFragment {
 
@@ -206,9 +208,73 @@ public class ExportSettingsFragment extends BaseSettingsListFragment {
 		showExportProgressDialog();
 		File tempDir = FileUtils.getTempDir(app);
 		String fileName = getFileName();
-		List<SettingsItem> items = app.getFileSettingsHelper().prepareSettingsItems(adapter.getData(), Collections.emptyList(), true);
+		List<SettingsItem> items = app.getFileSettingsHelper().prepareSettingsItems(getSelectedData(), Collections.emptyList(), true);
+		processAttachedMediaItems(items);
 		progress.setMax(getMaxProgress(items));
 		app.getFileSettingsHelper().exportSettings(tempDir, fileName, getSettingsExportListener(), items, true);
+	}
+
+	private void processAttachedMediaItems(@NonNull List<SettingsItem> items) {
+		Set<String> selectedFavoriteHrefs = collectSelectedFavoriteHrefs();
+		Set<String> packedFileNames = collectPackedFileNames(items);
+		Map<String, String> hrefRewrites = new HashMap<>();
+		int exportedMediaItems = 0;
+
+		for (Iterator<SettingsItem> iterator = items.iterator(); iterator.hasNext(); ) {
+			SettingsItem item = iterator.next();
+			if (item instanceof AttachedMediaSettingsItem mediaItem) {
+				if (Collections.disjoint(mediaItem.getHrefKeys(), selectedFavoriteHrefs)) {
+					iterator.remove();
+				} else {
+					for (String key : mediaItem.getHrefKeys()) {
+						hrefRewrites.put(key, mediaItem.getRewrittenHref());
+					}
+					String fileName = BackupUtils.getItemFileName(mediaItem);
+					if (!packedFileNames.add(fileName)) {
+						iterator.remove();
+					} else {
+						exportedMediaItems++;
+					}
+				}
+			}
+		}
+		if (!hrefRewrites.isEmpty()) {
+			for (SettingsItem item : items) {
+				if (item instanceof FavoritesSettingsItem favoritesItem) {
+					favoritesItem.setHrefRewrites(hrefRewrites);
+				}
+			}
+		}
+		if (PluginsHelper.isDevelopment()) {
+			LOG.debug("Attached media export items: exported=" + exportedMediaItems + ", rewrites=" + hrefRewrites.size());
+		}
+	}
+
+	@NonNull
+	private Set<String> collectPackedFileNames(@NonNull List<SettingsItem> items) {
+		Set<String> res = new HashSet<>();
+		for (SettingsItem item : items) {
+			if (item instanceof FileSettingsItem && !(item instanceof AttachedMediaSettingsItem)) {
+				res.add(BackupUtils.getItemFileName(item));
+			}
+		}
+		return res;
+	}
+
+	@NonNull
+	private Set<String> collectSelectedFavoriteHrefs() {
+		Set<String> res = new HashSet<>();
+		List<FavoriteGroup> groups = (List<FavoriteGroup>) selectedItemsMap.get(ExportType.FAVORITES);
+		if (!Algorithms.isEmpty(groups)) {
+			AttachedMediaDataHelper helper = new AttachedMediaDataHelper(app);
+			for (Link link : helper.collectMediaLinks(groups)) {
+				String href = link.getHref();
+				if (!Algorithms.isEmpty(href)) {
+					res.add(href.trim());
+				}
+			}
+		}
+		return res;
 	}
 
 	private int getMaxProgress(List<SettingsItem> items) {
@@ -261,11 +327,16 @@ public class ExportSettingsFragment extends BaseSettingsListFragment {
 		if (exportListener == null) {
 			exportListener = new SettingsExportListener() {
 
+				WeakReference<FragmentActivity> activityRef = new WeakReference<>(requireActivity());
+
 				@Override
 				public void onSettingsExportFinished(@NonNull File file, boolean succeed) {
 					dismissExportProgressDialog();
 					if (succeed) {
-						shareProfile(file);
+						FragmentActivity activity = activityRef.get();
+						if (activity != null) {
+							shareProfile(file, activity);
+						}
 						dismissFragment();
 					} else {
 						app.showToastMessage(R.string.export_profile_failed);
@@ -292,7 +363,11 @@ public class ExportSettingsFragment extends BaseSettingsListFragment {
 				app.getFileSettingsHelper().updateExportListener(file, getSettingsExportListener());
 			} else if (file.exists()) {
 				dismissExportProgressDialog();
-				shareProfile(file);
+
+				FragmentActivity activity = getActivity();
+				if (activity != null) {
+					shareProfile(file, activity);
+				}
 				dismissFragment();
 			}
 		}
@@ -311,10 +386,10 @@ public class ExportSettingsFragment extends BaseSettingsListFragment {
 		return new File(tempDir, fileName + IndexConstants.OSMAND_SETTINGS_FILE_EXT);
 	}
 
-	private void shareProfile(@NonNull File file) {
+	private void shareProfile(@NonNull File file, @NonNull FragmentActivity activity) {
 		new NativeShareDialogBuilder()
-				.addFileWithSaveAction(file, app, requireActivity(), false)
-				.setChooserTitle(getString(R.string.shared_string_share))
+				.addFileWithSaveAction(file, app, activity, false)
+				.setChooserTitle(app.getString(R.string.shared_string_share))
 				.setExtraStream(AndroidUtils.getUriForFile(app, file))
 				.setExtraSubject(file.getName())
 				.build(app);

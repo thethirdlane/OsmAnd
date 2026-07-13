@@ -8,6 +8,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
+import net.osmand.Collator;
+import net.osmand.OsmAndCollator;
 import net.osmand.PlatformUtil;
 import net.osmand.osm.AbstractPoiType;
 import net.osmand.osm.PoiCategory;
@@ -127,13 +129,14 @@ public class EditorIconController extends BaseDialogController {
 	}
 
 	protected void sortCategories() {
+		Collator collator = OsmAndCollator.primaryCollator();
 		categories.sort((c1, c2) -> {
 			if (c1.isTopCategory()) {
 				return c2.isTopCategory() ? 0 : -1;
 			} else if (c2.isTopCategory()) {
 				return c1.isTopCategory() ? 0 : 1;
 			}
-			return c1.getTranslation().compareTo(c2.getTranslation());
+			return collator.compare(c1.getTranslation(), c2.getTranslation());
 		});
 	}
 
@@ -194,12 +197,12 @@ public class EditorIconController extends BaseDialogController {
 		for (PoiCategory poiCategory : poiCategories) {
 			List<PoiType> poiTypeList = new ArrayList<>(poiCategory.getPoiTypes());
 			poiTypeList.sort(Comparator.comparing(AbstractPoiType::getTranslation));
-			List<String> iconKeys = new ArrayList<>();
+			Set<String> iconKeys = new LinkedHashSet<>();
 			for (PoiType poiType : poiTypeList) {
 				EditorIconUtils.retrieveIconKey(poiType, iconKeys::add);
 			}
 			if (!Algorithms.isEmpty(iconKeys)) {
-				categories.add(new IconsCategory(poiCategory.getKeyName(), poiCategory.getTranslation(), iconKeys));
+				categories.add(new IconsCategory(poiCategory.getKeyName(), poiCategory.getTranslation(), new ArrayList<>(iconKeys)));
 			}
 		}
 		return categories;

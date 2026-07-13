@@ -5,6 +5,7 @@ import android.os.AsyncTask;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.backup.BackupImporter.CollectItemsResult;
 import net.osmand.plus.backup.BackupImporter.NetworkImportProgressListener;
@@ -57,7 +58,8 @@ public class ImportBackupTask extends AsyncTask<Void, ItemProgressInfo, List<Set
 	ImportBackupTask(@NonNull String key,
 	                 @NonNull NetworkSettingsHelper helper,
 	                 @Nullable BackupCollectListener collectListener,
-	                 boolean readData) {
+	                 boolean readData,
+	                 boolean autoSync) {
 		this.key = key;
 		this.helper = helper;
 		this.app = helper.getApp();
@@ -65,7 +67,7 @@ public class ImportBackupTask extends AsyncTask<Void, ItemProgressInfo, List<Set
 		this.collectListener = collectListener;
 		this.shouldReplace = true;
 		this.restoreDeleted = false;
-		importer = new BackupImporter(app.getBackupHelper(), getProgressListener());
+		importer = new BackupImporter(app.getBackupHelper(), getProgressListener(), autoSync);
 		importType = readData ? ImportType.COLLECT_AND_READ : ImportType.COLLECT;
 		maxProgress = calculateMaxProgress(app);
 	}
@@ -77,7 +79,8 @@ public class ImportBackupTask extends AsyncTask<Void, ItemProgressInfo, List<Set
 	                 @Nullable ImportListener importListener,
 	                 boolean forceReadData,
 	                 boolean shouldReplace,
-	                 boolean restoreDeleted) {
+	                 boolean restoreDeleted,
+	                 boolean autoSync) {
 		this.key = key;
 		this.helper = helper;
 		this.app = helper.getApp();
@@ -86,7 +89,7 @@ public class ImportBackupTask extends AsyncTask<Void, ItemProgressInfo, List<Set
 		this.items = items;
 		this.shouldReplace = shouldReplace;
 		this.restoreDeleted = restoreDeleted;
-		importer = new BackupImporter(app.getBackupHelper(), getProgressListener());
+		importer = new BackupImporter(app.getBackupHelper(), getProgressListener(), autoSync);
 		importType = forceReadData ? ImportType.IMPORT_FORCE_READ : ImportType.IMPORT;
 		maxProgress = calculateMaxProgress(app);
 	}
@@ -95,7 +98,8 @@ public class ImportBackupTask extends AsyncTask<Void, ItemProgressInfo, List<Set
 	                 @NonNull NetworkSettingsHelper helper,
 	                 @NonNull List<SettingsItem> items,
 	                 @NonNull List<SettingsItem> selectedItems,
-	                 @Nullable CheckDuplicatesListener duplicatesListener) {
+	                 @Nullable CheckDuplicatesListener duplicatesListener,
+	                 boolean autoSync) {
 		this.key = key;
 		this.helper = helper;
 		this.app = helper.getApp();
@@ -105,7 +109,7 @@ public class ImportBackupTask extends AsyncTask<Void, ItemProgressInfo, List<Set
 		this.selectedItems = selectedItems;
 		this.shouldReplace = true;
 		this.restoreDeleted = false;
-		importer = new BackupImporter(app.getBackupHelper(), getProgressListener());
+		importer = new BackupImporter(app.getBackupHelper(), getProgressListener(), autoSync);
 		importType = ImportType.CHECK_DUPLICATES;
 		maxProgress = calculateMaxProgress(app);
 	}
@@ -183,8 +187,8 @@ public class ImportBackupTask extends AsyncTask<Void, ItemProgressInfo, List<Set
 						helper.importAsyncTasks.remove(key);
 						helper.finishImport(importListener, succeed, items, needRestart);
 					};
-					new ImportBackupItemsTask(app, importer, items, filesType, itemsListener, forceReadData, restoreDeleted)
-							.executeOnExecutor(app.getBackupHelper().getExecutor());
+					OsmAndTaskManager.executeTask(new ImportBackupItemsTask(app, importer, items,
+							filesType, itemsListener, forceReadData, restoreDeleted), app.getBackupHelper().getExecutor());
 				} else {
 					helper.importAsyncTasks.remove(key);
 					helper.finishImport(importListener, false, Collections.emptyList(), false);

@@ -27,11 +27,12 @@ import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.enums.GridFormat;
 import net.osmand.plus.settings.enums.GridLabelsPosition;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
 import net.osmand.plus.utils.NativeUtilities;
 import net.osmand.plus.views.OsmandMapTileView;
-import net.osmand.plus.views.controls.MapHudLayout.ViewChangeListener;
+import net.osmand.plus.views.controls.ViewChangeProvider.ViewChangeListener;
 import net.osmand.plus.views.controls.VerticalWidgetPanel;
 import net.osmand.plus.views.layers.base.OsmandMapLayer;
 
@@ -81,7 +82,6 @@ public class CoordinatesGridLayer extends OsmandMapLayer {
 		settings.COORDINATE_GRID_FORMAT.addListener(settingsListener);
 		settings.COORDINATE_GRID_MIN_ZOOM.addListener(settingsListener);
 		settings.COORDINATE_GRID_MAX_ZOOM.addListener(settingsListener);
-		settings.COORDINATES_FORMAT.addListener(settingsListener);
 		settings.COORDINATES_GRID_LABELS_POSITION.addListener(settingsListener);
 		settings.COORDINATES_GRID_COLOR_DAY.addListener(settingsListener);
 		settings.COORDINATES_GRID_COLOR_NIGHT.addListener(settingsListener);
@@ -219,7 +219,7 @@ public class CoordinatesGridLayer extends OsmandMapLayer {
 		int haloColorInt = ColorUtilities.getContrastColor(app, colorInt, true);
 		FColorARGB haloColor = NativeUtilities.createFColorARGB(haloColorInt);
 
-		gridConfig.setPrimaryProjection(projection);
+		gridConfig.setPrimaryProjection(Projection.WGS84);
 		gridConfig.setPrimaryFormat(format);
 		gridConfig.setPrimaryColor(color);
 		gridConfig.setPrimaryMinZoomLevel(minZoom);
@@ -335,7 +335,7 @@ public class CoordinatesGridLayer extends OsmandMapLayer {
 	}
 
 	private boolean isNightMode() {
-		return app.getDaynightHelper().isNightMode();
+		return app.getDaynightHelper().isNightMode(ThemeUsageContext.MAP);
 	}
 
 	@Override

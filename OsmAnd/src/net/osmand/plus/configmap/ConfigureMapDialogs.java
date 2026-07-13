@@ -8,6 +8,7 @@ import android.widget.CompoundButton.OnCheckedChangeListener;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.widget.AppCompatCheckedTextView;
 import androidx.appcompat.widget.SwitchCompat;
@@ -32,7 +33,6 @@ import net.osmand.render.RenderingRuleProperty;
 import net.osmand.util.Algorithms;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -42,98 +42,97 @@ import gnu.trove.list.array.TIntArrayList;
 public class ConfigureMapDialogs {
 
 	public static void showMapMagnifierDialog(@NonNull OsmandMapTileView view) {
-		OsmandPreference<Float> density = view.getSettings().MAP_DENSITY;
-		int p = (int) (density.get() * 100);
-		TIntArrayList tlist = new TIntArrayList(new int[] {25, 33, 50, 75, 100, 125, 150, 200, 300, 400});
-		List<String> values = new ArrayList<>();
-		int i = -1;
-		for (int k = 0; k <= tlist.size(); k++) {
-			boolean end = k == tlist.size();
-			if (i == -1) {
-				if ((end || p < tlist.get(k))) {
-					values.add(p + " %");
-					i = k;
-				} else if (p == tlist.get(k)) {
-					i = k;
-				}
-			}
-			if (k < tlist.size()) {
-				values.add(tlist.get(k) + " %");
-			}
-		}
-		if (values.size() != tlist.size()) {
-			tlist.insert(i, p);
-		}
-
-		AlertDialog.Builder builder = new AlertDialog.Builder(view.requireMapActivity());
-		builder.setTitle(R.string.map_magnifier);
-		builder.setSingleChoiceItems(values.toArray(new String[0]), i, (dialog, which) -> {
-			int p1 = tlist.get(which);
-			density.set(p1 / 100.0f);
-			view.setComplexZoom(view.getZoom(), view.getSettingsMapDensity());
-			MapRendererContext mapContext = NativeCoreContext.getMapRendererContext();
-			if (mapContext != null) {
-				mapContext.updateMapSettings(true);
-			}
-			dialog.dismiss();
-		});
-		builder.show();
+		showMapMagnifierDialog(view.requireMapActivity(), false, 0, view, view.getSettings().MAP_DENSITY, null, null);
 	}
 
 	protected static void showMapMagnifierDialog(@NonNull MapActivity activity, boolean nightMode,
 	                                             @NonNull ContextMenuItem item, @NonNull OnDataChangeUiAdapter adapter) {
-		OsmandApplication app = activity.getMyApplication();
+		OsmandApplication app = activity.getApp();
 		int profileColor = ColorUtilities.getAppModeColor(app, nightMode);
 		OsmandSettings settings = app.getSettings();
 
 		OsmandMapTileView view = activity.getMapView();
 		OsmandPreference<Float> mapDensity = settings.MAP_DENSITY;
-		int p = (int) (mapDensity.get() * 100);
-		TIntArrayList tlist = new TIntArrayList(new int[] {25, 33, 50, 75, 100, 125, 150, 200, 300, 400});
+		showMapMagnifierDialog(activity, nightMode, profileColor, view, mapDensity, item, adapter);
+	}
+
+	private static void showMapMagnifierDialog(@NonNull MapActivity activity,
+	                                           boolean nightMode,
+	                                           int profileColor,
+	                                           @NonNull OsmandMapTileView view,
+	                                           @NonNull OsmandPreference<Float> mapDensity,
+	                                           @Nullable ContextMenuItem item,
+	                                           @Nullable OnDataChangeUiAdapter adapter) {
+		MapMagnifierValues magnifierValues = getMapMagnifierValues(mapDensity);
+		String[] values = magnifierValues.values.toArray(new String[0]);
+
+		if (item != null && adapter != null) {
+			AlertDialogData dialogData = new AlertDialogData(activity, nightMode)
+					.setTitle(R.string.map_magnifier)
+					.setControlsColor(profileColor)
+					.setNegativeButton(R.string.shared_string_dismiss, null);
+
+			CustomAlert.showSingleSelection(dialogData, values, magnifierValues.selectedIndex, v -> {
+				int which = (int) v.getTag();
+				setPhoneMapDensity(view, mapDensity, magnifierValues.percentValues.get(which));
+				item.setDescription(String.format(Locale.UK, "%.0f", 100f * mapDensity.get()) + " %");
+				adapter.onDataSetInvalidated();
+			});
+		} else {
+			AlertDialog.Builder builder = new AlertDialog.Builder(activity);
+			builder.setTitle(R.string.map_magnifier);
+			builder.setSingleChoiceItems(values, magnifierValues.selectedIndex, (dialog, which) -> {
+				setPhoneMapDensity(view, mapDensity, magnifierValues.percentValues.get(which));
+				dialog.dismiss();
+			});
+			builder.show();
+		}
+	}
+
+	@NonNull
+	private static MapMagnifierValues getMapMagnifierValues(@NonNull OsmandPreference<Float> mapDensity) {
+		int currentValue = (int) (mapDensity.get() * 100);
+		TIntArrayList percentValues = new TIntArrayList(new int[] {25, 33, 50, 75, 100, 125, 150, 200, 300, 400});
 		List<String> values = new ArrayList<>();
-		int i = -1;
-		for (int k = 0; k <= tlist.size(); k++) {
-			boolean end = k == tlist.size();
-			if (i == -1) {
-				if ((end || p < tlist.get(k))) {
-					values.add(p + " %");
-					i = k;
-				} else if (p == tlist.get(k)) {
-					i = k;
+		int selectedIndex = -1;
+		for (int k = 0; k <= percentValues.size(); k++) {
+			boolean end = k == percentValues.size();
+			if (selectedIndex == -1) {
+				if ((end || currentValue < percentValues.get(k))) {
+					values.add(currentValue + " %");
+					selectedIndex = k;
+				} else if (currentValue == percentValues.get(k)) {
+					selectedIndex = k;
 				}
 			}
-			if (k < tlist.size()) {
-				values.add(tlist.get(k) + " %");
+			if (k < percentValues.size()) {
+				values.add(percentValues.get(k) + " %");
 			}
 		}
-		if (values.size() != tlist.size()) {
-			tlist.insert(i, p);
+		if (values.size() != percentValues.size()) {
+			percentValues.insert(selectedIndex, currentValue);
 		}
+		return new MapMagnifierValues(percentValues, values, selectedIndex);
+	}
 
-		AlertDialogData dialogData = new AlertDialogData(activity, nightMode)
-				.setTitle(R.string.map_magnifier)
-				.setControlsColor(profileColor)
-				.setNegativeButton(R.string.shared_string_dismiss, null);
+	private static void setPhoneMapDensity(@NonNull OsmandMapTileView view,
+	                                       @NonNull OsmandPreference<Float> mapDensity,
+	                                       int value) {
+		mapDensity.set(value / 100.0f);
+		if (!view.isCarView()) {
+			view.applyDisplayScaleSettings();
+		}
+	}
 
-		CustomAlert.showSingleSelection(dialogData, values.toArray(new String[0]), i, v -> {
-			int which = (int) v.getTag();
-			int value = tlist.get(which);
-			mapDensity.set(value / 100.0f);
-			view.setComplexZoom(view.getZoom(), view.getSettingsMapDensity());
-			MapRendererContext mapContext = NativeCoreContext.getMapRendererContext();
-			if (mapContext != null) {
-				mapContext.updateMapSettings(true);
-			}
-			item.setDescription(String.format(Locale.UK, "%.0f", 100f * settings.MAP_DENSITY.get()) + " %");
-			adapter.onDataSetInvalidated();
-		});
+	private record MapMagnifierValues(@NonNull TIntArrayList percentValues,
+	                                  @NonNull List<String> values, int selectedIndex) {
 	}
 
 	protected static void showTextSizeDialog(
 			@NonNull MapActivity activity, boolean nightMode,
 			@NonNull ContextMenuItem item, @NonNull OnDataChangeUiAdapter uiAdapter
 	) {
-		OsmandApplication app = activity.getMyApplication();
+		OsmandApplication app = activity.getApp();
 		int profileColor = ColorUtilities.getAppModeColor(app, nightMode);
 
 		OsmandMapTileView view = activity.getMapView();
@@ -167,8 +166,9 @@ public class ConfigureMapDialogs {
 
 		int[] selectedLanguageIndex = new int[1];
 		boolean[] transliterateNames = new boolean[1];
+		boolean[] showLocalNames = new boolean[1];
 
-		OsmandApplication app = activity.getMyApplication();
+		OsmandApplication app = activity.getApp();
 		OsmandSettings settings = app.getSettings();
 		int profileColor = ColorUtilities.getAppModeColor(app, nightMode);
 
@@ -191,8 +191,10 @@ public class ConfigureMapDialogs {
 		}
 		selectedLanguageIndex[0] = selected;
 		transliterateNames[0] = settings.MAP_TRANSLITERATE_NAMES.get();
+		showLocalNames[0] = settings.MAP_SHOW_LOCAL_NAMES.get();
 
 		OnCheckedChangeListener translitChangdListener = (buttonView, isChecked) -> transliterateNames[0] = isChecked;
+		OnCheckedChangeListener showLocalNamesListener = (buttonView, isChecked) -> showLocalNames[0] = isChecked;
 
 		ArrayAdapter<CharSequence> singleChoiceAdapter = new ArrayAdapter<CharSequence>(
 				ctx, R.layout.single_choice_switch_item, R.id.text1, mapLanguagesNames) {
@@ -208,12 +210,20 @@ public class ConfigureMapDialogs {
 					v.findViewById(R.id.topDivider).setVisibility(View.VISIBLE);
 					v.findViewById(R.id.bottomDivider).setVisibility(View.VISIBLE);
 					v.findViewById(R.id.switchLayout).setVisibility(View.VISIBLE);
-					TextView switchText = v.findViewById(R.id.switchText);
-					switchText.setText(app.getString(R.string.use_latin_name_if_missing, mapLanguagesNames[position]));
-					SwitchCompat check = v.findViewById(R.id.check);
-					check.setChecked(transliterateNames[0]);
-					check.setOnCheckedChangeListener(translitChangdListener);
-					UiUtilities.setupCompoundButton(nightMode, profileColor, check);
+					
+					TextView transliterateTitle = v.findViewById(R.id.transliterate_title);
+					transliterateTitle.setText(app.getString(R.string.use_latin_name_if_missing, mapLanguagesNames[position]));
+					SwitchCompat transliterateSwitch = v.findViewById(R.id.transliterate_switch);
+					transliterateSwitch.setChecked(transliterateNames[0]);
+					transliterateSwitch.setOnCheckedChangeListener(translitChangdListener);
+					UiUtilities.setupCompoundButton(nightMode, profileColor, transliterateSwitch);
+
+					TextView localNamesTitle = v.findViewById(R.id.local_names_title);
+					localNamesTitle.setText(R.string.show_local_names);
+					SwitchCompat localNamesSwitch = v.findViewById(R.id.local_names_switch);
+					localNamesSwitch.setChecked(showLocalNames[0]);
+					localNamesSwitch.setOnCheckedChangeListener(showLocalNamesListener);
+					UiUtilities.setupCompoundButton(nightMode, profileColor, localNamesSwitch);
 				} else {
 					checkedTextView.setChecked(position == selectedLanguageIndex[0]);
 					v.findViewById(R.id.topDivider).setVisibility(View.GONE);
@@ -237,6 +247,7 @@ public class ConfigureMapDialogs {
 		b.setNegativeButton(R.string.shared_string_cancel, null);
 		b.setPositiveButton(R.string.shared_string_apply, (dialog, which) -> {
 			view.getSettings().MAP_TRANSLITERATE_NAMES.set(selectedLanguageIndex[0] > 0 && transliterateNames[0]);
+			view.getSettings().MAP_SHOW_LOCAL_NAMES.set(selectedLanguageIndex[0] > 0 && showLocalNames[0]);
 			AlertDialog dlg = (AlertDialog) dialog;
 			int index = dlg.getListView().getCheckedItemPosition();
 			view.getSettings().MAP_PREFERRED_LOCALE.set(
@@ -256,7 +267,7 @@ public class ConfigureMapDialogs {
 			@NonNull CommonPreference<String> pref, @NonNull ContextMenuItem item,
 			@NonNull OnDataChangeUiAdapter uiAdapter, boolean nightMode
 	) {
-		OsmandApplication app = activity.getMyApplication();
+		OsmandApplication app = activity.getApp();
 		String title = AndroidUtils.getRenderingStringPropertyDescription(app, p.getAttrName(), p.getName());
 		String[] possibleValuesString = ConfigureMapUtils.getRenderingPropertyPossibleValues(app, p);
 		int selectedIndex = AndroidUtils.getRenderPropertySelectedValueIndex(app, p);
@@ -275,11 +286,14 @@ public class ConfigureMapDialogs {
 			}
 			activity.refreshMapComplete();
 			item.setDescription(AndroidUtils.getRenderingStringPropertyValue(app, p));
-			String id = item.getId();
-			if (!Algorithms.isEmpty(id)) {
-				uiAdapter.onRefreshItem(id);
-			} else {
-				uiAdapter.onDataSetChanged();
+
+			if (uiAdapter != null) {
+				String id = item.getId();
+				if (!Algorithms.isEmpty(id)) {
+					uiAdapter.onRefreshItem(id);
+				} else {
+					uiAdapter.onDataSetChanged();
+				}
 			}
 		});
 	}
@@ -293,7 +307,7 @@ public class ConfigureMapDialogs {
 		if (!AndroidUtils.isActivityNotDestroyed(activity)) {
 			return;
 		}
-		OsmandApplication app = activity.getMyApplication();
+		OsmandApplication app = activity.getApp();
 		boolean[] checkedItems = new boolean[prefs.size()];
 		for (int i = 0; i < prefs.size(); i++) {
 			checkedItems[i] = prefs.get(i).get();

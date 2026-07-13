@@ -4,6 +4,7 @@ import net.osmand.binary.BinaryMapRouteReaderAdapter.RouteRegion;
 import net.osmand.binary.BinaryMapRouteReaderAdapter.RouteTypeRule;
 import net.osmand.binary.RouteDataObject;
 import net.osmand.router.BinaryRoutePlanner.RouteSegment;
+import net.osmand.shared.routing.GeneralRouterProfile;
 import net.osmand.util.Algorithms;
 import net.osmand.util.MapUtils;
 
@@ -16,6 +17,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -54,6 +56,7 @@ public class GeneralRouter implements VehicleRouter {
 	public static final String WEIGHT_RATING = "weightrating";
 	public static final String ALLOW_VIA_FERRATA = "allow_via_ferrata";
 	public static final String CHECK_ALLOW_PRIVATE_NEEDED = "check_allow_private_needed";
+	private static final double MIN_DISTANCE_SLOPE_ROUND = 10;
 
 	private static boolean USE_CACHE = true;
 	public static long TIMER = 0;
@@ -123,23 +126,7 @@ public class GeneralRouter implements VehicleRouter {
 			return null;
 		}
 	}
-	
-	public enum GeneralRouterProfile {
-		CAR,
-		PEDESTRIAN,
-		BICYCLE,
-		BOAT,
-		SKI,
-		MOPED,
-		TRAIN,
-		PUBLIC_TRANSPORT,
-		HORSEBACKRIDING;
-		
-		public String getBaseProfile() {
-			return this.toString().toLowerCase();
-		}
-	}
-	
+
 	public enum RoutingParameterType {
 		NUMERIC,
 		BOOLEAN,
@@ -151,6 +138,7 @@ public class GeneralRouter implements VehicleRouter {
 		GeneralRouter parent = root;
 		this.profile = parent.profile;
 		this.attributes = new LinkedHashMap<String, String>();
+
 		Iterator<Entry<String, String>> e = parent.attributes.entrySet().iterator();
 		while (e.hasNext()) {
 			Entry<String, String> next = e.next();
@@ -190,8 +178,9 @@ public class GeneralRouter implements VehicleRouter {
 		if (shortestRoute) {
 			if (profile == GeneralRouterProfile.BICYCLE) {
 				maxSpeed = Math.min(BICYCLE_SHORTEST_DEFAULT_SPEED, maxSpeed);
-			} else {
+			} else if (profile == GeneralRouterProfile.CAR) {
 				maxSpeed = Math.min(CAR_SHORTEST_DEFAULT_SPEED, maxSpeed);
+				heightObstacles = true;
 			}
 		}
 		initCaches();
@@ -203,7 +192,7 @@ public class GeneralRouter implements VehicleRouter {
 		this.attributes = new LinkedHashMap<String, String>();
 		this.parameterValues = new LinkedHashMap<String, String>();
 		Iterator<Entry<String, String>> e = attributes.entrySet().iterator();
-		while(e.hasNext()){
+		while (e.hasNext()) {
 			Entry<String, String> next = e.next();
 			addAttribute(next.getKey(), next.getValue());
 		}
@@ -306,7 +295,8 @@ public class GeneralRouter implements VehicleRouter {
 	}
 	
 
-	public void registerBooleanParameter(String id, String group, String name, String description, String[] profiles, boolean defaultValue) {
+	public void registerBooleanParameter(String id, String group, String name, String description, String[] profiles,
+	                                     boolean defaultBoolean) {
 		RoutingParameter rp = new RoutingParameter();
 		rp.id = id;
 		rp.group = group;
@@ -314,12 +304,13 @@ public class GeneralRouter implements VehicleRouter {
 		rp.description = description;
 		rp.profiles = profiles;
 		rp.type = RoutingParameterType.BOOLEAN;
-		rp.defaultBoolean = defaultValue;
+		rp.defaultBoolean = defaultBoolean;
 		parameters.put(rp.id, rp);
 		
 	}
 
-	public void registerNumericParameter(String id, String name, String description, String[] profiles, Double[] vls, String[] vlsDescriptions) {
+	public void registerNumericParameter(String id, String name, String description, String[] profiles, Double[] vls,
+	                                     String[] vlsDescriptions, double defaultNumeric) {
 		RoutingParameter rp = new RoutingParameter();
 		rp.name = name;
 		rp.description = description;
@@ -328,6 +319,7 @@ public class GeneralRouter implements VehicleRouter {
 		rp.possibleValues = vls;
 		rp.possibleValueDescriptions = vlsDescriptions;
 		rp.type = RoutingParameterType.NUMERIC;
+		rp.defaultNumeric = defaultNumeric;
 		parameters.put(rp.id, rp);
 	}
 
@@ -357,16 +349,22 @@ public class GeneralRouter implements VehicleRouter {
 	
 	public int registerTagValueAttribute(String tag, String value) {
 		String key = tag +"$"+value;
-		if(universalRules.containsKey(key)) {
+		if (universalRules.containsKey(key)) {
 			return universalRules.get(key);
 		}
-		int id = universalRules.size();
-		universalRulesById.add(key);
-		universalRules.put(key, id);
-		if(!tagRuleMask.containsKey(tag)) {
-			tagRuleMask.put(tag, new BitSet());
+		int id = registerSyncTagValue(this, tag, key);
+		return id;
+	}
+
+	// Important: as we keep parent copy we need static synchronized to lock on all instances
+	private synchronized static int registerSyncTagValue(GeneralRouter r, String tag, String key) {
+		int id = r.universalRules.size();
+		r.universalRulesById.add(key);
+		r.universalRules.put(key, id);
+		if(!r.tagRuleMask.containsKey(tag)) {
+			r.tagRuleMask.put(tag, new BitSet());
 		}
-		tagRuleMask.get(tag).set(id);
+		r.tagRuleMask.get(tag).set(id);
 		return id;
 	}
 	
@@ -424,14 +422,14 @@ public class GeneralRouter implements VehicleRouter {
 	}
 	
 	@Override
-	public float defineObstacle(RouteDataObject road, int point, boolean dir) {
+	public float defineObstacle(RouteDataObject road, int point, boolean isBackwardDir) {
 		int[] pointTypes = road.getPointTypes(point);
 		if(pointTypes != null) {
-			Float obst = getCache(RouteDataObjectAttribute.OBSTACLES, road.region, pointTypes, dir);
+			Float obst = getCache(RouteDataObjectAttribute.OBSTACLES, road.region, pointTypes, isBackwardDir);
 			if (obst == null) {
-				int[] filteredPointTypes = filterDirectionTags(road, pointTypes, dir);
+				int[] filteredPointTypes = filterDirectionTags(road, pointTypes, isBackwardDir);
 				obst = getObjContext(RouteDataObjectAttribute.OBSTACLES).evaluateFloat(road.region, filteredPointTypes, 0);
-				putCache(RouteDataObjectAttribute.OBSTACLES, road.region, pointTypes, obst, dir);
+				putCache(RouteDataObjectAttribute.OBSTACLES, road.region, pointTypes, obst, isBackwardDir);
 			}
 			return obst;
 		}
@@ -439,22 +437,22 @@ public class GeneralRouter implements VehicleRouter {
 	}
 	
 	@Override
-	public float defineRoutingObstacle(RouteDataObject road, int point, boolean dir) {
+	public float defineRoutingObstacle(RouteDataObject road, int point, boolean isBackwardDir) {
 		int[] pointTypes = road.getPointTypes(point);
 		if(pointTypes != null) {
-			Float obst = getCache(RouteDataObjectAttribute.ROUTING_OBSTACLES, road.region, pointTypes, dir);
+			Float obst = getCache(RouteDataObjectAttribute.ROUTING_OBSTACLES, road.region, pointTypes, isBackwardDir);
 			if (obst == null) {
-				int[] filteredPointTypes = filterDirectionTags(road, pointTypes, dir);
+				int[] filteredPointTypes = filterDirectionTags(road, pointTypes, isBackwardDir);
 				obst = getObjContext(RouteDataObjectAttribute.ROUTING_OBSTACLES).evaluateFloat(road.region, filteredPointTypes, 0);
-				putCache(RouteDataObjectAttribute.ROUTING_OBSTACLES, road.region, pointTypes, obst, dir);
+				putCache(RouteDataObjectAttribute.ROUTING_OBSTACLES, road.region, pointTypes, obst, isBackwardDir);
 			}
 			return obst;
 		}
 		return 0;
 	}
 
-	private int[] filterDirectionTags(RouteDataObject road, int[] pointTypes, boolean forwardDir) {
-		int wayDirection = forwardDir ? 1 : -1;
+	private int[] filterDirectionTags(RouteDataObject road, int[] pointTypes, boolean isBackwardDir) {
+		int wayDirection = isBackwardDir ? 1 : -1;
 		int direction = 0;
 		int tdirection = 0;
 		int hdirection = 0;
@@ -506,7 +504,7 @@ public class GeneralRouter implements VehicleRouter {
 			double dist = startIndex < endIndex ? heightArray[2 * knext] : heightArray[2 * k]  ;
 			double diff = heightArray[2 * knext + 1] - heightArray[2 * k + 1] ;
 			if(diff != 0 && dist > 0) {
-				double incl = Math.abs(diff / dist);
+				double incl = Math.abs(diff / Math.max(dist, MIN_DISTANCE_SLOPE_ROUND));
 				int percentIncl = (int) (incl * 100);
 				percentIncl = (percentIncl + 2)/ 3 * 3 - 2; // 1, 4, 7, 10, .   
 				if(percentIncl >= 1) {
@@ -633,7 +631,7 @@ public class GeneralRouter implements VehicleRouter {
 
 		@Override
 		public boolean equals(Object other) {
-			if (array == other) {
+			if (this == other) {
 				return true;
 			}
 			if (!(other instanceof IntHolder)) {
@@ -707,9 +705,12 @@ public class GeneralRouter implements VehicleRouter {
 		if (prevTs != ts) {
 			totalPenalty += Math.abs(ts - prevTs) / 2;
 		}
-		
-		if (segment.getRoad().roundabout() && !prev.getRoad().roundabout()) {
-			double rt = getRoundaboutTurnPenalty();
+
+		boolean currentRoundAbout = segment.getRoad().roundabout();
+		boolean previousRoundAbout = prev.getRoad().roundabout();
+
+		if ((currentRoundAbout && !previousRoundAbout) || (!currentRoundAbout && previousRoundAbout)) {
+			float rt = getRoundaboutTurnPenalty() / 2;
 			if (rt > 0) {
 				totalPenalty += rt;
 			}
@@ -774,7 +775,8 @@ public class GeneralRouter implements VehicleRouter {
 		private String[] possibleValueDescriptions;
 		private String[] profiles;
 		private boolean defaultBoolean;
-		
+		private double defaultNumeric;
+
 		public String getId() {
 			return id;
 		}
@@ -800,8 +802,11 @@ public class GeneralRouter implements VehicleRouter {
 		public boolean getDefaultBoolean() {
 			return defaultBoolean;
 		}
+		public double getDefaultNumeric() {
+			return defaultNumeric;
+		}
 		public String getDefaultString() {
-			return type == RoutingParameterType.NUMERIC ? "0.0" : "-";
+			return type == RoutingParameterType.NUMERIC ? String.format(Locale.US, "%.1f", defaultNumeric) : "-";
 		}
 		public String[] getProfiles() {
 			return profiles;
@@ -975,6 +980,8 @@ public class GeneralRouter implements VehicleRouter {
 		public static final int EQUAL_EXPRESSION = 3;
 		public static final int MIN_EXPRESSION = 4;
 		public static final int MAX_EXPRESSION = 5;
+		public static final int GREAT_OR_EQUAL_EXPRESSION = 6;
+		public static final int LESS_OR_EQUAL_EXPRESSION = 7;
 
 		public RouteAttributeExpression(String[] vs, String valueType, int expressionId) {
 			this.expressionType = expressionId;
@@ -1006,10 +1013,14 @@ public class GeneralRouter implements VehicleRouter {
 			if (Double.isNaN(f1) || Double.isNaN(f2)) {
 				return false;
 			}
-			if (expressionType == LESS_EXPRESSION) {
-				return f1 <= f2;
-			} else if (expressionType == GREAT_EXPRESSION) {
+			if (expressionType == GREAT_EXPRESSION) {
+				return f1 > f2;
+			} else if (expressionType == GREAT_OR_EQUAL_EXPRESSION) {
 				return f1 >= f2;
+			} else if (expressionType == LESS_EXPRESSION) {
+				return f1 < f2;
+			} else if (expressionType == LESS_OR_EQUAL_EXPRESSION) {
+				return f1 <= f2;
 			} else if (expressionType == EQUAL_EXPRESSION) {
 				return f1 == f2;
 			}
@@ -1183,6 +1194,16 @@ public class GeneralRouter implements VehicleRouter {
 		public void registerGreatCondition(String value1, String value2, String valueType) {
 			conditionExpressions.add(new RouteAttributeExpression(new String[]{value1, value2}, valueType,
 					RouteAttributeExpression.GREAT_EXPRESSION));
+		}
+
+		public void registerGreatOrEqualCondition(String value1, String value2, String valueType) {
+			conditionExpressions.add(new RouteAttributeExpression(new String[]{value1, value2}, valueType,
+					RouteAttributeExpression.GREAT_OR_EQUAL_EXPRESSION));
+		}
+
+		public void registerLessOrEqualCondition(String value1, String value2, String valueType) {
+			conditionExpressions.add(new RouteAttributeExpression(new String[]{value1, value2}, valueType,
+					RouteAttributeExpression.LESS_OR_EQUAL_EXPRESSION));
 		}
 
 		public void registerEqualCondition(String value1, String value2, String valueType) {

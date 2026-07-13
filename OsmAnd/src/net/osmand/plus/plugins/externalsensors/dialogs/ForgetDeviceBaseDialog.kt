@@ -1,21 +1,18 @@
 package net.osmand.plus.plugins.externalsensors.dialogs
 
 import android.os.Bundle
-import android.view.LayoutInflater
 import android.view.View
-import android.view.ViewGroup
 import android.widget.TextView
 import androidx.core.content.ContextCompat
-import net.osmand.plus.OsmandApplication
 import net.osmand.plus.R
-import net.osmand.plus.base.BottomSheetDialogFragment
+import net.osmand.plus.base.MenuBottomSheetDialogFragment
+import net.osmand.plus.base.bottomsheetmenu.BaseBottomSheetItem
 import net.osmand.plus.utils.AndroidUtils
 import net.osmand.plus.utils.ColorUtilities
 
 
-abstract class ForgetDeviceBaseDialog : BottomSheetDialogFragment() {
-	private var nightMode = false
-	private lateinit var app: OsmandApplication
+abstract class ForgetDeviceBaseDialog : MenuBottomSheetDialogFragment() {
+
 	open val layoutId = R.layout.forget_obd_device_dialog
 
 	companion object {
@@ -25,23 +22,17 @@ abstract class ForgetDeviceBaseDialog : BottomSheetDialogFragment() {
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
-		val context = requireContext()
-		app = context.applicationContext as OsmandApplication
-		nightMode = app.daynightHelper.isNightModeForMapControls
-		val deviceId = arguments?.getString(DEVICE_ID_KEY)
-		deviceId?.let { initDevice(it) }
+		arguments?.let { initDevice(it) }
 	}
 
-	abstract fun initDevice(deviceId: String)
+	override fun isUsedOnMap() = true
+
+	abstract fun initDevice(arguments: Bundle)
+
 	abstract fun onForgetSensorConfirmed()
 
-	override fun onCreateView(
-		inflater: LayoutInflater,
-		container: ViewGroup?,
-		savedInstanceState: Bundle?
-	): View {
-
-		val view: View = inflater.inflate(layoutId, container, false)
+	override fun createMenuItems(savedInstanceState: Bundle?) {
+		val view: View = inflate(layoutId)
 
 		val forgetButton = view.findViewById<View>(R.id.forget_btn)
 		val forgetButtonText = forgetButton.findViewById<TextView>(R.id.button_text)
@@ -72,6 +63,7 @@ abstract class ForgetDeviceBaseDialog : BottomSheetDialogFragment() {
 			R.drawable.dlg_btn_secondary_light,
 			R.drawable.dlg_btn_secondary_dark
 		)
+
 		val forgetBtnTextColor =
 			if (nightMode) R.color.color_osm_edit_delete else R.color.color_osm_edit_delete
 
@@ -93,6 +85,10 @@ abstract class ForgetDeviceBaseDialog : BottomSheetDialogFragment() {
 			R.drawable.dlg_btn_secondary_dark
 		)
 		cancelButtonText.setTextColor(ColorUtilities.getButtonSecondaryTextColor(app, nightMode))
-		return view
+		items.add(BaseBottomSheetItem.Builder().setCustomView(view).create())
+	}
+
+	override fun hideButtonsContainer(): Boolean {
+		return true
 	}
 }

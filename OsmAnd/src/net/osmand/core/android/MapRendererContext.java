@@ -2,6 +2,8 @@ package net.osmand.core.android;
 
 import static net.osmand.IndexConstants.GEOTIFF_DIR;
 import static net.osmand.IndexConstants.GEOTIFF_SQLITE_CACHE_DIR;
+import static net.osmand.IndexConstants.OPENGL_SHADERS_CACHE_DIR;
+import static net.osmand.plus.plugins.srtm.SRTMPlugin.BUILDINGS_3D_DEFAULT_COLOR;
 import static net.osmand.plus.views.OsmandMapTileView.FOG_DEFAULT_COLOR;
 import static net.osmand.plus.views.OsmandMapTileView.FOG_NIGHTMODE_COLOR;
 import static net.osmand.plus.views.OsmandMapTileView.MAP_DEFAULT_COLOR;
@@ -21,17 +23,19 @@ import net.osmand.core.jni.IGeoTiffCollection.RasterType;
 import net.osmand.core.jni.MapPresentationEnvironment.LanguagePreference;
 import net.osmand.core.jni.MapPrimitivesProvider.Mode;
 import net.osmand.data.Amenity;
+import net.osmand.data.BaseDetailsObject;
 import net.osmand.data.LatLon;
 import net.osmand.data.QuadRect;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.plugins.PluginsHelper;
+import net.osmand.plus.plugins.srtm.building.Buildings3DColorType;
 import net.osmand.plus.plugins.srtm.SRTMPlugin;
 import net.osmand.plus.render.MapRenderRepositories;
 import net.osmand.plus.render.RendererRegistry;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.utils.NativeUtilities;
-import net.osmand.plus.views.layers.PlaceDetailsObject;
+import net.osmand.plus.views.OsmandMap;
 import net.osmand.render.RenderingClass;
 import net.osmand.render.RenderingRuleProperty;
 import net.osmand.render.RenderingRuleSearchRequest;
@@ -63,6 +67,10 @@ public class MapRendererContext {
 	public static final int OBF_CONTOUR_LINES_RASTER_LAYER = 6000;
 	public static final int OBF_SYMBOL_SECTION = 1;
 	public static final int WEATHER_CONTOURS_SYMBOL_SECTION = 2;
+	public static final int POI_SYMBOL_SECTION = 1000;
+	public static final int TOP_PLACES_POI_SECTION = 1001;
+	public static final int SELECTED_POI_SECTION = 1002;
+	public static final int FAVORITES_SECTION = 1003;
 	public static boolean IGNORE_CORE_PRELOADED_STYLES = false; // enable to debug default.render.xml changes
 
 	private final OsmandApplication app;
@@ -77,12 +85,15 @@ public class MapRendererContext {
 	private boolean useAppLocale;
 	private final float density;
 
-	// сached objects
+	// cached objects
 	private final Map<String, ResolvedMapStyle> mapStyles = new HashMap<>();
+	private final Map<LatLon, Integer> highlight3dObjects = new HashMap<>();
+
 	private CachedMapPresentation cachedMapPresentation;
 	private MapPresentationEnvironment mapPresentationEnvironment;
 	private MapPrimitiviser mapPrimitiviser;
 	private MapPrimitivesProvider mapPrimitivesProvider;
+	private IMapTiledDataProvider map3DObjectsProvider;
 
 	private IMapTiledSymbolsProvider obfMapSymbolsProvider;
 	private IRasterMapLayerProvider obfMapRasterLayerProvider;
@@ -92,6 +103,8 @@ public class MapRendererContext {
 
 	private float cachedReferenceTileSize;
 	private boolean heightmapsActive;
+
+	public boolean showDebugPrimivitisationTiles = false;
 
 	public MapRendererContext(OsmandApplication app, float density) {
 		this.app = app;
@@ -149,7 +162,7 @@ public class MapRendererContext {
 
 	public void updateLocalization() {
 		int zoom = app.getOsmandMap().getMapView().getZoom();
-		boolean useAppLocale = MapRenderRepositories.useAppLocaleForMap(app, zoom);
+		boolean useAppLocale = MapRenderRepositories.isBasemapZoom(zoom);
 		if (this.useAppLocale != useAppLocale) {
 			this.useAppLocale = useAppLocale;
 			updateMapSettings(false);
@@ -179,7 +192,8 @@ public class MapRendererContext {
 	}
 
 	protected int getRasterTileSize() {
-		float mapDensity = app.getSettings().MAP_DENSITY.get();
+		OsmandMap osmandMap = app.getOsmandMap();
+		float mapDensity = osmandMap != null ? osmandMap.getMapDensity() : app.getSettings().MAP_DENSITY.get();
 		float mapDensityAligned = mapDensity > 2.0f ? 2.0f : Math.min(mapDensity, 1.0f);
 		return (int) (getReferenceTileSize() * mapDensityAligned);
 	}
@@ -197,10 +211,7 @@ public class MapRendererContext {
 
 		int zoom = app.getOsmandMap().getMapView().getZoom();
 		String langId = MapRenderRepositories.getMapPreferredLocale(app, zoom);
-		boolean transliterate = MapRenderRepositories.transliterateMapNames(app, zoom);
-		LanguagePreference langPref = transliterate
-				? LanguagePreference.LocalizedOrTransliterated
-				: LanguagePreference.LocalizedOrNative;
+		LanguagePreference langPref = MapRenderRepositories.getMapLanguageSetting(app, zoom);
 
 		loadRendererAddons();
 		String rendName = settings.RENDERER.get();
@@ -228,8 +239,7 @@ public class MapRendererContext {
 			}
 			if (tryCount < 3) {
 				tryCount++;
-				if (tryCount > 1)
-				{
+				if (tryCount > 1) {
 					Log.e(TAG, "Failed to load '" + rendName + "' style, will keep trying");
 					app.showToastMessage(R.string.cant_load_map_styles);
 				}
@@ -259,7 +269,7 @@ public class MapRendererContext {
 				recreateRasterAndSymbolsProvider(providerType);
 			} else if (languageParamsChanged) {
 				if (mapPrimitivesProvider != null || updateMapPrimitivesProvider(providerType)) {
-					updateObfMapSymbolsProvider(mapPrimitivesProvider, providerType);
+					updateOrRemoveObfMapSymbolsProvider(mapPrimitivesProvider, providerType);
 				}
 			}
 			setMapBackgroundColor();
@@ -303,11 +313,7 @@ public class MapRendererContext {
 			String name = addonEntry.getKey();
 			String fileName = addonEntry.getValue();
 			if (mapStylesCollection.getStyleByName(fileName) == null) {
-				try {
-					loadStyleFromStream(fileName, app.getRendererRegistry().getInputStream(name));
-				} catch (IOException e) {
-					Log.e(TAG, "Failed to load '" + fileName + "'", e);
-				}
+				loadStyleFromStream(fileName, app.getRendererRegistry().getInputStream(name));
 			}
 		}
 	}
@@ -315,13 +321,9 @@ public class MapRendererContext {
 	private void loadRenderer(String rendName) {
 		RenderingRulesStorage renderer = app.getRendererRegistry().getRenderer(rendName);
 		if ((mapStylesCollection.getStyleByName(rendName) == null || IGNORE_CORE_PRELOADED_STYLES) && renderer != null) {
-			try {
-				loadStyleFromStream(rendName, app.getRendererRegistry().getInputStream(rendName));
-				if (renderer.getDependsName() != null) {
-					loadRenderer(renderer.getDependsName());
-				}
-			} catch (IOException e) {
-				Log.e(TAG, "Failed to load '" + rendName + "'", e);
+			loadStyleFromStream(rendName, app.getRendererRegistry().getInputStream(rendName));
+			if (renderer.getDependsName() != null) {
+				loadRenderer(renderer.getDependsName());
 			}
 		}
 	}
@@ -389,7 +391,8 @@ public class MapRendererContext {
 	public void recreateRasterAndSymbolsProvider(@NonNull ProviderType providerType) {
 		if (updateMapPrimitivesProvider(providerType)) {
 			updateObfMapRasterLayerProvider(mapPrimitivesProvider, providerType);
-			updateObfMapSymbolsProvider(mapPrimitivesProvider, providerType);
+			updateOrRemoveObfMapSymbolsProvider(mapPrimitivesProvider, providerType);
+			recreate3DObjectsProvider();
 			this.providerType = providerType;
 		}
 	}
@@ -410,9 +413,11 @@ public class MapRendererContext {
 		if (obfsCollection == null) {
 			return false;
 		}
-
+		int renderingThreadsLimit = app.getSettings().MAX_RENDERING_THREADS.get();
 		mapPrimitiviser = new MapPrimitiviser(mapPresentationEnvironment);
-		ObfMapObjectsProvider obfMapObjectsProvider = new ObfMapObjectsProvider(obfsCollection);
+		ObfMapObjectsProvider obfMapObjectsProvider = new ObfMapObjectsProvider(obfsCollection,
+				ObfMapObjectsProvider.Mode.BinaryMapObjectsAndRoads,
+				renderingThreadsLimit > 3 || renderingThreadsLimit == 0 ? 2 : 1);
 		mapPrimitivesProvider = new MapPrimitivesProvider(obfMapObjectsProvider,
 				mapPrimitiviser, getRasterTileSize(), providerType.surfaceMode);
 		return true;
@@ -435,6 +440,7 @@ public class MapRendererContext {
 			heightmapsActive = false;
 		}
 	}
+
 	public void resetHeightmapProvider() {
 		MapRendererView mapRendererView = this.mapRendererView;
 		if (mapRendererView != null) {
@@ -443,9 +449,13 @@ public class MapRendererContext {
 	}
 
 	private void updateObfMapRasterLayerProvider(@NonNull MapPrimitivesProvider mapPrimitivesProvider,
-	                                             @NonNull ProviderType providerType) {
+												 @NonNull ProviderType providerType) {
 		// Create new OBF map raster layer provider
-		obfMapRasterLayerProvider = new MapRasterLayerProvider_Software(mapPrimitivesProvider, providerType.fillBackground);
+		if (showDebugPrimivitisationTiles) {
+			obfMapRasterLayerProvider = new MapPrimitivesMetricsLayerProvider(mapPrimitivesProvider);
+		} else {
+			obfMapRasterLayerProvider = new MapRasterLayerProvider_Software(mapPrimitivesProvider, providerType.fillBackground, false, true);
+		}
 		// In case there's bound view and configured layer, perform setup
 		MapRendererView mapRendererView = this.mapRendererView;
 		if (mapRendererView != null) {
@@ -472,8 +482,25 @@ public class MapRendererContext {
 		}
 	}
 
-	public void presetMapRendererOptions(@NonNull MapRendererView mapRendererView) {
-		mapRendererView.setupOptions.setMaxNumberOfRasterMapLayersInBatch(1);
+	private void updateOrRemoveObfMapSymbolsProvider(@NonNull MapPrimitivesProvider mapPrimitivesProvider,
+											 @NonNull ProviderType providerType) {
+		if (showDebugPrimivitisationTiles) {
+			if (obfMapSymbolsProvider != null && mapRendererView != null && this.providerType == providerType) {
+				mapRendererView.removeSymbolsProvider(obfMapSymbolsProvider);
+			}
+		} else {
+			updateObfMapSymbolsProvider(mapPrimitivesProvider, providerType);
+		}
+	}
+
+	public void presetMapRendererOptions(@NonNull MapRendererView mapRendererView, boolean MSAAEnabled) {
+		File shadersCache = new File(app.getCacheDir(), OPENGL_SHADERS_CACHE_DIR);
+		if (!shadersCache.exists()) {
+			shadersCache.mkdir();
+		}
+		mapRendererView.setupOptions.setPathToOpenGLShadersCache(shadersCache.getAbsolutePath());
+		mapRendererView.setupOptions.setMaxNumberOfRasterMapLayersInBatch(4);
+		mapRendererView.setMSAAEnabled(MSAAEnabled);
 	}
 
 	private void applyCurrentContextToView() {
@@ -491,12 +518,82 @@ public class MapRendererContext {
 			mapRendererView.resetMapLayerProvider(providerType.layerIndex);
 			mapRendererView.setMapLayerProvider(providerType.layerIndex, obfMapRasterLayerProvider);
 		}
+
+		recreate3DObjectsProvider();
 		if (obfMapSymbolsProvider != null) {
 			mapRendererView.addSymbolsProvider(providerType.symbolsSectionIndex, obfMapSymbolsProvider);
 		}
 		recreateHeightmapProvider();
-		updateVerticalExaggerationScale();
 		setMapBackgroundColor();
+	}
+
+	public void recreate3DObjectsProvider() {
+		MapRendererView mapRendererView = this.mapRendererView;
+		if (mapRendererView != null) {
+			if (mapPrimitivesProvider == null) {
+				mapRendererView.resetMap3DObjectsProvider();
+				map3DObjectsProvider = null;
+				return;
+			}
+			SRTMPlugin srtmPlugin = PluginsHelper.getPlugin(SRTMPlugin.class);
+			if (srtmPlugin != null && srtmPlugin.ENABLE_3D_MAP_OBJECTS.get()) {
+				Buildings3DColorType colorType = srtmPlugin.get3DBuildingsColorStyle();
+				boolean useCustomColor = colorType == Buildings3DColorType.CUSTOM;
+				int customColor = useCustomColor
+						? srtmPlugin.getBuildings3dCustomColor(nightMode)
+						: BUILDINGS_3D_DEFAULT_COLOR;
+				map3DObjectsProvider = new Map3DObjectsTiledProvider(
+						mapPrimitivesProvider, mapPresentationEnvironment,
+						useCustomColor, NativeUtilities.createFColorRGB(customColor)
+				);
+				mapRendererView.setMap3DObjectsProvider(map3DObjectsProvider);
+
+				for (Map.Entry<LatLon, Integer> entry : highlight3dObjects.entrySet()) {
+					add3DObjectColor(mapRendererView, entry.getKey(), entry.getValue());
+				}
+			} else {
+				mapRendererView.resetMap3DObjectsProvider();
+				map3DObjectsProvider = null;
+			}
+		} else {
+			map3DObjectsProvider = null;
+		}
+	}
+
+	public void reset3DObjectsProvider() {
+		MapRendererView mapRendererView = this.mapRendererView;
+		if (mapRendererView != null) {
+			mapRendererView.resetMap3DObjectsProvider();
+		}
+		map3DObjectsProvider = null;
+	}
+
+	@Nullable
+	public Integer getHighlight3dObjectColor(@NonNull LatLon latLon) {
+		return highlight3dObjects.get(latLon);
+	}
+
+	private boolean add3DObjectColor(@NonNull MapRendererView mapRenderer, @NonNull LatLon latLon, int color) {
+		PointI pointI = NativeUtilities.getPoint31FromLatLon(latLon);
+		FColorRGB fColorRGB = NativeUtilities.createFColorRGB(color);
+		return mapRenderer.add3DObjectColor(pointI, fColorRGB);
+	}
+
+	public void add3DObjectColor(@NonNull LatLon latLon, int color) {
+		MapRendererView mapRenderer = this.mapRendererView;
+		if (mapRenderer != null && add3DObjectColor(mapRenderer, latLon, color)) {
+			highlight3dObjects.put(latLon, color);
+		}
+	}
+
+	public void remove3DObjectColor(@NonNull LatLon latLon) {
+		MapRendererView mapRenderer = this.mapRendererView;
+		if (mapRenderer != null) {
+			PointI pointI = NativeUtilities.getPoint31FromLatLon(latLon);
+			if (mapRenderer.remove3DObjectColor(pointI)) {
+				highlight3dObjects.remove(latLon);
+			}
+		}
 	}
 
 	public void updateElevationConfiguration() {
@@ -511,16 +608,18 @@ public class MapRendererContext {
 			elevationConfiguration.setSlopeAlgorithm(SlopeAlgorithm.None);
 			elevationConfiguration.setVisualizationStyle(VisualizationStyle.None);
 		}
+		if (plugin != null) {
+			elevationConfiguration.setZScaleFactor(plugin.getVerticalExaggerationScale());
+			elevationConfiguration.setHillshadeSunAngle(plugin.HILLSHADE_SUN_ANGLE.get());
+			elevationConfiguration.setHillshadeSunAzimuth(plugin.HILLSHADE_SUN_AZIMUTH.get());
+		}
 		mapRendererView.setElevationConfiguration(elevationConfiguration);
 	}
 
 	public void updateVerticalExaggerationScale() {
 		MapRendererView mapRendererView = this.mapRendererView;
-		if (mapRendererView == null) {
-			return;
-		}
 		SRTMPlugin plugin = PluginsHelper.getPlugin(SRTMPlugin.class);
-		if (plugin != null) {
+		if (mapRendererView != null && plugin != null) {
 			mapRendererView.setElevationScaleFactor(plugin.getVerticalExaggerationScale());
 		}
 	}
@@ -577,7 +676,7 @@ public class MapRendererContext {
 			if (collection.calculateHeights(
 					ZoomLevel.ZoomLevel14, mapRendererView.getElevationDataTileSize(), qpoints, heights)) {
 				if (heights.size() == points.size()) {
-					int size = (int)heights.size();
+					int size = (int) heights.size();
 					float[] res = new float[size];
 					for (int i = 0; i < size; i++) {
 						res[i] = heights.get(i);
@@ -711,7 +810,7 @@ public class MapRendererContext {
 		if (object instanceof RenderedObject renderedObject) {
 			objectPolygon = renderedObject.getPolygon();
 		}
-		if (object instanceof PlaceDetailsObject detailsObject) {
+		if (object instanceof BaseDetailsObject detailsObject) {
 			objectPolygon = detailsObject.getSyntheticAmenity().getPolygon();
 		}
 		List<RenderedObject> res = new ArrayList<>();
@@ -775,7 +874,7 @@ public class MapRendererContext {
 			object.addLocation(p.getX(), p.getY());
 			rect.expand(p.getX(), p.getY(), p.getX(), p.getY());
 		}
-		object.setBbox((int)rect.left, (int)rect.top, (int)rect.right, (int)rect.bottom);
+		object.setBbox((int) rect.left, (int) rect.top, (int) rect.right, (int) rect.bottom);
 		ObfMapObject obfMapObject;
 		try {
 			obfMapObject = ObfMapObject.dynamic_pointer_cast(mapObject);

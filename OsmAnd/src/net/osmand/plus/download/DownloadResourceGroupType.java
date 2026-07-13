@@ -2,12 +2,14 @@ package net.osmand.plus.download;
 
 public enum DownloadResourceGroupType {
 	// headers
+	DELETED_MAPS(net.osmand.plus.R.string.unsupported_maps),
 	WORLD_MAPS(net.osmand.plus.R.string.world_maps),
 	REGION_MAPS(net.osmand.plus.R.string.region_maps),
 	SRTM_HEADER(net.osmand.plus.R.string.download_srtm_maps),
 	HILLSHADE_HEADER(net.osmand.plus.R.string.download_hillshade_maps),
 	OTHER_MAPS_HEADER(net.osmand.plus.R.string.download_select_map_types),
 	WIKIVOYAGE_HEADER(net.osmand.plus.R.string.shared_string_wikivoyage),
+	ASTRONOMY_HEADER(net.osmand.plus.R.string.astronomy_plugin_name),
 
 	NAUTICAL_WORLDWIDE_HEADER(net.osmand.plus.R.string.worldwide_maps),
 	NAUTICAL_DEPTH_HEADER(net.osmand.plus.R.string.depth_contours),
@@ -69,8 +71,9 @@ public enum DownloadResourceGroupType {
 				|| this == NAUTICAL_DEPTH_HEADER
 				|| this == NAUTICAL_POINTS_HEADER
 				|| this == NAUTICAL_MAPS_GROUP
-				|| this == WIKIVOYAGE_HEADER || this == TRAVEL_GROUP
-				|| this == EXTRA_MAPS;
+				|| this == WIKIVOYAGE_HEADER || this == ASTRONOMY_HEADER || this == TRAVEL_GROUP
+				|| this == EXTRA_MAPS
+				|| this == DELETED_MAPS;
 	}
 
 	public static String getVoiceTTSId() {

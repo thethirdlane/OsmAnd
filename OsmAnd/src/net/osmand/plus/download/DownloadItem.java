@@ -6,6 +6,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import net.osmand.map.OsmandRegions;
+import net.osmand.map.WorldRegion;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 
@@ -51,7 +52,12 @@ public abstract class DownloadItem {
 	}
 
 	public String getVisibleName(@NonNull Context ctx, @NonNull OsmandRegions regions, boolean includingParent, boolean useShortName) {
-		return type.getVisibleName(this, ctx, regions, includingParent, useShortName);
+		return getVisibleName(ctx, regions, includingParent, null, useShortName);
+	}
+
+	public String getVisibleName(@NonNull Context ctx, @NonNull OsmandRegions regions, boolean includingParent,
+	                             @Nullable WorldRegion baseParentRegion, boolean useShortName) {
+		return type.getVisibleName(this, ctx, regions, includingParent, baseParentRegion, useShortName);
 	}
 
 	@NonNull
@@ -88,6 +94,8 @@ public abstract class DownloadItem {
 	public abstract String getFreeMessage();
 
 	public abstract String getDate(@NonNull DateFormat dateFormat, boolean remote);
+
+	public abstract long getTimestamp(boolean remote);
 
 	@NonNull
 	public static String getFormattedMb(@NonNull Context ctx, double sizeInMb) {

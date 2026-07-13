@@ -10,10 +10,11 @@ import android.graphics.Shader;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import net.osmand.PlatformUtil;
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.shared.SharedUtil;
 import net.osmand.data.QuadRect;
 import net.osmand.data.RotatedTileBox;
-import net.osmand.plus.card.color.palette.gradient.PaletteGradientColor;
 import net.osmand.plus.track.Track3DStyle;
 import net.osmand.plus.views.layers.MapTileLayer;
 import net.osmand.plus.views.layers.geometry.GpxGeometryWay;
@@ -22,9 +23,12 @@ import net.osmand.shared.data.KQuadRect;
 import net.osmand.shared.gpx.GpxUtilities;
 import net.osmand.shared.gpx.GradientScaleType;
 import net.osmand.shared.gpx.primitives.WptPt;
+import net.osmand.shared.palette.domain.PaletteConstants;
 import net.osmand.shared.routing.ColoringType;
 import net.osmand.util.Algorithms;
 import net.osmand.util.MapUtils;
+
+import org.apache.commons.logging.Log;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,6 +42,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Renderable {
+
+    private static final Log log = PlatformUtil.getLog(Renderable.class);
 
     private static final int CPU_COUNT = Runtime.getRuntime().availableProcessors();
     private static final int CORE_POOL_SIZE = Math.max(2, Math.min(CPU_COUNT - 1, 4));
@@ -53,7 +59,7 @@ public class Renderable {
     };
 
     private static final BlockingQueue<Runnable> sPoolWorkQueue = new LinkedBlockingQueue<>(128);
-    public static final Executor THREAD_POOL_EXECUTOR;
+    private static final Executor THREAD_POOL_EXECUTOR;
 
     static {
         ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(
@@ -87,7 +93,7 @@ public class Renderable {
 
         @NonNull
         protected ColoringType coloringType = ColoringType.TRACK_SOLID;
-        protected String gradientColorPalette = PaletteGradientColor.DEFAULT_NAME;
+        protected String gradientColorPalette = PaletteConstants.DEFAULT_NAME;
         protected String routeInfoAttribute;
 
         protected GpxGeometryWay geometryWay;
@@ -196,6 +202,16 @@ public class Renderable {
             boolean changed = this.routeSegments != routeSegments;
             this.routeSegments = routeSegments;
             return changed;
+        }
+
+        public boolean updateBounds() {
+            if (points.size() != pointSize) {
+                int prevSize = pointSize;
+                pointSize = points.size();
+                GpxUtilities.INSTANCE.updateBounds(trackBounds, points, prevSize);
+                return true;
+            }
+            return false;
         }
 
         public void drawGeometry(@NonNull Canvas canvas, @NonNull RotatedTileBox tileBox,
@@ -426,7 +442,7 @@ public class Renderable {
                 double cullDistance = Math.pow(2.0, segmentSize - zoom);    // segmentSize == epsilon
                 culler = new AsynchronousResampler.RamerDouglasPeucer(this, cullDistance);
                 try {
-                    culler.executeOnExecutor(THREAD_POOL_EXECUTOR, "");
+                    OsmAndTaskManager.executeTask(culler, THREAD_POOL_EXECUTOR, "");
                 } catch (RejectedExecutionException e) {
                     culler = null;
                 }
@@ -442,11 +458,7 @@ public class Renderable {
 
         @Override
         public void drawSegment(double zoom, Paint p, Canvas canvas, RotatedTileBox tileBox) {
-            if (points.size() != pointSize) {
-                int prevSize = pointSize;
-                pointSize = points.size();
-                GpxUtilities.INSTANCE.updateBounds(trackBounds, points, prevSize);
-            }
+            updateBounds();
             drawSingleSegment(zoom, p, canvas, tileBox);
         }
 

@@ -1,5 +1,7 @@
 package net.osmand.plus.views.layers.core;
 
+import static net.osmand.core.android.MapRendererContext.FAVORITES_SECTION;
+
 import android.content.Context;
 import android.graphics.Bitmap;
 
@@ -43,13 +45,14 @@ public class FavoritesTileProvider extends interface_MapTiledCollectionProvider 
 		this.textStyle = textStyle;
 		this.density = density;
 		this.offset = new PointI(0, 0);
+		this.swigTakeOwnership();
 	}
 
 	public void drawSymbols(@NonNull MapRendererView mapRenderer) {
 		if (providerInstance == null) {
 			providerInstance = instantiateProxy();
 		}
-		mapRenderer.addSymbolsProvider(providerInstance);
+		mapRenderer.addSymbolsProvider(FAVORITES_SECTION, providerInstance);
 	}
 
 	public void clearSymbols(@NonNull MapRendererView mapRenderer) {
@@ -172,6 +175,11 @@ public class FavoritesTileProvider extends interface_MapTiledCollectionProvider 
 	@Override
 	public PointI getPinIconOffset() {
 		return offset;
+	}
+
+	@Override
+	public boolean waitForLoading() {
+		return true;
 	}
 
 	public void addToData(@NonNull FavouritePoint favorite, int color, boolean withShadow,

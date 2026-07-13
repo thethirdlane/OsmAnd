@@ -18,22 +18,21 @@ import android.view.ViewGroup;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
-import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
-import androidx.recyclerview.widget.DiffUtil.Callback;
 import androidx.recyclerview.widget.DiffUtil.DiffResult;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
+import net.osmand.plus.base.BaseNestedFragment;
 import net.osmand.plus.base.dialog.DialogManager;
-import net.osmand.plus.profiles.SelectCopyAppModeBottomSheet;
+import net.osmand.plus.profiles.SelectCopyAppModeBottomSheet.CopyAppModePrefsListener;
 import net.osmand.plus.settings.backend.ApplicationMode;
-import net.osmand.plus.settings.backend.OsmandSettings;
-import net.osmand.plus.settings.bottomsheets.ConfirmationBottomSheet;
-import net.osmand.plus.utils.UiUtilities;
+import net.osmand.plus.settings.bottomsheets.ConfirmationBottomSheet.ConfirmationDialogListener;
+import net.osmand.plus.settings.enums.ScreenLayoutMode;
+import net.osmand.plus.utils.InsetTarget.Type;
+import net.osmand.plus.utils.InsetTargetsCollection;
 import net.osmand.plus.views.layers.MapInfoLayer;
 import net.osmand.plus.views.mapwidgets.MapWidgetInfo;
 import net.osmand.plus.views.mapwidgets.MapWidgetRegistry;
@@ -43,44 +42,50 @@ import net.osmand.plus.views.mapwidgets.configure.WidgetsSettingsHelper;
 import net.osmand.plus.views.mapwidgets.configure.dialogs.AddWidgetFragment;
 import net.osmand.plus.views.mapwidgets.configure.panel.WidgetsListAdapter.PageItem;
 import net.osmand.plus.views.mapwidgets.configure.panel.WidgetsListAdapter.WidgetItem;
+import net.osmand.plus.views.mapwidgets.configure.panel.WidgetsListAdapter.WidgetsAdapterListener;
 import net.osmand.plus.views.mapwidgets.configure.settings.WidgetInfoBaseFragment;
 import net.osmand.util.Algorithms;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 
-public class WidgetsListFragment extends Fragment implements ConfirmationBottomSheet.ConfirmationDialogListener,
-		SelectCopyAppModeBottomSheet.CopyAppModePrefsListener, WidgetsListAdapter.WidgetsAdapterListener, AddWidgetFragment.AddWidgetListener {
+public class WidgetsListFragment extends BaseNestedFragment implements ConfirmationDialogListener,
+		CopyAppModePrefsListener, WidgetsAdapterListener, AddWidgetFragment.AddWidgetListener {
 
 	private static final String SELECTED_PANEL_KEY = "selected_panel_key";
 
-	private OsmandApplication app;
-	private OsmandSettings settings;
 	private MapWidgetRegistry widgetRegistry;
 	private ConfigureWidgetsController controller;
 
 	private WidgetsPanel selectedPanel;
-	private ApplicationMode selectedAppMode;
 	private List<List<MapWidgetInfo>> originalWidgetsData;
 
 	private RecyclerView recyclerView;
 	private WidgetsListAdapter adapter;
 
-	private boolean nightMode;
+	@NonNull
+	public WidgetsPanel getSelectedPanel() {
+		return selectedPanel;
+	}
 
 	public void setSelectedPanel(@NonNull WidgetsPanel panel) {
 		this.selectedPanel = panel;
 	}
 
+	@NonNull
+	@Override
+	public ApplicationMode getAppMode() {
+		Fragment fragment = getParentFragment();
+		if (fragment instanceof ConfigureWidgetsFragment configureFragment) {
+			return configureFragment.getSelectedAppMode();
+		}
+		return super.getAppMode();
+	}
+
 	@Override
 	public void onCreate(@Nullable Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		app = (OsmandApplication) requireContext().getApplicationContext();
-		settings = app.getSettings();
-		nightMode = !settings.isLightContent();
-		selectedAppMode = settings.getApplicationMode();
 		widgetRegistry = app.getOsmandMap().getMapLayers().getMapWidgetRegistry();
 
 		DialogManager dialogManager = app.getDialogManager();
@@ -93,33 +98,41 @@ public class WidgetsListFragment extends Fragment implements ConfirmationBottomS
 	@Nullable
 	@Override
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-		inflater = UiUtilities.getInflater(requireContext(), nightMode);
-		View view = inflater.inflate(R.layout.fragment_widgets_list, container, false);
-
+		updateNightMode();
+		View view = inflate(R.layout.fragment_widgets_list, container, false);
 		recyclerView = view.findViewById(R.id.recycler_view);
 		setupRecyclerView();
-
 		return view;
 	}
 
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.removeType(Type.ROOT_INSET);
+		return collection;
+	}
+
 	private void setupRecyclerView() {
+		ApplicationMode appMode = getAppMode();
 		originalWidgetsData = getPagedWidgets();
 
-		adapter = new WidgetsListAdapter(requireMapActivity(), nightMode, this, selectedPanel.isPanelVertical(), selectedAppMode);
+		adapter = new WidgetsListAdapter(requireMapActivity(), nightMode, this, selectedPanel.isPanelVertical(), appMode);
 
 		recyclerView.setLayoutManager(new LinearLayoutManager(requireContext()));
 		recyclerView.setAdapter(adapter);
 		adapter.attachToRecyclerView(recyclerView);
 
-		boolean disableAnimation = app.getSettings().DO_NOT_USE_ANIMATIONS.getModeValue(selectedAppMode);
+		boolean disableAnimation = settings.DO_NOT_USE_ANIMATIONS.getModeValue(appMode);
 		if (disableAnimation) {
 			recyclerView.setItemAnimator(null);
 		}
 
 		if (isEditMode()) {
-			List<Object> savedList = controller.getReorderList();
+			List<Object> savedList = controller.getReorderList(selectedPanel);
 			if (!Algorithms.isEmpty(savedList)) {
 				updateAdapter(new ArrayList<>(savedList), false);
+			} else {
+				updateWidgetItems(originalWidgetsData, false);
 			}
 		} else {
 			updateWidgetItems(originalWidgetsData, false);
@@ -129,20 +142,14 @@ public class WidgetsListFragment extends Fragment implements ConfirmationBottomS
 	@Override
 	public void onResume() {
 		super.onResume();
-
-		Fragment fragment = getParentFragment();
-		if (fragment instanceof ConfigureWidgetsFragment) {
-			((ConfigureWidgetsFragment) fragment).setSelectedFragment(this);
-		}
+		adapter.notifyDataSetChanged();
 	}
 
 	@Override
 	public void onPause() {
 		super.onPause();
-		Fragment fragment = getParentFragment();
-		if (fragment instanceof ConfigureWidgetsFragment) {
-			((ConfigureWidgetsFragment) fragment).setSelectedFragment(null);
-		}
+
+		updateReorderList();
 	}
 
 	@NonNull
@@ -150,11 +157,22 @@ public class WidgetsListFragment extends Fragment implements ConfirmationBottomS
 		MapActivity mapActivity = requireMapActivity();
 
 		List<List<MapWidgetInfo>> result = new ArrayList<>();
+		ScreenLayoutMode layoutMode = getScreenLayoutMode();
 		int enabledWidgetsFilter = AVAILABLE_MODE | ENABLED_MODE | MATCHING_PANELS_MODE;
-		for (Set<MapWidgetInfo> set : widgetRegistry.getPagedWidgetsForPanel(mapActivity, selectedAppMode, selectedPanel, enabledWidgetsFilter)) {
+		for (Set<MapWidgetInfo> set : widgetRegistry.getPagedWidgetsForPanel(mapActivity, getAppMode(),
+				layoutMode, selectedPanel, enabledWidgetsFilter)) {
 			result.add(new ArrayList<>(set));
 		}
 		return result;
+	}
+
+	@Nullable
+	private ScreenLayoutMode getScreenLayoutMode() {
+		Fragment fragment = getParentFragment();
+		if (fragment instanceof ConfigureWidgetsFragment configureFragment) {
+			return configureFragment.getScreenLayoutMode();
+		}
+		return null;
 	}
 
 	public void onApplyChanges() {
@@ -191,9 +209,6 @@ public class WidgetsListFragment extends Fragment implements ConfirmationBottomS
 			enabledWidgetsIds.add(key);
 		}
 
-		applyWidgetsPanel(newWidgetToCreate);
-		applyWidgetsVisibility(enabledWidgetsIds);
-
 		List<List<String>> orderList = new ArrayList<>();
 		for (List<MapWidgetInfo> page : widgetsData) {
 			List<String> orderIds = new ArrayList<>();
@@ -203,11 +218,13 @@ public class WidgetsListFragment extends Fragment implements ConfirmationBottomS
 			orderList.add(orderIds);
 		}
 
+		applyWidgetsPanel(newWidgetToCreate);
+		applyWidgetsVisibility(enabledWidgetsIds);
 		applyWidgetsOrder(orderList);
 
 		MapInfoLayer mapInfoLayer = app.getOsmandMap().getMapLayers().getMapInfoLayer();
 		if (mapInfoLayer != null) {
-			mapInfoLayer.recreateControls();
+			mapInfoLayer.recreateAllControls(requireMapActivity());
 		}
 	}
 
@@ -219,39 +236,38 @@ public class WidgetsListFragment extends Fragment implements ConfirmationBottomS
 	}
 
 	private void applyWidgetsVisibility(@NonNull List<String> enabledWidgetsIds) {
-		WidgetsPanel panel = selectedPanel;
-		for (MapWidgetInfo widget : widgetRegistry.getWidgetsForPanel(panel)) {
+		ApplicationMode appMode = getAppMode();
+		ScreenLayoutMode layoutMode = getScreenLayoutMode();
+		List<String> widgetsVisibility = MapWidgetInfo.getWidgetsVisibility(app, appMode, layoutMode);
+
+		for (MapWidgetInfo widget : widgetRegistry.getWidgetsForPanel(selectedPanel)) {
 			boolean enabledFromApply = enabledWidgetsIds.contains(widget.key);
-			if (widget.isEnabledForAppMode(selectedAppMode) != enabledFromApply) {
-				widgetRegistry.enableDisableWidgetForMode(selectedAppMode, widget, enabledFromApply, false);
+			if (widget.isEnabledForAppMode(appMode, widgetsVisibility) != enabledFromApply) {
+				widgetRegistry.enableDisableWidgetForMode(appMode, widget, enabledFromApply, layoutMode, false);
 			}
 		}
 	}
 
 	private void applyWidgetsOrder(@NonNull List<List<String>> pagedOrder) {
-		selectedPanel.setWidgetsOrder(selectedAppMode, pagedOrder, settings);
-		widgetRegistry.reorderWidgets();
+		ScreenLayoutMode layoutMode =  getScreenLayoutMode();
+		selectedPanel.setWidgetsOrder(getAppMode(), pagedOrder, settings, layoutMode);
+		widgetRegistry.reorderWidgets(layoutMode);
 	}
 
 	@Override
 	public void onSaveInstanceState(@NonNull Bundle outState) {
 		super.onSaveInstanceState(outState);
 		outState.putString(SELECTED_PANEL_KEY, selectedPanel.name());
+		updateReorderList();
+	}
+
+	private void updateReorderList() {
 		Fragment parent = getParentFragment();
 		if (parent instanceof ConfigureWidgetsFragment configureWidgetsFragment) {
 			if (isEditMode() && selectedPanel == configureWidgetsFragment.getSelectedPanel()) {
-				controller.setReorderList(adapter.getItems());
+				controller.setReorderList(selectedPanel, adapter.getItems());
 			}
 		}
-	}
-
-	@NonNull
-	public MapActivity requireMapActivity() {
-		FragmentActivity activity = getActivity();
-		if (!(activity instanceof MapActivity)) {
-			throw new IllegalStateException("Fragment " + this + " not attached to an activity.");
-		}
-		return (MapActivity) activity;
 	}
 
 	@Override
@@ -281,8 +297,11 @@ public class WidgetsListFragment extends Fragment implements ConfirmationBottomS
 
 		WidgetInfoBaseFragment settingsBaseFragment = widgetType.getSettingsFragment(app, widgetInfo);
 		if (settingsBaseFragment != null) {
+			ApplicationMode appMode = getAppMode();
+			ScreenLayoutMode layoutMode = getScreenLayoutMode();
 			FragmentManager manager = requireMapActivity().getSupportFragmentManager();
-			WidgetInfoBaseFragment.showFragment(manager, settingsBaseFragment, requireParentFragment(), selectedAppMode, widgetInfo.key, selectedPanel);
+			WidgetInfoBaseFragment.showInstance(manager, settingsBaseFragment, requireParentFragment(),
+					appMode, widgetInfo.key, selectedPanel, layoutMode);
 		}
 	}
 
@@ -353,6 +372,7 @@ public class WidgetsListFragment extends Fragment implements ConfirmationBottomS
 
 	public void addWidget(@NonNull MapWidgetInfo widgetInfo) {
 		adapter.addWidget(widgetInfo);
+		updateReorderList();
 	}
 
 	public void reloadWidgets() {
@@ -368,6 +388,9 @@ public class WidgetsListFragment extends Fragment implements ConfirmationBottomS
 	}
 
 	public void updateEditMode() {
+		if (isEditMode()) {
+			originalWidgetsData = getPagedWidgets();
+		}
 		List<Object> newItems = getUpdatedItems(originalWidgetsData);
 		updateAdapter(newItems, true);
 	}
@@ -375,8 +398,9 @@ public class WidgetsListFragment extends Fragment implements ConfirmationBottomS
 	@Override
 	public void onWidgetSelectedToAdd(@NonNull String widgetId, @NonNull WidgetsPanel widgetsPanel, boolean recreateControls) {
 		MapWidgetInfo widgetInfo = widgetRegistry.getWidgetInfoById(widgetId);
-		if (widgetInfo != null) {
+		if (widgetInfo != null && widgetsPanel == selectedPanel) {
 			adapter.addWidget(widgetInfo);
+			updateReorderList();
 		}
 	}
 
@@ -384,7 +408,7 @@ public class WidgetsListFragment extends Fragment implements ConfirmationBottomS
 	public void copyAppModePrefs(@NonNull ApplicationMode appMode) {
 		int filter = ENABLED_MODE | AVAILABLE_MODE | MATCHING_PANELS_MODE;
 		WidgetsSettingsHelper helper = new WidgetsSettingsHelper(requireMapActivity(), appMode);
-		List<List<MapWidgetInfo>> widgetsOrder = helper.getWidgetInfoPagedOrder(appMode, selectedAppMode, selectedPanel, filter);
+		List<List<MapWidgetInfo>> widgetsOrder = helper.getWidgetInfoPagedOrder(appMode, getAppMode(), selectedPanel, filter);
 		updateWidgetItems(widgetsOrder, false);
 	}
 
@@ -508,7 +532,7 @@ public class WidgetsListFragment extends Fragment implements ConfirmationBottomS
 	}
 
 	@NonNull
-	public static ArrayList<MapWidgetInfo> getRowWidgetIds(int rowPosition, @NonNull List<Object> searchItems) {
+	public static ArrayList<MapWidgetInfo> getRowWidgetIds(int rowPosition,	@NonNull List<Object> searchItems) {
 		ArrayList<MapWidgetInfo> rowWidgetIds = new ArrayList<>();
 		Object item = searchItems.get(++rowPosition);
 
@@ -532,7 +556,7 @@ public class WidgetsListFragment extends Fragment implements ConfirmationBottomS
 		return false;
 	}
 
-	public static int getPreviousRowPosition(@NonNull List<Object> newItems, int currentRowPosition) {
+	private int getPreviousRowPosition(@NonNull List<Object> newItems, int currentRowPosition) {
 		currentRowPosition--;
 		while (currentRowPosition >= 0) {
 			if (newItems.get(currentRowPosition) instanceof PageItem) {
@@ -558,124 +582,4 @@ public class WidgetsListFragment extends Fragment implements ConfirmationBottomS
 		adapter.setItems(newItems);
 		diffRes.dispatchUpdatesTo(adapter);
 	}
-
-	static class WidgetsListDiffCallback extends Callback {
-		public static final int PAYLOAD_EDIT_MODE_CHANGED = 0;
-		public static final int PAYLOAD_MOVE_STATE_CHANGED = 1;
-		public static final int PAYLOAD_DIVIDER_STATE_CHANGED = 2;
-		public static final int PAYLOAD_UPDATE_ALL = 3;
-		public static final int PAYLOAD_UPDATE_POSITION = 4;
-		private final List<Object> oldItems;
-		private final List<Object> newItems;
-		private final boolean oldEditMode;
-		private final boolean newEditMode;
-
-		private final boolean updatePosition;
-
-		WidgetsListDiffCallback(@NonNull List<Object> oldItems, @NonNull List<Object> newItems,
-		                        boolean oldEditMode, boolean newEditMode, boolean updatePosition) {
-			this.oldItems = new ArrayList<>(oldItems);
-			this.newItems = newItems;
-			this.oldEditMode = oldEditMode;
-			this.newEditMode = newEditMode;
-			this.updatePosition = updatePosition;
-		}
-
-		@Override
-		public int getOldListSize() {
-			return oldItems.size();
-		}
-
-		@Override
-		public int getNewListSize() {
-			return newItems.size();
-		}
-
-		@Override
-		public boolean areItemsTheSame(int oldItemPosition, int newItemPosition) {
-			Object oldItem = oldItems.get(oldItemPosition);
-			Object newItem = newItems.get(newItemPosition);
-
-			if (oldItem instanceof Integer && newItem instanceof Integer) {
-				return oldItem.equals(newItem);
-			}
-
-			if (oldItem instanceof PageItem && newItem instanceof PageItem) {
-				return ((PageItem) oldItem).pageNumber == ((PageItem) newItem).pageNumber;
-			}
-
-			if (oldItem instanceof WidgetItem && newItem instanceof WidgetItem) {
-				return Objects.equals(((WidgetItem) oldItem).mapWidgetInfo.key, ((WidgetItem) newItem).mapWidgetInfo.key);
-			}
-
-			return false;
-		}
-
-		@Override
-		public boolean areContentsTheSame(int oldItemPosition, int newItemPosition) {
-			Object oldItem = oldItems.get(oldItemPosition);
-			Object newItem = newItems.get(newItemPosition);
-
-			if (oldEditMode != newEditMode) {
-				return false;
-			}
-
-			if (updatePosition) {
-				return false;
-			}
-
-			if (oldItem instanceof Integer && newItem instanceof Integer) {
-				return oldItem.equals(newItem);
-			}
-
-			if (oldItem instanceof PageItem oldPage && newItem instanceof PageItem newPage) {
-				return oldPage.equals(newPage);
-			}
-
-			if (oldItem instanceof WidgetItem oldWidget && newItem instanceof WidgetItem newWidget) {
-				return oldWidget.equals(newWidget);
-			}
-
-			return false;
-		}
-
-		@Nullable
-		@Override
-		public Object getChangePayload(int oldItemPosition, int newItemPosition) {
-			Object oldItem = oldItems.get(oldItemPosition);
-			Object newItem = newItems.get(newItemPosition);
-
-			List<Integer> payloads = new ArrayList<>();
-
-			if (oldEditMode != newEditMode) {
-				payloads.add(PAYLOAD_EDIT_MODE_CHANGED);
-			}
-
-			if (updatePosition) {
-				payloads.add(PAYLOAD_UPDATE_POSITION);
-			}
-
-			if (oldItem instanceof PageItem oldPage && newItem instanceof PageItem newPage) {
-				if (oldPage.pageNumber != newPage.pageNumber) {
-					payloads.add(PAYLOAD_UPDATE_ALL);
-				}
-				if ((oldPage.movable != newPage.movable) || (!Objects.equals(oldPage.deleteMessage, newPage.deleteMessage))) {
-					payloads.add(PAYLOAD_MOVE_STATE_CHANGED);
-				}
-			}
-
-			if (oldItem instanceof WidgetItem oldWidget && newItem instanceof WidgetItem newWidget) {
-				if (!Objects.equals(oldWidget.mapWidgetInfo, newWidget.mapWidgetInfo)) {
-					payloads.add(PAYLOAD_UPDATE_ALL);
-				}
-				if ((oldWidget.showBottomDivider != newWidget.showBottomDivider)
-						|| (oldWidget.showBottomShadow != newWidget.showBottomShadow)) {
-					payloads.add(PAYLOAD_DIVIDER_STATE_CHANGED);
-				}
-			}
-
-			return payloads.isEmpty() ? null : payloads;
-		}
-	}
-
 }

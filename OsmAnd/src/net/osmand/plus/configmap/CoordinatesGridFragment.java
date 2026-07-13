@@ -1,6 +1,5 @@
 package net.osmand.plus.configmap;
 
-import android.app.Activity;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.view.LayoutInflater;
@@ -12,26 +11,29 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
 
 import net.osmand.plus.R;
-import net.osmand.plus.activities.MapActivity;
-import net.osmand.plus.base.BaseOsmAndFragment;
-import net.osmand.plus.card.color.palette.main.ColorsPaletteElements;
+import net.osmand.plus.base.BaseFullScreenFragment;
 import net.osmand.plus.chooseplan.ChoosePlanFragment;
 import net.osmand.plus.helpers.AndroidUiHelper;
 import net.osmand.plus.inapp.InAppPurchaseHelper.InAppPurchaseListener;
 import net.osmand.plus.inapp.InAppPurchaseUtils;
+import net.osmand.plus.palette.view.PaletteElements;
+import net.osmand.plus.settings.coordinates.CoordinateFormatSelectorBottomSheet;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTarget.Type;
+import net.osmand.plus.utils.InsetTargetsCollection;
 import net.osmand.plus.utils.UiUtilities;
 import net.osmand.plus.widgets.dialogbutton.DialogButtonType;
 
-public class CoordinatesGridFragment extends BaseOsmAndFragment
+public class CoordinatesGridFragment extends BaseFullScreenFragment
 		implements ICoordinatesGridScreen, InAppPurchaseListener {
 
 	public static final String TAG = CoordinatesGridFragment.class.getSimpleName();
+	private static final String GRID_FORMAT_REQUEST_KEY = "coordinates_grid_format";
 
 	private View view;
 	private int profileColor;
@@ -55,7 +57,7 @@ public class CoordinatesGridFragment extends BaseOsmAndFragment
 	                         @Nullable ViewGroup container,
 	                         @Nullable Bundle savedInstanceState) {
 		updateNightMode();
-		view = inflate(R.layout.fragment_coordinates_grid, container);
+		view = inflate(R.layout.fragment_coordinates_grid, container, false);
 		if (controller != null) {
 			profileColor = settings.getApplicationMode().getProfileColor(nightMode);
 			showHideTopShadow();
@@ -69,6 +71,14 @@ public class CoordinatesGridFragment extends BaseOsmAndFragment
 			dismiss();
 		}
 		return view;
+	}
+
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.replace(InsetTarget.createBottomContainer(R.id.main_container).landscapeLeftSided(true));
+		collection.removeType(Type.ROOT_INSET);
+		return collection;
 	}
 
 	private void showHideTopShadow() {
@@ -119,8 +129,24 @@ public class CoordinatesGridFragment extends BaseOsmAndFragment
 
 	private void setupFormatButton() {
 		View button = view.findViewById(R.id.format_button);
-		View selector = button.findViewById(R.id.format_selector);
-		button.setOnClickListener(v -> controller.onFormatSelectorClicked(selector, profileColor, nightMode));
+		CoordinateFormatSelectorBottomSheet.setupResultListener(getChildFragmentManager(), this,
+				new CoordinateFormatSelectorBottomSheet.FormatSelectionListener() {
+					@Override
+					public void onFormatSelected(@NonNull String formatId) {
+						controller.onCoordinateFormatSelected(formatId);
+					}
+
+					@Override
+					public void onSelectOtherFormat() {
+					}
+				}, GRID_FORMAT_REQUEST_KEY);
+		button.setOnClickListener(v -> CoordinateFormatSelectorBottomSheet.showInstance(
+				getChildFragmentManager(),
+				GRID_FORMAT_REQUEST_KEY,
+				settings.getApplicationMode(),
+				controller.getSelectedCoordinateFormatId(),
+				false,
+				controller.getSupportedCoordinateFormatIds()));
 		setupSelectableBackground(button);
 		updateFormatButton();
 	}
@@ -136,11 +162,10 @@ public class CoordinatesGridFragment extends BaseOsmAndFragment
 		View button = view.findViewById(R.id.zoom_levels_button);
 		updateZoomLevelsButton();
 		button.setOnClickListener(v -> {
-			FragmentActivity activity = getActivity();
-			if (activity instanceof MapActivity mapActivity) {
+			callMapActivity(mapActivity -> {
 				mapActivity.getDashboard().hideDashboard();
 				controller.onZoomLevelsClicked(mapActivity);
-			}
+			});
 		});
 		setupSelectableBackground(button);
 	}
@@ -184,17 +209,14 @@ public class CoordinatesGridFragment extends BaseOsmAndFragment
 			UiUtilities.setupDialogButton(nightMode, btnGet, DialogButtonType.SECONDARY_ACTIVE, R.string.shared_string_get);
 		}
 
-		button.setOnClickListener(v -> {
-			MapActivity mapActivity = getMapActivity();
-			if (mapActivity != null) {
-				if (purchased) {
-					mapActivity.getDashboard().hideDashboard();
-					controller.onSelectGridColorClicked(mapActivity);
-				} else {
-					ChoosePlanFragment.showDefaultInstance(mapActivity);
-				}
+		button.setOnClickListener(v -> callMapActivity(mapActivity -> {
+			if (purchased) {
+				mapActivity.getDashboard().hideDashboard();
+				controller.onSelectGridColorClicked(mapActivity);
+			} else {
+				ChoosePlanFragment.showDefaultInstance(mapActivity);
 			}
-		});
+		}));
 
 		setupSelectableBackground(button);
 		AndroidUiHelper.setVisibility(!purchased, btnGet, view.findViewById(R.id.grid_color_summary));
@@ -204,7 +226,7 @@ public class CoordinatesGridFragment extends BaseOsmAndFragment
 	@Override
 	public void updateGridColorPreview() {
 		View preview = view.findViewById(R.id.color_preview_icon);
-		ColorsPaletteElements paletteElements = new ColorsPaletteElements(view.getContext(), nightMode);
+		PaletteElements paletteElements = new PaletteElements(view.getContext(), nightMode);
 		paletteElements.updateColorItemView(preview, controller.getGridColor(), false);
 	}
 
@@ -231,24 +253,12 @@ public class CoordinatesGridFragment extends BaseOsmAndFragment
 	}
 
 	private void dismiss() {
-		MapActivity mapActivity = getMapActivity();
-		if (mapActivity != null) {
-			mapActivity.getDashboard().onBackPressed();
-		}
+		callMapActivity(mapActivity -> mapActivity.getDashboard().onBackPressed());
 	}
 
 	@Override
 	public void onItemPurchased(String sku, boolean active) {
 		setupGridColorButton();
-	}
-
-	@Nullable
-	private MapActivity getMapActivity() {
-		Activity activity = getActivity();
-		if (activity instanceof MapActivity && !activity.isFinishing()) {
-			return (MapActivity) activity;
-		}
-		return null;
 	}
 
 	@Override

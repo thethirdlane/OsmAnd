@@ -12,13 +12,21 @@ import net.osmand.data.MapObject;
 import net.osmand.data.Street;
 import net.osmand.router.BinaryRoutePlanner;
 import net.osmand.router.BinaryRoutePlanner.RouteSegmentPoint;
+import net.osmand.router.RoutePlannerFrontEnd.RouteCalculationMode;
+import net.osmand.router.RoutingConfiguration.RoutingMemoryLimits;
 import net.osmand.router.RoutePlannerFrontEnd;
+import net.osmand.router.RoutingConfiguration;
 import net.osmand.router.RoutingContext;
+import net.osmand.search.core.SearchPhrase;
 import net.osmand.util.Algorithms;
 import net.osmand.util.MapUtils;
+import net.osmand.util.SearchAlgorithms;
+
 import org.apache.commons.logging.Log;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.text.Collator;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -30,7 +38,7 @@ import java.util.Map;
 
 public class GeocodingUtilities {
 
-	private static final Log log = PlatformUtil.getLog(GeocodingUtilities.class);
+	static final Log LOG = PlatformUtil.getLog(GeocodingUtilities.class);
 
 	// Location to test parameters https://www.openstreetmap.org/#map=18/53.896473/27.540071 (hno 44)
 	// BUG https://www.openstreetmap.org/#map=19/50.9356/13.35348 (hno 26) street is 
@@ -38,11 +46,13 @@ public class GeocodingUtilities {
 	public static final float STOP_SEARCHING_STREET_WITH_MULTIPLIER_RADIUS = 250;
 	public static final float STOP_SEARCHING_STREET_WITHOUT_MULTIPLIER_RADIUS = 400;
 
-	public static final int DISTANCE_STREET_NAME_PROXIMITY_BY_NAME = 45000;
-	public static final float DISTANCE_STREET_FROM_CLOSEST_WITH_SAME_NAME = 1000;
+	public static final int DISTANCE_STREET_NAME_PROXIMITY_BY_NAME = 15000;
+	public static final float DISTANCE_STREET_FROM_CLOSEST_WITH_SAME_NAME = 7500;
 
 	public static final float THRESHOLD_MULTIPLIER_SKIP_BUILDINGS_AFTER = 1.5f;
 	public static final float DISTANCE_BUILDING_PROXIMITY = 100;
+	
+	public static int GEOCODING_POI_MEMORY = 512; 
 
 
 	public static final Comparator<GeocodingResult> DISTANCE_COMPARATOR = new Comparator<GeocodingResult>() {
@@ -102,14 +112,25 @@ public class GeocodingUtilities {
 		}
 		public double getDistance() {
 			if (dist == -1 && searchPoint != null) {
-				if (building == null && point != null) {
+				if (connectionPoint != null) {
+					dist = MapUtils.getDistance(connectionPoint, searchPoint);
+				} else if (building == null && point != null) {
 					// Need distance between searchPoint and nearest RouteSegmentPoint here, to approximate distance from neareest named road
 					dist = Math.sqrt(point.distToProj);
-				} else if (connectionPoint != null) {
-					dist = MapUtils.getDistance(connectionPoint, searchPoint);
 				}
 			}
 			return dist;
+		}
+		
+		public String getBuildingString() {
+			if (building != null) {
+				if(buildingInterpolation != null) {
+					return buildingInterpolation;
+				} else {
+					return building.getName();
+				}
+			}
+			return null;
 		}
 
 		public void resetDistance() {
@@ -127,12 +148,9 @@ public class GeocodingUtilities {
 		@Override
 		public String toString() {
 			StringBuilder bld = new StringBuilder();
-			if (building != null) {
-				if(buildingInterpolation != null) {
-					bld.append(buildingInterpolation);
-				} else {
-					bld.append(building.getName());
-				}
+			String bldStr = getBuildingString();
+			if (bldStr != null) {
+				bld.append(bldStr);
 			}
 			if (street != null) {
 				bld.append(" str. ").append(street.getName()).append(" city ").append(city.getName());
@@ -195,76 +213,88 @@ public class GeocodingUtilities {
 		return lst;
 	}
 
-	public List<String> prepareStreetName(String s, boolean addCommonWords) {
-		List<String> ls = new ArrayList<String>();
-		int beginning = 0;
-		for (int i = 1; i < s.length(); i++) {
-			if (Character.isWhitespace(s.charAt(i)) || s.charAt(i) == '-') {
-				addWord(ls, s.substring(beginning, i), addCommonWords);
-				beginning = i + 1;
-			} else if (s.charAt(i) == '(') {
-				addWord(ls, s.substring(beginning, i), addCommonWords);
-				while (i < s.length()) {
-					char c = s.charAt(i);
-					i++;
-					beginning = i;
-					if (c == ')')
-						break;
-				}
-
+	private List<String> prepareStreetName(String streetName, boolean includeCommonWords) {
+		List<String> words = new ArrayList<>();
+		// "Tempelhofer Damm" == "Tempelhofer Damm (Tempelhof-Schöneberg)"
+		for (String word : SearchAlgorithms.splitAndNormalize(SearchPhrase.stripBraces(streetName), true)) {
+			if (Algorithms.isNotEmpty(word) && (includeCommonWords || CommonWords.getInstance().getCommonGeocoding(word) == -1)) {
+				words.add(word);
 			}
 		}
-		if (beginning < s.length()) {
-			String lastWord = s.substring(beginning, s.length());
-			addWord(ls, lastWord, addCommonWords);
-		}
-		Collections.sort(ls, Collator.getInstance());
-		return ls;
+		return words; // keep original order ("NC 42" - search by "NC" not by "42")
 	}
-
-	private void addWord(List<String> ls, String word, boolean addCommonWords) {
-		String w = word.trim().toLowerCase();
-		if (!Algorithms.isEmpty(w)) {
-			if(!addCommonWords && CommonWords.getCommonGeocoding(w) != -1) {
-				return;
-			}
-			ls.add(w);
+	
+	private boolean matchStreetName(String s1, String s2, boolean matchWithCommonWords) {
+		if (Algorithms.isEmpty(s1) || Algorithms.isEmpty(s2)) {
+			return false;
 		}
+		if (Algorithms.stringsEqual(s1, s2)) {
+			return true;
+		}
+
+		// Strip dashes before split to match "NC 42" == "NC-42"
+		String undashed1 = s1.replace("-", " ");
+		String undashed2 = s2.replace("-", " ");
+
+		List<String> s1words = prepareStreetName(undashed1, false);
+		List<String> s2words = prepareStreetName(undashed2, false);
+		s1words.sort(Collator.getInstance());
+		s2words.sort(Collator.getInstance());
+		if (!s1words.isEmpty() && s1words.equals(s2words)) {
+			return true;
+		}
+
+		if (matchWithCommonWords) {
+			s1words = prepareStreetName(undashed1, true);
+			s2words = prepareStreetName(undashed2, true);
+			s1words.sort(Collator.getInstance());
+			s2words.sort(Collator.getInstance());
+			return !s1words.isEmpty() && s1words.equals(s2words);
+		}
+
+		return false;
 	}
 
 	public List<GeocodingResult> justifyReverseGeocodingSearch(final GeocodingResult road, BinaryMapIndexReader reader,
 			double knownMinBuildingDistance, final ResultMatcher<GeocodingResult> result) throws IOException {
-		// test address index search
 		final List<GeocodingResult> streetsList = new ArrayList<GeocodingResult>();
+
+		List<String> streetNamesUsed = prepareStreetName(road.streetName, false);
+
 		boolean addCommonWords = false;
-		List<String> streetNamesUsed = prepareStreetName(road.streetName, addCommonWords);
-		if(streetNamesUsed.size() == 0) {
-			addCommonWords = true;
-			streetNamesUsed = prepareStreetName(road.streetName, addCommonWords);
+		for (String word : streetNamesUsed) {
+			if (SearchAlgorithms.isNumber2Letters(word)) {
+				addCommonWords = true; // 1-я Цэнтральная вуліца
+				break;
+			}
 		}
+
+		if (streetNamesUsed.isEmpty() || addCommonWords) {
+			streetNamesUsed = prepareStreetName(road.streetName, true);
+			addCommonWords = true;
+		}
+
 		final boolean addCommonWordsFinal = addCommonWords;
-		final List<String> streetNamesUsedFinal = streetNamesUsed;
-		if (streetNamesUsedFinal.size() > 0) {
-//			log.info("Search street by name " + road.streetName + " " + streetNamesUsedFinal);
-			String mainWord = "";
-			for (int i = 0; i < streetNamesUsedFinal.size(); i++) {
-				String s = streetNamesUsedFinal.get(i);
-				if (s.length() > mainWord.length()) {
-					mainWord = s;
+		if (!streetNamesUsed.isEmpty()) {
+			String longestWord = "";
+			for (int i = 0; i < streetNamesUsed.size(); i++) {
+				String s = streetNamesUsed.get(i);
+				if (s.length() > longestWord.length()) {
+					longestWord = s;
 				}
 			}
 			SearchRequest<MapObject> req = BinaryMapIndexReader.buildAddressByNameRequest(
 					new ResultMatcher<MapObject>() {
 						@Override
 						public boolean publish(MapObject object) {
-							if (object instanceof Street
-									&& prepareStreetName(object.getName(), addCommonWordsFinal).equals(streetNamesUsedFinal)) {
-								double d = MapUtils.getDistance(object.getLocation(), road.searchPoint.getLatitude(),
+							if (object instanceof Street that
+									&& matchStreetName(road.streetName, that.getName(), addCommonWordsFinal)) {
+								double d = MapUtils.getDistance(that.getLocation(), road.searchPoint.getLatitude(),
 										road.searchPoint.getLongitude());
-								// double check to suport old format
+								// double check to support old format
 								if (d < DISTANCE_STREET_NAME_PROXIMITY_BY_NAME) {
 									GeocodingResult rs = new GeocodingResult(road);
-									rs.street = (Street) object;
+									rs.street = that;
 									// set connection point to sort
 									rs.connectionPoint = rs.street.getLocation();
 									rs.city = rs.street.getCity();
@@ -281,7 +311,7 @@ public class GeocodingUtilities {
 						public boolean isCancelled() {
 							return result != null && result.isCancelled();
 						}
-					}, mainWord, StringMatcherMode.CHECK_EQUALS_FROM_SPACE);
+					}, longestWord, StringMatcherMode.CHECK_EQUALS_FROM_SPACE);
 			req.setBBoxRadius(road.getLocation().getLatitude(), road.getLocation().getLongitude(), DISTANCE_STREET_NAME_PROXIMITY_BY_NAME);
 			reader.searchAddressDataByName(req);
 		}
@@ -374,7 +404,7 @@ public class GeocodingUtilities {
 	private List<GeocodingResult> loadStreetBuildings(final GeocodingResult road, BinaryMapIndexReader reader,
 			GeocodingResult street) throws IOException {
 		final List<GeocodingResult> streetBuildings = new ArrayList<GeocodingResult>();
-		reader.preloadBuildings(street.street, null);
+		reader.preloadBuildings(street.street, null, null);
 //		log.info("Preload buildings " + street.street.getName() + " " + street.city.getName() + " " + street.street.getId());
 		for (Building b : street.street.getBuildings()) {
 			if (b.getLatLon2() != null) {
@@ -406,6 +436,14 @@ public class GeocodingUtilities {
 			}
 		}
 		return streetBuildings;
+	}
+	
+	public static RoutingContext buildDefaultContextForPOI(BinaryMapIndexReader index) throws FileNotFoundException, IOException {
+		BinaryMapIndexReader geocoding = new BinaryMapIndexReader(new RandomAccessFile(index.getFile(), "r"), index);
+		RoutingMemoryLimits memoryLimit = new RoutingMemoryLimits(GEOCODING_POI_MEMORY, GEOCODING_POI_MEMORY);
+		RoutingConfiguration config = RoutingConfiguration.getDefault().build("car", memoryLimit);
+		RoutingContext ctx = new RoutePlannerFrontEnd().buildRoutingContext(config, null, new BinaryMapIndexReader[] {geocoding}, RouteCalculationMode.NORMAL);
+		return ctx;
 	}
 
 	public List<GeocodingResult> sortGeocodingResults(List<BinaryMapIndexReader> list, List<GeocodingResult> res) throws IOException {

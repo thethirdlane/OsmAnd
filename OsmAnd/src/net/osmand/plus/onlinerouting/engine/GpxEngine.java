@@ -59,7 +59,13 @@ public class GpxEngine extends OnlineRoutingEngine {
 
 	@Override
 	protected void makeFullUrl(@NonNull StringBuilder sb, @NonNull List<LatLon> path, @Nullable Float startBearing) {
-		sb.append("?");
+		if (sb.indexOf("?") >= 0) {
+			if (sb.charAt(sb.length() - 1) != '?' && sb.charAt(sb.length() - 1) != '&') {
+				sb.append('&');
+			}
+		} else {
+			sb.append('?');
+		}
 		for (int i = 0; i < path.size(); i++) {
 			LatLon point = path.get(i);
 			sb.append("point=")
@@ -163,7 +169,7 @@ public class GpxEngine extends OnlineRoutingEngine {
 				List<GpxPoint> gpxPoints = routingHelper.generateGpxPoints(env, gctx, holder);
 				GpxRouteApproximation gpxApproximation = routingHelper.calculateGpxApproximation(env, gctx, gpxPoints, null, calculatedTimeSpeed[0]);
 				MeasurementEditingContext ctx = new MeasurementEditingContext(app);
-				ctx.setPoints(gpxApproximation, points, appMode, calculatedTimeSpeed[0]);
+				ctx.setPoints(0, gpxApproximation, points, appMode, calculatedTimeSpeed[0]);
 				calculatedTimeSpeed[0] = ctx.hasCalculatedTimeSpeed();
 				return ctx.exportGpx(ONLINE_ROUTING_GPX_FILE_NAME);
 			}

@@ -2,10 +2,10 @@ package net.osmand.plus.settings.fragments;
 
 import static net.osmand.plus.routepreparationmenu.RoutingOptionsHelper.DRIVING_STYLE;
 import static net.osmand.plus.settings.backend.OsmandSettings.ROUTING_PREFERENCE_PREFIX;
-import static net.osmand.plus.settings.enums.RoutingType.HH_JAVA;
 import static net.osmand.plus.settings.fragments.DangerousGoodsFragment.getHazmatUsaClass;
 import static net.osmand.plus.settings.fragments.SettingsScreenType.DANGEROUS_GOODS;
 import static net.osmand.plus.utils.AndroidUtils.getRoutingStringPropertyName;
+import static net.osmand.plus.utils.OsmAndFormatterParams.NO_TRAILING_ZEROS;
 import static net.osmand.router.GeneralRouter.*;
 
 import android.app.Activity;
@@ -52,10 +52,12 @@ import net.osmand.plus.settings.bottomsheets.ElevationDateBottomSheet;
 import net.osmand.plus.settings.bottomsheets.GoodsRestrictionsBottomSheet;
 import net.osmand.plus.settings.bottomsheets.HazmatCategoryBottomSheet;
 import net.osmand.plus.settings.bottomsheets.RecalculateRouteInDeviationBottomSheet;
+import net.osmand.plus.settings.bottomsheets.RouteCalculationMethodBottomSheet;
 import net.osmand.plus.settings.controllers.ViaFerrataDialogController;
 import net.osmand.plus.settings.enums.ApproximationType;
 import net.osmand.plus.settings.enums.DrivingRegion;
-import net.osmand.plus.settings.enums.RoutingType;
+import net.osmand.plus.settings.enums.RouteCalculationMethod;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.plus.settings.preferences.ListParameters;
 import net.osmand.plus.settings.preferences.ListPreferenceEx;
 import net.osmand.plus.settings.preferences.MultiSelectBooleanPreference;
@@ -63,7 +65,6 @@ import net.osmand.plus.settings.preferences.SwitchPreferenceEx;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
 import net.osmand.plus.utils.OsmAndFormatter;
-import net.osmand.plus.utils.OsmAndFormatterParams;
 import net.osmand.plus.utils.UiUtilities;
 import net.osmand.plus.widgets.popup.PopUpMenu;
 import net.osmand.plus.widgets.popup.PopUpMenuDisplayData;
@@ -89,7 +90,8 @@ public class RouteParametersFragment extends BaseSettingsFragment {
 	private static final String ROUTE_PARAMETERS_INFO = "route_parameters_info";
 	private static final String ROUTE_PARAMETERS_IMAGE = "route_parameters_image";
 	private static final String ROUTING_SHORT_WAY = "prouting_short_way";
-	private static final String ROUTING_RECALC_DISTANCE = "routing_recalc_distance";
+	public static final String ROUTING_RECALC_DISTANCE = "routing_recalc_distance";
+	public static final String DISABLE_OFFROUTE_RECALC = "disable_offroute_recalc";
 	private static final String ROUTING_RECALC_WRONG_DIRECTION = "disable_wrong_direction_recalc";
 	private static final String HAZMAT_TRANSPORTING_ENABLED = "hazmat_transporting_enabled";
 	private static final String DANGEROUS_GOODS_USA = "dangerous_goods_usa";
@@ -200,10 +202,6 @@ public class RouteParametersFragment extends BaseSettingsFragment {
 	}
 
 	private void setupRoutingPrefs() {
-		OsmandApplication app = getMyApplication();
-		if (app == null) {
-			return;
-		}
 		PreferenceScreen screen = getPreferenceScreen();
 		ApplicationMode am = getSelectedAppMode();
 
@@ -227,6 +225,10 @@ public class RouteParametersFragment extends BaseSettingsFragment {
 			straightAngle.setLayoutResource(R.layout.preference_with_descr);
 			straightAngle.setIcon(getRoutingPrefIcon(ROUTING_RECALC_DISTANCE));
 			getPreferenceScreen().addPreference(straightAngle);
+		}
+
+		if (settings.ROUTE_CALCULATION_METHOD.get().canProfileUseFastRouting(am)) {
+			setupRouteCalculationMethodPref(screen);
 		}
 
 		addDividerPref();
@@ -319,6 +321,23 @@ public class RouteParametersFragment extends BaseSettingsFragment {
 		setupTimeConditionalRoutingPref();
 	}
 
+	private void setupRouteCalculationMethodPref(@NonNull PreferenceScreen screen) {
+		RouteCalculationMethod[] methods = RouteCalculationMethod.values();
+		String[] names = new String[methods.length];
+		Integer[] values = new Integer[methods.length];
+
+		for (int i = 0; i < names.length; i++) {
+			RouteCalculationMethod method = methods[i];
+			values[i] = method.ordinal();
+			names[i] = method.toHumanString(app);
+		}
+
+		ListPreferenceEx preference = createListPreferenceEx(settings.ROUTE_CALCULATION_METHOD.getId(), names,
+				values, R.string.route_calculation_method, R.layout.preference_with_descr);
+		preference.setIcon(getPersistentPrefIcon(R.drawable.ic_action_route_direct));
+		screen.addPreference(preference);
+	}
+
 	public static Preference createRoutingParameterPref(@NonNull Context ctx,
 			@NonNull RoutingParameter p) {
 		OsmandApplication app = (OsmandApplication) ctx.getApplicationContext();
@@ -406,7 +425,6 @@ public class RouteParametersFragment extends BaseSettingsFragment {
 			setupOsmLiveForPublicTransportPref();
 			setupNativePublicTransport();
 		} else {
-			setupRoutingTypePref();
 			setupApproximationTypePref();
 			setupAutoZoomPref();
 			setupOsmLiveForRoutingPref();
@@ -454,46 +472,6 @@ public class RouteParametersFragment extends BaseSettingsFragment {
 		displayData.nightMode = isNightMode();
 		displayData.widthMode = PopUpMenuWidthMode.STANDARD;
 		PopUpMenu.show(displayData);
-	}
-
-	private void showRoutingTypeDialog(@NonNull Preference preference) {
-		List<PopUpMenuItem> items = new ArrayList<>();
-
-		RoutingType selectedType = settings.ROUTING_TYPE.getModeValue(getSelectedAppMode());
-
-		for (RoutingType type : RoutingType.values()) {
-			items.add(new PopUpMenuItem.Builder(app)
-					.setTitleId(type.getTitleId())
-					.setSelected(selectedType == type)
-					.showTopDivider(type == HH_JAVA)
-					.showCompoundBtn(getActiveProfileColor())
-					.setOnClickListener(v -> onPreferenceChange(preference, type))
-					.create());
-		}
-
-		PopUpMenuDisplayData displayData = new PopUpMenuDisplayData();
-		displayData.anchorView = getListView().findViewWithTag(preference);
-		displayData.menuItems = items;
-		displayData.nightMode = isNightMode();
-		displayData.widthMode = PopUpMenuWidthMode.STANDARD;
-		PopUpMenu.show(displayData);
-	}
-
-	private void setupRoutingTypePref() {
-		RoutingType[] types = RoutingType.values();
-		String[] names = new String[types.length];
-		Integer[] values = new Integer[types.length];
-
-		for (int i = 0; i < names.length; i++) {
-			RoutingType type = types[i];
-			values[i] = type.ordinal();
-			names[i] = type.toHumanString(app);
-		}
-
-		ListPreferenceEx preference = createListPreferenceEx(settings.ROUTING_TYPE.getId(), names,
-				values, R.string.routing_type, R.layout.preference_with_descr);
-		preference.setIcon(getContentIcon(R.drawable.ic_action_route_points));
-		getPreferenceScreen().addPreference(preference);
 	}
 
 	private void showApproximationTypeDialog(@NonNull Preference preference) {
@@ -577,7 +555,7 @@ public class RouteParametersFragment extends BaseSettingsFragment {
 		ApplicationMode appMode = getSelectedAppMode();
 		FragmentManager manager = getFragmentManager();
 
-		if (settings.ROUTE_RECALCULATION_DISTANCE.getId().equals(prefId)) {
+		if (DISABLE_OFFROUTE_RECALC.equals(prefId)) {
 			if (manager != null) {
 				RecalculateRouteInDeviationBottomSheet.showInstance(manager, prefId, this, false, getSelectedAppMode());
 			}
@@ -589,8 +567,10 @@ public class RouteParametersFragment extends BaseSettingsFragment {
 			if (manager != null) {
 				AvoidRoadsPreferencesBottomSheet.showInstance(manager, prefId, this, appMode, false, isProfileDependent());
 			}
-		} else if (settings.ROUTING_TYPE.getId().equals(prefId)) {
-			showRoutingTypeDialog(preference);
+		} else if (settings.ROUTE_CALCULATION_METHOD.getId().equals(prefId)) {
+			if (manager != null) {
+				RouteCalculationMethodBottomSheet.showInstance(manager, prefId, this, appMode, isProfileDependent());
+			}
 		} else if (settings.APPROXIMATION_TYPE.getId().equals(prefId)) {
 			showApproximationTypeDialog(preference);
 		} else {
@@ -598,26 +578,26 @@ public class RouteParametersFragment extends BaseSettingsFragment {
 		}
 	}
 
-	private void showSeekbarSettingsDialog(Activity activity, ApplicationMode mode) {
-		if (activity == null || mode == null) {
+	private void showSeekbarSettingsDialog(Activity activity, ApplicationMode appMode) {
+		if (activity == null || appMode == null) {
 			return;
 		}
 		OsmandApplication app = (OsmandApplication) activity.getApplication();
-		float[] angleValue = {mode.getStrAngle()};
-		boolean nightMode = !app.getSettings().isLightContentForMode(mode);
+		float[] angleValue = {appMode.getStrAngle()};
+		boolean nightMode = app.getDaynightHelper().isNightMode(appMode, ThemeUsageContext.APP);
 		Context themedContext = UiUtilities.getThemedContext(activity, nightMode);
 		AlertDialog.Builder builder = new AlertDialog.Builder(themedContext);
 		View sliderView = LayoutInflater.from(themedContext).inflate(
 				R.layout.recalculation_angle_dialog, null, false);
 		builder.setView(sliderView);
 		builder.setPositiveButton(R.string.shared_string_ok, (dialog, which) -> {
-			mode.setStrAngle(angleValue[0]);
+			appMode.setStrAngle(angleValue[0]);
 			updateAllSettings();
-			app.getRoutingHelper().onSettingsChanged(mode);
+			app.getRoutingHelper().onSettingsChanged(appMode);
 		});
 		builder.setNegativeButton(R.string.shared_string_cancel, null);
 
-		int selectedModeColor = mode.getProfileColor(nightMode);
+		int selectedModeColor = appMode.getProfileColor(nightMode);
 		setupAngleSlider(angleValue, sliderView, nightMode, selectedModeColor);
 		builder.show();
 	}
@@ -637,29 +617,30 @@ public class RouteParametersFragment extends BaseSettingsFragment {
 	}
 
 	private void setupSelectRouteRecalcDistance(@NonNull PreferenceScreen screen) {
-		SwitchPreferenceEx switchPref = createSwitchPreferenceEx(ROUTING_RECALC_DISTANCE,
+		SwitchPreferenceEx switchPref = createSwitchPreferenceEx(DISABLE_OFFROUTE_RECALC,
 				R.string.route_recalculation_dist_title, R.layout.preference_with_descr_dialog_and_switch);
-		switchPref.setIcon(getRoutingPrefIcon(ROUTING_RECALC_DISTANCE));
+		switchPref.setIcon(getRoutingPrefIcon(DISABLE_OFFROUTE_RECALC));
 		screen.addPreference(switchPref);
 		updateRouteRecalcDistancePref();
 	}
 
 	private void updateRouteRecalcDistancePref() {
-		SwitchPreferenceEx switchPref = findPreference(ROUTING_RECALC_DISTANCE);
+		SwitchPreferenceEx switchPref = findPreference(DISABLE_OFFROUTE_RECALC);
 		if (switchPref == null) {
 			return;
 		}
 		ApplicationMode appMode = getSelectedAppMode();
 		float allowedValue = settings.ROUTE_RECALCULATION_DISTANCE.getModeValue(appMode);
-		boolean enabled = allowedValue != DISABLE_MODE;
 		if (allowedValue <= 0) {
 			allowedValue = RoutingHelper.getDefaultAllowedDeviation(settings, appMode);
 		}
-		String summary = String.format(getString(R.string.ltr_or_rtl_combine_via_bold_point),
-				enabled ? getString(R.string.shared_string_enabled) : getString(R.string.shared_string_disabled),
-				OsmAndFormatter.getFormattedDistance(allowedValue, app, OsmAndFormatterParams.NO_TRAILING_ZEROS));
-		switchPref.setSummary(summary);
-		switchPref.setChecked(enabled);
+		switchPref.setSummaryOn(getString(R.string.ltr_or_rtl_combine_via_bold_point,
+				getString(R.string.shared_string_enabled),
+				OsmAndFormatter.getFormattedDistance(allowedValue, app, NO_TRAILING_ZEROS)));
+
+		switchPref.setSummaryOff(getString(R.string.ltr_or_rtl_combine_via_bold_point,
+				getString(R.string.shared_string_disabled),
+				OsmAndFormatter.getFormattedDistance(allowedValue, app, NO_TRAILING_ZEROS)));
 	}
 
 	private void setupViaFerrataPreference(@NonNull RoutingParameter parameter,
@@ -852,7 +833,9 @@ public class RouteParametersFragment extends BaseSettingsFragment {
 	@Override
 	public boolean onPreferenceChange(Preference preference, Object newValue) {
 		String prefId = preference.getKey();
-		if (settings.DISABLE_WRONG_DIRECTION_RECALC.getId().equals(prefId) && newValue instanceof Boolean) {
+		if ((settings.DISABLE_WRONG_DIRECTION_RECALC.getId().equals(prefId)
+				|| settings.DISABLE_OFFROUTE_RECALC.getId().equals(prefId))
+				&& newValue instanceof Boolean) {
 			return onConfirmPreferenceChange(prefId, !(Boolean) newValue, getApplyQueryType()); // pref ui was inverted
 		}
 		return onConfirmPreferenceChange(prefId, newValue, getApplyQueryType());
@@ -867,18 +850,8 @@ public class RouteParametersFragment extends BaseSettingsFragment {
 		} else if (ROUTING_SHORT_WAY.equals(prefId) && newValue instanceof Boolean) {
 			applyPreference(ROUTING_SHORT_WAY, applyToAllProfiles, newValue);
 			applyPreference(settings.FAST_ROUTE_MODE.getId(), applyToAllProfiles, !(Boolean) newValue);
-		} else if (ROUTING_RECALC_DISTANCE.equals(prefId)) {
-			boolean enabled = false;
-			float valueToSave = DISABLE_MODE;
-			if (newValue instanceof Boolean) {
-				enabled = (boolean) newValue;
-				valueToSave = enabled ? DEFAULT_MODE : DISABLE_MODE;
-			} else if (newValue instanceof Float) {
-				valueToSave = (float) newValue;
-				enabled = valueToSave != DISABLE_MODE;
-			}
-			applyPreference(ROUTING_RECALC_DISTANCE, applyToAllProfiles, valueToSave);
-			applyPreference(settings.DISABLE_OFFROUTE_RECALC.getId(), applyToAllProfiles, !enabled);
+		} else if (ROUTING_RECALC_DISTANCE.equals(prefId) && newValue instanceof Float) {
+			applyPreference(ROUTING_RECALC_DISTANCE, applyToAllProfiles, newValue);
 			updateRouteRecalcDistancePref();
 		} else if (HAZMAT_TRANSPORTING_ENABLED.equals(prefId)) {
 			if (newValue instanceof String) {
@@ -1045,7 +1018,7 @@ public class RouteParametersFragment extends BaseSettingsFragment {
 					getIcon(R.drawable.ic_action_hazmat_limit_colored),
 					getContentIcon(R.drawable.ic_action_hazmat_limit));
 			case GOODS_RESTRICTIONS_PREFERENCE -> getPersistentPrefIcon(R.drawable.ic_action_van);
-			case ROUTING_RECALC_DISTANCE ->
+			case ROUTING_RECALC_DISTANCE, DISABLE_OFFROUTE_RECALC ->
 					getPersistentPrefIcon(R.drawable.ic_action_minimal_distance);
 			case ROUTING_RECALC_WRONG_DIRECTION ->
 					getPersistentPrefIcon(R.drawable.ic_action_reverse_direction);

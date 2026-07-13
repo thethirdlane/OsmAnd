@@ -1,5 +1,10 @@
 package net.osmand.data;
 
+import net.osmand.osm.edit.Entity;
+import net.osmand.osm.edit.OSMSettings.OSMTagKey;
+import net.osmand.util.Algorithms;
+import net.osmand.util.MapUtils;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -7,18 +12,29 @@ import java.util.*;
 
 
 public class City extends MapObject {
+
 	public enum CityType {
-		// that's tricky way to play with that numbers (to avoid including suburbs in city & vice verse)
-		// district special type and it is not registered as a city
-		CITY(10000, 100000),
-		TOWN(4000, 20000),
-		VILLAGE(1300, 1000),
-		HAMLET(1000, 100),
-		SUBURB(400, 5000),
-		BOROUGH(400, 2500),
-		DISTRICT(400, 10000),
-		NEIGHBOURHOOD(300, 500);
+		// that's a tricky way to play with that numbers (to avoid including suburbs in city & vice verse)
+		CITY(10000, 100000), // 0. City
+		TOWN(4000, 20000), // 1. Town
+		VILLAGE(1300, 1000), // 2. Village 
+		HAMLET(1000, 100), // 3. Hamlet - Small village
+		SUBURB(1500, 5000), // 4. Mostly district of the city (introduced to avoid duplicate streets in city) - 
+						   // however BOROUGH, DISTRICT, NEIGHBOURHOOD could be used as well for that purpose
+						   // Main difference stores own streets to search and list by it
+		// 5.2 stored in city / villages sections written as city type
+		BOUNDARY(0, 0), // 5. boundary no streets
+		// 5.3 stored in city / villages sections written as city type
+		POSTCODE(500, 1000), // 6. write this could be activated after 5.2 release
 		
+		// not stored entities but registered to uniquely identify streets as SUBURB
+		BOROUGH(2000, 2500),
+		DISTRICT(1000, 10000),
+		NEIGHBOURHOOD(500, 500),
+		CENSUS(2000, 2500);
+
+		private static final CityType[] VALUES = CityType.values();
+
 		private final double radius;
 		private final int population;
 		
@@ -36,13 +52,30 @@ public class City extends MapObject {
 		}
 		
 		public boolean storedAsSeparateAdminEntity() {
-			return this != DISTRICT && this != NEIGHBOURHOOD && this != BOROUGH;
+			if (this == CITY || this == TOWN || this == VILLAGE || 
+					this == HAMLET || this == SUBURB) {
+				return true;
+			}
+			return false;
+//			return this != DISTRICT && this != NEIGHBOURHOOD && this != BOROUGH 
+//					&& this != BOUNDARY && this != POSTCODE;
 		}
 
 		public static String valueToString(CityType t) {
 			return t.toString().toLowerCase();
 		}
 
+		public static CityType valueFromEntity(Entity e) {
+			String place = e.getTag(OSMTagKey.PLACE);
+			if ("locality".equals(place) && "townland".equals(e.getTag(OSMTagKey.LOCALITY))) {
+				// Irish townlands are very similar to suburb 
+				// however they could be separate polygons not inside town or city  
+				return CityType.SUBURB;
+			}
+			return valueFromString(place);
+		}
+		
+		// to be used only by amenity
 		public static CityType valueFromString(String place) {
 			if (place == null) {
 				return null;
@@ -50,36 +83,24 @@ public class City extends MapObject {
 			if ("township".equals(place)) {
 				return CityType.TOWN;
 			}
-			for (CityType t : CityType.values()) {
-				if (t.name().equalsIgnoreCase(place)) {
-					return t;
+			if ("allotments".equals(place)) {
+				return CityType.SUBURB;
+			}
+			for (int i = 0; i < VALUES.length; i++) {
+				CityType type = VALUES[i];
+				if (type != BOUNDARY && type != POSTCODE && type.name().equalsIgnoreCase(place)) {
+					return type;
 				}
 			}
 			return null;
 		}
-		
-		public static String typeToString(CityType type) {
-			if (type == null) {
-				return null;
-			}
-			return type.name().toLowerCase();
-		}
-		
-		static public Set<String> getAllCityTypeStrings() {
-			Set<String> cityTypeStrings = new HashSet<>();
-			for (CityType type : CityType.values()) {
-				cityTypeStrings.add(typeToString(type));
-			}
-			return cityTypeStrings;
-		}
-		
-		
 	}
 
 	private CityType type = null;
 	private List<Street> listOfStreets = new ArrayList<Street>();
 	private String postcode = null;
 	private City closestCity = null;
+	private int[] bbox31 = null;
 	
 	private static long POSTCODE_INTERNAL_ID = -1000;
 	public static City createPostcode(String postcode){
@@ -94,17 +115,57 @@ public class City extends MapObject {
 	}
 	
 	public City(String postcode, long id) {
-		this.type = null;
+		this.type = CityType.POSTCODE;
 		this.name = this.enName = postcode;
 		this.id = id;
 	}
 
-	public String getIsInValue() {
-		return isin;
+	public boolean isInCityByName(String name) {
+		if(isin == null) {
+			return false;
+		}
+		return isin.contains(name.toLowerCase());
+	}
+	
+	public int[] getBbox31() {
+		return bbox31;
+	}
+	
+	public boolean updateBbox31WithLoc(LatLon location) {
+		int x = MapUtils.get31TileNumberX(location.getLongitude());
+		int y = MapUtils.get31TileNumberY(location.getLatitude());
+		if (bbox31 != null) {
+			if (y > bbox31[3] || y < bbox31[1] || x > bbox31[2] || x < bbox31[0]) {
+				bbox31[0] = Math.min(x, bbox31[0]);
+				bbox31[1] = Math.min(y, bbox31[1]);
+				bbox31[2] = Math.max(x, bbox31[2]);
+				bbox31[3] = Math.max(y, bbox31[3]);
+				return true;
+			}
+		} else {
+			int cx = MapUtils.get31TileNumberX(getLocation().getLongitude());
+			int cy = MapUtils.get31TileNumberY(getLocation().getLatitude());
+			bbox31 = new int[4];
+			bbox31[0] = Math.min(x, cx);
+			bbox31[1] = Math.min(y, cy);
+			bbox31[2] = Math.max(x, cx);
+			bbox31[3] = Math.max(y, cy);
+			return true;
+		}
+		return false;
+	}
+	
+	public void setBbox31(QuadRect bbox) {
+		this.bbox31 = new int[] { MapUtils.get31TileNumberX(bbox.left), MapUtils.get31TileNumberY(bbox.top),
+				MapUtils.get31TileNumberX(bbox.right), MapUtils.get31TileNumberY(bbox.bottom) };
+	}
+	
+	public void setBbox31(int[] bbox31) {
+		this.bbox31 = bbox31;
 	}
 	
 	public boolean isPostcode(){
-		return type == null;
+		return type == CityType.POSTCODE;
 	}
 	
 	public String getPostcode() {
@@ -158,13 +219,25 @@ public class City extends MapObject {
 	}
 	
 
-	// GENERATION
 	// Be attentive ! Working with street names ignoring case
-	private String isin = null;
+	private Set<String> isin = null;
 	
+	public Set<String> getIsin() {
+		return isin;
+	}
 		
-	public void setIsin(String isin) {
-		this.isin = isin;
+	public void setIsin(String val) {
+		this.isin = new TreeSet<String>();
+		String[] vls = val.toLowerCase().split(",");
+		for (String v1 : vls) {
+			String[] v2s = v1.trim().split(";");
+			for (String v2 : v2s) {
+				v2 = v2.trim();
+				if (!Algorithms.isEmpty(v2)) {
+					this.isin.add(v2);
+				}
+			}
+		}
 	}
 
 	public Map<Street, Street> mergeWith(City city) {
@@ -198,6 +271,9 @@ public class City extends MapObject {
 		if (postcode != null) {
 			json.put("postcode", postcode);
 		}
+		if (bbox31 != null) {
+			json.put("bbox31", Arrays.toString(bbox31));
+		}
 		JSONArray listOfStreetsArr = new JSONArray();
 		for (Street s : listOfStreets) {
 			listOfStreetsArr.put(s.toJSON(includingBuildings));
@@ -220,6 +296,63 @@ public class City extends MapObject {
 		if (json.has("postcode")) {
 			c.postcode = json.getString("postcode");
 		}
+		if (json.has("bbox31")) {
+			Object bboxValue = json.get("bbox31");
+			int[] parsedBbox = null;
+			if (bboxValue instanceof JSONArray bboxArray) {
+				if (bboxArray.length() >= 4) {
+					int[] buffer = new int[4];
+					boolean valid = true;
+					for (int i = 0; i < buffer.length; i++) {
+						Object value = bboxArray.get(i);
+						if (value instanceof Number) {
+							buffer[i] = ((Number) value).intValue();
+						} else {
+							valid = false;
+							break;
+						}
+					}
+					if (valid) {
+						parsedBbox = buffer;
+					}
+				}
+			} else if (bboxValue instanceof String) {
+				String bboxString = ((String) bboxValue).trim();
+				if (!bboxString.isEmpty()) {
+					String normalized = bboxString;
+					if (normalized.startsWith("[")) {
+						normalized = normalized.substring(1);
+					}
+					if (normalized.endsWith("]")) {
+						normalized = normalized.substring(0, normalized.length() - 1);
+					}
+					String[] parts = normalized.split(",");
+					if (parts.length >= 4) {
+						int[] buffer = new int[4];
+						boolean valid = true;
+						for (int i = 0; i < buffer.length; i++) {
+							String part = parts[i].trim();
+							if (Algorithms.isEmpty(part)) {
+								valid = false;
+								break;
+							}
+							try {
+								buffer[i] = Integer.parseInt(part);
+							} catch (NumberFormatException ex) {
+								valid = false;
+								break;
+							}
+						}
+						if (valid) {
+							parsedBbox = buffer;
+						}
+					}
+				}
+			}
+			if (parsedBbox != null) {
+				c.bbox31 = parsedBbox;
+			}
+		}
 		if (json.has("listOfStreets")) {
 			JSONArray streetsArr = json.getJSONArray("listOfStreets");
 			c.listOfStreets = new ArrayList<>();
@@ -233,4 +366,6 @@ public class City extends MapObject {
 		}
 		return c;
 	}
+
+	
 }

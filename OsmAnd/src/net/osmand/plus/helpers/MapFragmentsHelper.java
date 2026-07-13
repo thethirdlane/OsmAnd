@@ -22,20 +22,23 @@ import net.osmand.SecondSplashScreenFragment;
 import net.osmand.data.LatLon;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
-import net.osmand.plus.base.BaseOsmAndFragment;
+import net.osmand.plus.base.BaseFullScreenFragment;
 import net.osmand.plus.configmap.ConfigureMapOptionFragment;
 import net.osmand.plus.dashboard.DashBaseFragment;
 import net.osmand.plus.dashboard.DashboardOnMap;
 import net.osmand.plus.dialogs.XMasDialogFragment;
+import net.osmand.plus.dialogs.selectlocation.SelectLocationFragment;
 import net.osmand.plus.firstusage.FirstUsageWizardFragment;
 import net.osmand.plus.mapcontextmenu.MapContextMenu;
 import net.osmand.plus.mapcontextmenu.builders.cards.dialogs.ContextMenuCardDialogFragment;
 import net.osmand.plus.mapcontextmenu.other.MapMultiSelectionMenu;
+import net.osmand.plus.mapcontextmenu.other.TrackDetailsMenuFragment;
 import net.osmand.plus.mapmarkers.PlanRouteFragment;
 import net.osmand.plus.measurementtool.GpxApproximationFragment;
 import net.osmand.plus.measurementtool.MeasurementToolFragment;
 import net.osmand.plus.measurementtool.SnapTrackWarningFragment;
 import net.osmand.plus.exploreplaces.ExplorePlacesFragment;
+import net.osmand.plus.plugins.astronomy.StarMapFragment;
 import net.osmand.plus.plugins.rastermaps.DownloadTilesFragment;
 import net.osmand.plus.plugins.weather.dialogs.WeatherForecastFragment;
 import net.osmand.plus.routepreparationmenu.ChooseRouteFragment;
@@ -80,12 +83,12 @@ public class MapFragmentsHelper implements OnPreferenceStartFragmentCallback {
 	}
 
 	@Nullable
-	public BaseOsmAndFragment getVisibleBaseOsmAndFragment(int... ids) {
+	public BaseFullScreenFragment getVisibleBaseFullScreenFragment(int... ids) {
 		for (int id : ids) {
 			Fragment fragment = getSupportFragmentManager().findFragmentById(id);
-			if (fragment != null && !fragment.isRemoving() && fragment instanceof BaseOsmAndFragment
-					&& ((BaseOsmAndFragment) fragment).getStatusBarColorId() != -1) {
-				return (BaseOsmAndFragment) fragment;
+			if (fragment != null && !fragment.isRemoving() && fragment instanceof BaseFullScreenFragment
+					&& ((BaseFullScreenFragment) fragment).getStatusBarColorId() != -1) {
+				return (BaseFullScreenFragment) fragment;
 			}
 		}
 		return null;
@@ -118,16 +121,20 @@ public class MapFragmentsHelper implements OnPreferenceStartFragmentCallback {
 	public void updateFragments() {
 		FragmentManager manager = getSupportFragmentManager();
 		for (Fragment fragment : manager.getFragments()) {
-			try {
-				manager.beginTransaction().detach(fragment).commitAllowingStateLoss();
-				manager.beginTransaction().attach(fragment).commitAllowingStateLoss();
-			} catch (IllegalStateException e) {
-				LOG.error("Error updating fragment " + fragment.getClass().getSimpleName(), e);
-			}
+			updateFragment(manager, fragment);
 		}
 		DashboardOnMap dashboard = activity.getDashboard();
 		if (dashboard.isVisible() && !dashboard.isCurrentTypeHasIndividualFragment()) {
 			dashboard.refreshContent(true);
+		}
+	}
+
+	public void updateFragment(@NonNull FragmentManager manager, @NonNull Fragment fragment) {
+		try {
+			manager.beginTransaction().detach(fragment).commitAllowingStateLoss();
+			manager.beginTransaction().attach(fragment).commitAllowingStateLoss();
+		} catch (IllegalStateException e) {
+			LOG.error("Error updating fragment " + fragment.getClass().getSimpleName(), e);
 		}
 	}
 
@@ -184,6 +191,11 @@ public class MapFragmentsHelper implements OnPreferenceStartFragmentCallback {
 	}
 
 	@Nullable
+	public TrackDetailsMenuFragment getTrackDetailsMenuFragment() {
+		return getFragment(TrackDetailsMenuFragment.TAG);
+	}
+
+	@Nullable
 	public TrackAppearanceFragment getTrackAppearanceFragment() {
 		return getFragment(TrackAppearanceFragment.TAG);
 	}
@@ -199,6 +211,14 @@ public class MapFragmentsHelper implements OnPreferenceStartFragmentCallback {
 	}
 
 	@Nullable
+	public SelectLocationFragment getSelectMapLocationFragment() {
+		if (getConfigureMapOptionFragment() instanceof SelectLocationFragment fragment) {
+			return fragment;
+		}
+		return null;
+	}
+
+	@Nullable
 	public ConfigureMapOptionFragment getConfigureMapOptionFragment() {
 		return getFragment(ConfigureMapOptionFragment.TAG);
 	}
@@ -206,6 +226,11 @@ public class MapFragmentsHelper implements OnPreferenceStartFragmentCallback {
 	@Nullable
 	public WeatherForecastFragment getWeatherForecastFragment() {
 		return getFragment(WeatherForecastFragment.TAG);
+	}
+
+	@Nullable
+	public StarMapFragment getStarMapFragment() {
+		return getFragment(StarMapFragment.Companion.getTAG());
 	}
 
 	public void dismissFragment(@Nullable String name) {
@@ -228,8 +253,7 @@ public class MapFragmentsHelper implements OnPreferenceStartFragmentCallback {
 
 	@Nullable
 	public FirstUsageWizardFragment getFirstUsageWizardFragment() {
-		FirstUsageWizardFragment fragment = (FirstUsageWizardFragment) getSupportFragmentManager()
-				.findFragmentByTag(FirstUsageWizardFragment.TAG);
+		FirstUsageWizardFragment fragment = getFragment(FirstUsageWizardFragment.TAG);
 		return fragment != null && !fragment.isDetached() ? fragment : null;
 	}
 
@@ -242,10 +266,10 @@ public class MapFragmentsHelper implements OnPreferenceStartFragmentCallback {
 
 	@MainThread
 	public boolean removeFragment(String tag) {
-		FragmentManager fm = getSupportFragmentManager();
-		Fragment fragment = fm.findFragmentByTag(tag);
+		FragmentManager manager = getSupportFragmentManager();
+		Fragment fragment = manager.findFragmentByTag(tag);
 		if (fragment != null) {
-			fm.beginTransaction()
+			manager.beginTransaction()
 					.remove(fragment)
 					.commitNowAllowingStateLoss();
 			return true;
@@ -303,7 +327,7 @@ public class MapFragmentsHelper implements OnPreferenceStartFragmentCallback {
 	public void showXMasDialog() {
 		SecondSplashScreenFragment.SHOW = false;
 		dismissSecondSplashScreen();
-		new XMasDialogFragment().show(getSupportFragmentManager(), XMasDialogFragment.TAG);
+		XMasDialogFragment.showInstance(getSupportFragmentManager());
 	}
 
 	public void dismissSecondSplashScreen() {

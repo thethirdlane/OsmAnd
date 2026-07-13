@@ -3,6 +3,7 @@ package net.osmand.plus.views.mapwidgets.widgets;
 import static net.osmand.plus.views.mapwidgets.WidgetType.LANES;
 import static net.osmand.plus.views.mapwidgets.WidgetsPanel.BOTTOM;
 
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -21,11 +22,13 @@ import net.osmand.plus.routing.NextDirectionInfo;
 import net.osmand.plus.routing.RouteDirectionInfo;
 import net.osmand.plus.routing.RoutingHelper;
 import net.osmand.plus.routing.data.AnnounceTimeDistances;
+import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.utils.OsmAndFormatter;
 import net.osmand.plus.utils.OsmAndFormatterParams;
 import net.osmand.plus.views.layers.MapInfoLayer.TextState;
 import net.osmand.plus.views.layers.base.OsmandMapLayer.DrawSettings;
 import net.osmand.plus.views.mapwidgets.LanesDrawable;
+import net.osmand.plus.views.mapwidgets.MapWidgetInfo;
 import net.osmand.plus.views.mapwidgets.WidgetsPanel;
 import net.osmand.router.RouteResultPreparation;
 import net.osmand.router.TurnType;
@@ -39,9 +42,9 @@ public class LanesWidget extends MapWidget {
 
 	private final RoutingHelper routingHelper;
 
-	private final ImageView lanesImage;
-	private final TextView lanesText;
-	private final TextView lanesShadowText;
+	private ImageView lanesImage;
+	private TextView lanesText;
+	private TextView lanesShadowText;
 
 	private final LanesDrawable lanesDrawable;
 	private AnnounceTimeDistances timeDistances;
@@ -54,12 +57,17 @@ public class LanesWidget extends MapWidget {
 			@Nullable WidgetsPanel panel) {
 		super(mapActivity, LANES, customId, panel);
 
-		routingHelper = mapActivity.getMyApplication().getRoutingHelper();
+		routingHelper = mapActivity.getApp().getRoutingHelper();
+		lanesDrawable = new LanesDrawable(mapActivity, mapActivity.getMapView().getScaleCoefficient());
+	}
+
+	@Override
+	protected void setupView(@NonNull View view) {
+		super.setupView(view);
+
 		lanesImage = view.findViewById(R.id.map_lanes);
 		lanesText = view.findViewById(R.id.map_lanes_dist_text);
 		lanesShadowText = view.findViewById(R.id.map_lanes_dist_text_shadow);
-
-		lanesDrawable = new LanesDrawable(mapActivity, mapActivity.getMapView().getScaleCoefficient());
 		lanesImage.setImageDrawable(lanesDrawable);
 
 		updateVisibility(false);
@@ -71,7 +79,7 @@ public class LanesWidget extends MapWidget {
 	}
 
 	@Override
-	public void updateInfo(@Nullable DrawSettings drawSettings) {
+	public void updateInfo(@NonNull View view, @Nullable DrawSettings drawSettings) {
 		int imminent = -1;
 		int[] lanes = null;
 		int distance = 0;
@@ -133,7 +141,7 @@ public class LanesWidget extends MapWidget {
 			ViewGroup specialContainer = getSpecialContainer();
 			specialContainer.removeAllViews();
 			if (visible) {
-				specialContainer.addView(view);
+				specialContainer.addView(getView());
 			}
 		}
 		return updatedVisibility;
@@ -170,7 +178,7 @@ public class LanesWidget extends MapWidget {
 	public void updateColors(@NonNull TextState textState) {
 		super.updateColors(textState);
 
-		view.setBackgroundResource(textState.boxFree);
+		getView().setBackgroundResource(textState.boxFree);
 
 		shadowRadius = textState.textShadowRadius / 2;
 		updateTextColor(lanesText, lanesShadowText, textState.textColor,
@@ -180,6 +188,7 @@ public class LanesWidget extends MapWidget {
 	@Override
 	public void attachView(@NonNull ViewGroup container, @NonNull WidgetsPanel panel,
 			@NonNull List<MapWidget> followingWidgets) {
+		View view = getView();
 		ViewGroup specialContainer = getSpecialContainer();
 		specialPosition = panel == WidgetsPanel.TOP && followingWidgets.isEmpty();
 		if (specialPosition) {
@@ -191,10 +200,10 @@ public class LanesWidget extends MapWidget {
 	}
 
 	@Override
-	public void detachView(@NonNull WidgetsPanel widgetsPanel) {
-		super.detachView(widgetsPanel);
+	public void detachView(@NonNull WidgetsPanel widgetsPanel, @NonNull List<MapWidgetInfo> widgets, @NonNull ApplicationMode mode) {
+		super.detachView(widgetsPanel, widgets, mode);
 		// Clear in case link to previous view of LanesWidget is lost
-		getSpecialContainer().removeView(view);
+		getSpecialContainer().removeView(getView());
 	}
 
 	@NonNull

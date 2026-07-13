@@ -1,39 +1,36 @@
 package net.osmand.plus.mapcontextmenu.controllers;
 
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.ColorFilter;
-import android.graphics.Paint;
+import static net.osmand.plus.render.TextRenderer.DROID_SERIF;
+import static net.osmand.router.network.NetworkRouteSelector.RouteKey;
+
+import android.graphics.*;
 import android.graphics.Paint.Align;
 import android.graphics.Paint.Style;
-import android.graphics.PixelFormat;
-import android.graphics.Rect;
-import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 
-import net.osmand.osm.OsmRouteType;
+import androidx.annotation.NonNull;
+
+import net.osmand.data.Amenity;
+import net.osmand.gpx.clickable.ClickableWayTags;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.render.MapRenderRepositories;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.UiUtilities;
 import net.osmand.plus.views.mapwidgets.widgets.StreetNameWidget;
 import net.osmand.render.RenderingRuleSearchRequest;
 import net.osmand.render.RenderingRulesStorage;
+import net.osmand.router.network.NetworkRouteSelector;
 import net.osmand.util.Algorithms;
-import net.osmand.data.Amenity;
 
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import androidx.annotation.NonNull;
-
-import static net.osmand.plus.render.TextRenderer.DROID_SERIF;
-import static net.osmand.router.network.NetworkRouteSelector.RouteKey;
 
 public class NetworkRouteDrawable extends Drawable {
 
@@ -55,7 +52,7 @@ public class NetworkRouteDrawable extends Drawable {
 		backgroundDrawable = createBackgroundIcon();
 		osmcText = routeKey.getValue("osmc_text");
 		defaultIconSize = app.getResources().getDimensionPixelSize(R.dimen.standard_icon_size);
-		setupTextPaint(nightMode);
+		setupTextPaint(nightMode, AndroidUtils.spToPx(app, 13));
 	}
 
 	@Nullable
@@ -78,12 +75,33 @@ public class NetworkRouteDrawable extends Drawable {
 	}
 
 	@Nullable
-	public static Drawable getIconByAmenityShieldTags(@NonNull Amenity amenity,
-	                                                  @NonNull OsmandApplication app, boolean nightMode) {
+	public static Drawable getIconByShieldTags(@NonNull Map<String, String> tags, @NonNull OsmandApplication app) {
+		NetworkRouteSelector.RouteKey shieldRouteKey = NetworkRouteSelector.RouteKey.fromShieldTags(tags);
+		if (shieldRouteKey != null) {
+			boolean nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.OVER_MAP);
+			NetworkRouteDrawable iconDrawable = new NetworkRouteDrawable(app, shieldRouteKey, nightMode);
+			if (iconDrawable.backgroundDrawable != null) {
+				return iconDrawable;
+			}
+		}
+		return null;
+	}
+
+	@Nullable
+	public static Drawable getIconByAmenityShieldTags(@NonNull Amenity amenity, @NonNull OsmandApplication app,
+	                                                  boolean nightMode, boolean isClickableWay) {
 		Map<String, String> shieldTags = new HashMap<>();
 		for (String tag : amenity.getAdditionalInfoKeys()) {
 			String value = amenity.getAdditionalInfo(tag);
 			shieldTags.put(tag, value);
+		}
+		if (isClickableWay) {
+			String color = ClickableWayTags.getGpxColorByTags(amenity.getOsmTags());
+			if (color != null) {
+				for (Map.Entry<String, String> gpxShieldTags : ClickableWayTags.getGpxShieldTags(color).entrySet()) {
+					shieldTags.putIfAbsent(gpxShieldTags.getKey(), gpxShieldTags.getValue());
+				}
+			}
 		}
 		RouteKey shieldRouteKey = RouteKey.fromShieldTags(shieldTags);
 		if (shieldRouteKey != null) {
@@ -95,13 +113,13 @@ public class NetworkRouteDrawable extends Drawable {
 		return null;
 	}
 
-	private void setupTextPaint(boolean nightMode) {
+	private void setupTextPaint(boolean nightMode, float textSize) {
 		paint.setStrokeWidth(1);
 		paint.setAntiAlias(true);
 		paint.setStyle(Style.FILL);
 		paint.setColor(Color.BLACK);
 		paint.setTextAlign(Align.CENTER);
-		paint.setTextSize(AndroidUtils.spToPx(app, 13));
+		paint.setTextSize(textSize);
 		paint.setTypeface(Typeface.create(DROID_SERIF, Typeface.NORMAL));
 		updatePaint(nightMode);
 	}
@@ -155,13 +173,7 @@ public class NetworkRouteDrawable extends Drawable {
 		if (backgroundDrawable != null) {
 			backgroundDrawable.draw(canvas);
 		}
-
-		if (!Algorithms.isEmpty(osmcText)) {
-			Rect rect = getBounds();
-			float x = rect.width() / 2f;
-			float y = rect.height() / 2f - ((paint.descent() + paint.ascent()) / 2);
-			canvas.drawText(osmcText, x, y, paint);
-		}
+		drawText(canvas);
 	}
 
 	@Override
@@ -253,10 +265,24 @@ public class NetworkRouteDrawable extends Drawable {
 		return backgroundDrawable != null ? backgroundDrawable.getOpacity() : PixelFormat.UNKNOWN;
 	}
 
+	public void drawText(@NotNull Canvas canvas) {
+		if (!Algorithms.isEmpty(osmcText)) {
+			Rect rect = getBounds();
+			float x = rect.width() / 2f;
+			float y = rect.height() / 2f - ((paint.descent() + paint.ascent()) / 2);
+			canvas.drawText(osmcText, x, y, paint);
+		}
+	}
+
+	public void setTextSize(int textSize, boolean nightMode) {
+		setupTextPaint(nightMode, textSize);
+	}
+
 	private enum OsmcIconParams {
 		BACKGROUND("osmc_background", "h_osmc_", "_bg"),
 		FOREGROUND("osmc_foreground", "mm_osmc_", ""),
-		FOREGROUND_2("osmc_foreground2", "mm_osmc_", "");
+		FOREGROUND_2("osmc_foreground2", "mm_osmc_", ""),
+		OSMAND_FOREGROUND("osmand_foreground", "mm_", "");
 
 		@NonNull
 		final String key;
@@ -270,5 +296,17 @@ public class NetworkRouteDrawable extends Drawable {
 			this.prefix = prefix;
 			this.suffix = suffix;
 		}
+	}
+
+	public @Nullable Drawable getBackgroundDrawable() {
+		return backgroundDrawable;
+	}
+
+	public @Nullable String getOsmcText(){
+		return osmcText;
+	}
+
+	public @NotNull Paint getTextPaint() {
+		return new Paint(paint);
 	}
 }

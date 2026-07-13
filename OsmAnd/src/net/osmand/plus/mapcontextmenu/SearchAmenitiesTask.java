@@ -5,16 +5,23 @@ import android.os.AsyncTask;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import net.osmand.PlatformUtil;
+import net.osmand.ResultMatcher;
 import net.osmand.data.Amenity;
 import net.osmand.data.LatLon;
 import net.osmand.data.QuadRect;
 import net.osmand.plus.poi.PoiUIFilter;
+import net.osmand.plus.views.AmenityObjectsMerger;
 import net.osmand.util.MapUtils;
+
+import org.apache.commons.logging.Log;
 
 import java.util.Collections;
 import java.util.List;
 
 public class SearchAmenitiesTask extends AsyncTask<Void, Void, List<Amenity>> {
+
+	private static final Log LOG = PlatformUtil.getLog(SearchAmenitiesTask.class);
 
 	public static final int NEARBY_MAX_POI_COUNT = 10;
 	private static final int NEARBY_POI_MIN_RADIUS = 250;
@@ -23,14 +30,19 @@ public class SearchAmenitiesTask extends AsyncTask<Void, Void, List<Amenity>> {
 
 	private final LatLon latLon;
 	private final PoiUIFilter filter;
-	private final Amenity amenity;
-	private final SearchAmenitiesListener listener;
+	private final Amenity currentAmenity;
+	private final AmenityObjectsMerger amenityObjectsMerger;
+	private SearchAmenitiesListener listener;
 
 	protected SearchAmenitiesTask(@NonNull PoiUIFilter filter, @NonNull LatLon latLon,
-			@Nullable Amenity amenity, @Nullable SearchAmenitiesListener listener) {
+	                              @NonNull String lang, @Nullable Amenity amenity) {
 		this.filter = filter;
 		this.latLon = latLon;
-		this.amenity = amenity;
+		this.currentAmenity = amenity;
+		this.amenityObjectsMerger = new AmenityObjectsMerger(lang);
+	}
+
+	public void setListener(@Nullable SearchAmenitiesListener listener) {
 		this.listener = listener;
 	}
 
@@ -39,18 +51,44 @@ public class SearchAmenitiesTask extends AsyncTask<Void, Void, List<Amenity>> {
 		int radius = NEARBY_POI_MIN_RADIUS;
 		List<Amenity> amenities = Collections.emptyList();
 		while (amenities.size() < NEARBY_MAX_POI_COUNT && radius <= NEARBY_POI_MAX_RADIUS) {
+			if (isCancelled()) {
+				break;
+			}
 			QuadRect rect = MapUtils.calculateLatLonBbox(latLon.getLatitude(), latLon.getLongitude(), radius);
-			amenities = getAmenities(rect);
-			amenities.remove(amenity);
+
+			amenities = collectAmenities(rect);
 			radius *= NEARBY_POI_SEARCH_FACTOR;
+
+			// If enough POIs collected OR search radius limit reached — merge duplicates.
+			if (amenities.size() >= NEARBY_MAX_POI_COUNT || radius > NEARBY_POI_MAX_RADIUS) {
+				if (currentAmenity != null) {
+					amenities.add(currentAmenity);
+				}
+				amenities = amenityObjectsMerger.merge(amenities, currentAmenity);
+			}
 		}
 		MapUtils.sortListOfMapObject(amenities, latLon.getLatitude(), latLon.getLongitude());
 		return amenities.subList(0, Math.min(NEARBY_MAX_POI_COUNT, amenities.size()));
 	}
 
 	@NonNull
-	private List<Amenity> getAmenities(@NonNull QuadRect rect) {
-		return filter.searchAmenities(rect.top, rect.left, rect.bottom, rect.right, -1, null);
+	private List<Amenity> collectAmenities(@NonNull QuadRect rect) {
+		try {
+			return filter.searchAmenities(rect.top, rect.left, rect.bottom, rect.right, -1, new ResultMatcher<>() {
+				@Override
+				public boolean publish(Amenity amenity) {
+					return true;
+				}
+
+				@Override
+				public boolean isCancelled() {
+					return SearchAmenitiesTask.this.isCancelled();
+				}
+			}, true);
+		} catch (RuntimeException e) {
+			LOG.error("Failed to search nearby amenities", e);
+			return Collections.emptyList();
+		}
 	}
 
 	@Override

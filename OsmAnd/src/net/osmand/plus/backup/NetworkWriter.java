@@ -26,6 +26,7 @@ public class NetworkWriter extends AbstractWriter {
 
 	private final BackupHelper backupHelper;
 	private final OnUploadItemListener listener;
+	private final boolean autoSync;
 
 	public interface OnUploadItemListener {
 		void onItemUploadStarted(@NonNull SettingsItem item, @NonNull String fileName, int work);
@@ -37,9 +38,10 @@ public class NetworkWriter extends AbstractWriter {
 		void onItemUploadDone(@NonNull SettingsItem item, @NonNull String fileName, @Nullable String error);
 	}
 
-	public NetworkWriter(@NonNull BackupHelper backupHelper, @Nullable OnUploadItemListener listener) {
+	public NetworkWriter(@NonNull BackupHelper backupHelper, @Nullable OnUploadItemListener listener, boolean autoSync) {
 		this.backupHelper = backupHelper;
 		this.listener = listener;
+		this.autoSync = autoSync;
 	}
 
 	@Override
@@ -91,8 +93,9 @@ public class NetworkWriter extends AbstractWriter {
 					Algorithms.streamCopy(inputStream, outputStream, progress, 1024);
 					outputStream.flush();
 				};
-				return backupHelper.uploadFile(fileName, item.getType().name(), item.getLastModifiedTime(),
-						streamWriter, getUploadFileListener(item));
+				long clienttime = Math.max(item.getLastModifiedTime(), item.getInfoModifiedTime());
+				return backupHelper.uploadFile(fileName, item.getType().name(), clienttime,
+						streamWriter, getUploadFileListener(item), autoSync);
 			} else {
 				return null;
 			}
@@ -111,7 +114,7 @@ public class NetworkWriter extends AbstractWriter {
 			SettingsItem item = itemWriter.getItem();
 			String type = item.getType().name();
 			StreamWriter streamWriter = getStreamWriter(itemWriter, fileName);
-			return backupHelper.uploadFile(fileName, type, item.getLastModifiedTime(), streamWriter, listener);
+			return backupHelper.uploadFile(fileName, type, item.getLastModifiedTime(), streamWriter, listener, autoSync);
 		}
 	}
 

@@ -244,10 +244,16 @@ object GpxDbHelper : GpxReaderAdapter {
 		return getItem(file, null, readIfNeeded)
 	}
 
+	fun getGpxDirItem(item: GpxDataItem) = item.file.getParentFile()?.let { getGpxDirItem(it) }
+
 	fun getGpxDirItem(file: KFile): GpxDirItem {
 		var item = dirItems[file]
 		if (item == null) {
 			item = database.getGpxDirItem(file)
+
+			if (item != null) {
+				putToCache(item)
+			}
 		}
 		if (item == null) {
 			item = GpxDirItem(file)
@@ -304,7 +310,7 @@ object GpxDbHelper : GpxReaderAdapter {
 
 	fun isReading(): Boolean = readerSync.synchronize { readers.isNotEmpty() }
 
-	private fun isReading(file: KFile): Boolean =
+	fun isReading(file: KFile): Boolean =
 		readerSync.synchronize { readingItemsMap.contains(file) || readers.any { it.isReading(file) } }
 
 	private fun readGpxItem(file: KFile, item: GpxDataItem?, callback: GpxDataItemCallback?) {
@@ -349,7 +355,7 @@ object GpxDbHelper : GpxReaderAdapter {
 
 	private fun putGpxDataItemToSmartFolder(item: GpxDataItem) {
 		val trackItem = TrackItem(item.file).apply { dataItem = item }
-		SmartFolderHelper.addTrackItemToSmartFolder(trackItem)
+		PlatformUtil.getOsmAndContext().getSmartFolderHelper().addTrackItemToSmartFolder(trackItem)
 	}
 
 	override fun onProgressUpdate(vararg dataItems: GpxDataItem) {

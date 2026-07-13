@@ -1,6 +1,8 @@
 package net.osmand;
 
 import net.osmand.util.ArabicNormalizer;
+import net.osmand.util.SearchAlgorithms;
+import net.osmand.util.UnicodeDiacritics;
 
 import java.util.Locale;
 
@@ -17,6 +19,7 @@ public class CollatorStringMatcher implements StringMatcher {
 	private final Collator collator;
 	private final StringMatcherMode mode;
 	private final String part;
+	public static final char INCOMPLETE_DOT = '.';
 	
 	public static enum StringMatcherMode {
 		// tests only first word as base starts with part
@@ -36,8 +39,8 @@ public class CollatorStringMatcher implements StringMatcher {
 
 	public CollatorStringMatcher(String part, StringMatcherMode mode) {
 		this.collator = OsmAndCollator.primaryCollator();
-		part = simplifyStringAndAlignChars(part);
-		if (part.length() > 0 && part.charAt(part.length() - 1) == '.') {
+		part = lowercaseAndAlignChars(part);
+		if (part.length() > 0 && part.charAt(part.length() - 1) == INCOMPLETE_DOT && !onlyDots(part)) {
 			part = part.substring(0, part.length() - 1);
 			if (mode == StringMatcherMode.CHECK_EQUALS_FROM_SPACE) {
 				mode = StringMatcherMode.CHECK_STARTS_FROM_SPACE;
@@ -47,27 +50,60 @@ public class CollatorStringMatcher implements StringMatcher {
 		}
 		this.part = part;
 		this.mode = mode;
-		
+	}
+	
+	public boolean onlyDots(String part) {
+		for (int i = 0; i < part.length(); i++) {
+			if (part.charAt(i) != INCOMPLETE_DOT) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	public Collator getCollator() {
 		return collator;
 	}
 	
+	public StringMatcherMode getMode() {
+		return mode;
+	}
+	
+	public String getPart() {
+		return part;
+	}
+	
 	@Override
 	public boolean matches(String name) {
-		return cmatches(collator, name, part, mode);
+		return cmatches(collator, name, part, false, true, mode);
 	}
 
 	public static boolean cmatches(Collator collator, String fullName, String part, StringMatcherMode mode) {
-		if (ArabicNormalizer.isSpecialArabic(fullName)) {
-			String normalized = ArabicNormalizer.normalize(fullName);
-			fullName = normalized == null ? fullName : normalized;
+		return cmatches(collator, fullName, part, true, true, mode);
+	}
+	
+	public static boolean cmatchesNoAlign(Collator collator, String fullName, String part, StringMatcherMode mode) {
+		return cmatches(collator, fullName, part, false, false, mode);
+	}
+		
+	private static boolean cmatches(Collator collator, String fullName, String part, boolean alignPart, boolean alignFull,
+			StringMatcherMode mode) {
+		if (fullName != null && fullName.indexOf('-') != -1) {
+			// Test if it matches without space
+			if (cmatches(collator, fullName.replace("-", ""), part, mode)) {
+				return true;
+			}
 		}
-		if (ArabicNormalizer.isSpecialArabic(part)) {
-			String normalized = ArabicNormalizer.normalize(part);
-			part = normalized == null ? part : normalized;
+		if (alignPart) {
+			part = SearchAlgorithms.alignChars(part);
 		}
+		if (alignFull) {
+			// FUTURE: This is not effective code, it runs on each comparison
+			// It would be more efficient to normalize all strings in file and normalize
+			// search string before collator
+			fullName = lowercaseAndAlignChars(fullName);
+		}
+		
 		switch (mode) {
 		case CHECK_CONTAINS:
 			return ccontains(collator, fullName, part);
@@ -96,7 +132,7 @@ public class CollatorStringMatcher implements StringMatcher {
 	 * @param base String where to search
 	 * @return true if part is contained in base
 	 */
-	public static boolean ccontains(Collator collator, String base, String part) {
+	private static boolean ccontains(Collator collator, String base, String part) {
 //		int pos = 0;
 //		if (part.length() > 3) {
 //			// improve searching by searching first 3 characters
@@ -125,15 +161,7 @@ public class CollatorStringMatcher implements StringMatcher {
 		return false;
 	}
 
-	private static int cindexOf(Collator collator, int start, String part, String base) {
-		for (int pos = start; pos <= base.length() - part.length(); pos++) {
-			if (collator.equals(base.substring(pos, pos + part.length()), part)) {
-				return pos;
-			}
-		}
-		return -1;
-	}
-
+	
 	/**
 	 * Checks if string starts with another string.
 	 * Special check try to find as well in the middle of name
@@ -143,12 +171,8 @@ public class CollatorStringMatcher implements StringMatcher {
 	 * @param theStart
 	 * @return true if searchIn starts with token
 	 */
-	public static boolean cstartsWith(Collator collator, String fullTextP, String theStart, 
+	private static boolean cstartsWith(Collator collator, String searchIn, String theStart, 
 			boolean checkBeginning, boolean checkSpaces, boolean equals) {
-		// FUTURE: This is not effective code, it runs on each comparison
-		// It would be more efficient to normalize all strings in file and normalize search string before collator  
-		theStart = alignChars(theStart);
-		String searchIn = simplifyStringAndAlignChars(fullTextP);
 		int searchInLength = searchIn.length();
 		int startLength = theStart.length();
 		if (startLength == 0) {
@@ -173,10 +197,10 @@ public class CollatorStringMatcher implements StringMatcher {
 		}
 		if (checkSpaces) {
 			for (int i = 1; i <= searchInLength - startLength; i++) {
-				if (isSpace(searchIn.charAt(i - 1)) && !isSpace(searchIn.charAt(i))) {
+				if (isWordStart(searchIn, i, theStart)) {
 					if (collator.equals(searchIn.substring(i, i + startLength), theStart)) {
 						if(equals) {
-							if(i + startLength == searchInLength || 
+							if (i + startLength == searchInLength || 
 									isSpace(searchIn.charAt(i + startLength))) {
 								return true;
 							}
@@ -192,18 +216,21 @@ public class CollatorStringMatcher implements StringMatcher {
 		}
 		return false;
 	}
-	
-	private static String simplifyStringAndAlignChars(String fullText) {
-		fullText = fullText.toLowerCase(Locale.getDefault());
-		fullText = alignChars(fullText);
-		return fullText;
-	}
 
-	private static String alignChars(String fullText) {
-		int i;
-		while ((i = fullText.indexOf('ß')) != -1) {
-			fullText = fullText.substring(0, i) + "ss" + fullText.substring(i+1);
+	private static boolean isWordStart(String searchIn, int index, String part) {
+		if (!isSpace(searchIn.charAt(index - 1))) {
+			return false;
 		}
+		char current = searchIn.charAt(index);
+		if (!isSpace(current)) {
+			return true;
+		}
+		return current == '-' && part.length() > 1 && part.charAt(0) == '-'	&& Character.isDigit(part.charAt(1));
+	}
+	
+	private static String lowercaseAndAlignChars(String fullText) {
+		fullText = fullText.toLowerCase(Locale.getDefault());
+		fullText = SearchAlgorithms.alignChars(fullText);
 		return fullText;
 	}
 

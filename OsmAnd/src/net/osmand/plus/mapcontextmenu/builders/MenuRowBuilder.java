@@ -2,6 +2,7 @@ package net.osmand.plus.mapcontextmenu.builders;
 
 import android.content.Context;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
@@ -10,7 +11,6 @@ import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.annotation.ColorInt;
 import androidx.annotation.ColorRes;
@@ -47,7 +47,7 @@ public class MenuRowBuilder {
 
 	public MenuRowBuilder(@NonNull MapActivity mapActivity) {
 		this.mapActivity = mapActivity;
-		this.app = mapActivity.getMyApplication();
+		this.app = mapActivity.getApp();
 		this.iconsCache = app.getUIUtilities();
 	}
 
@@ -220,7 +220,11 @@ public class MenuRowBuilder {
 	}
 
 	public void copyToClipboard(String text, Context ctx) {
-		ShareMenu.copyToClipboardWithToast(ctx, text, false);
+		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+			ShareMenu.copyToClipboardWithToast(ctx, text, false);
+		} else {
+			ShareMenu.copyToClipboard(ctx, text);
+		}
 	}
 
 	@NonNull

@@ -21,8 +21,7 @@ import net.osmand.core.android.MapRendererContext;
 import net.osmand.data.Amenity;
 import net.osmand.data.MapObject;
 import net.osmand.map.WorldRegion;
-import net.osmand.plus.AppInitializeListener;
-import net.osmand.plus.AppInitializer;
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.Version;
 import net.osmand.plus.activities.MapActivity;
@@ -35,11 +34,11 @@ import net.osmand.plus.dashboard.tools.DashFragmentData;
 import net.osmand.plus.download.IndexItem;
 import net.osmand.plus.keyevent.assignment.KeyAssignment;
 import net.osmand.plus.keyevent.commands.KeyEventCommand;
-import net.osmand.plus.mapcontextmenu.gallery.ImageCardsHolder;
-import net.osmand.plus.mapcontextmenu.gallery.tasks.GetImageCardsTask.GetImageCardsListener;
+import net.osmand.plus.gallery.online.OnlinePhotosHolder;
 import net.osmand.plus.myplaces.MyPlacesActivity;
 import net.osmand.plus.plugins.OsmandPlugin.PluginInstallListener;
 import net.osmand.plus.plugins.accessibility.AccessibilityPlugin;
+import net.osmand.plus.plugins.aistracker.AisTrackerPlugin;
 import net.osmand.plus.plugins.audionotes.AudioVideoNotesPlugin;
 import net.osmand.plus.plugins.custom.CustomOsmandPlugin;
 import net.osmand.plus.plugins.custom.CustomRegion;
@@ -54,13 +53,15 @@ import net.osmand.plus.plugins.osmedit.OsmEditingPlugin;
 import net.osmand.plus.plugins.parking.ParkingPositionPlugin;
 import net.osmand.plus.plugins.rastermaps.OsmandRasterMapsPlugin;
 import net.osmand.plus.plugins.skimaps.SkiMapsPlugin;
+import net.osmand.plus.plugins.astronomy.AstronomyPlugin;
 import net.osmand.plus.plugins.srtm.SRTMPlugin;
 import net.osmand.plus.plugins.weather.WeatherPlugin;
-import net.osmand.plus.plugins.aistracker.AisTrackerPlugin;
 import net.osmand.plus.poi.PoiUIFilter;
 import net.osmand.plus.quickaction.QuickActionType;
+import net.osmand.plus.render.RendererRegistry.RendererEventListener;
 import net.osmand.plus.search.dialogs.QuickSearchDialogFragment;
 import net.osmand.plus.settings.backend.ApplicationMode;
+import net.osmand.plus.settings.enums.ScreenLayoutMode;
 import net.osmand.plus.utils.AndroidNetworkUtils;
 import net.osmand.plus.views.MapLayers;
 import net.osmand.plus.views.layers.base.OsmandMapLayer;
@@ -112,9 +113,7 @@ public class PluginsHelper {
 		checkMarketPlugin(app, new SRTMPlugin(app));
 		allPlugins.add(new WeatherPlugin(app));
 		checkMarketPlugin(app, new NauticalMapsPlugin(app));
-		if (Version.isDeveloperVersion(app)) {
-			allPlugins.add(new AisTrackerPlugin(app));
-		}
+		allPlugins.add(new AisTrackerPlugin(app));
 		checkMarketPlugin(app, new SkiMapsPlugin(app));
 		allPlugins.add(new AudioVideoNotesPlugin(app));
 		checkMarketPlugin(app, new ParkingPositionPlugin(app));
@@ -122,6 +121,7 @@ public class PluginsHelper {
 		allPlugins.add(new MapillaryPlugin(app));
 		allPlugins.add(new ExternalSensorsPlugin(app));
 		allPlugins.add(new VehicleMetricsPlugin(app));
+		allPlugins.add(new AstronomyPlugin(app));
 		allPlugins.add(new AccessibilityPlugin(app));
 		allPlugins.add(new OsmandDevelopmentPlugin(app));
 
@@ -332,15 +332,13 @@ public class PluginsHelper {
 	}
 
 	private static void registerAppInitializingDependedProperties(@NonNull OsmandApplication app) {
-		app.getAppInitializer().addListener(new AppInitializeListener() {
-
+		app.getRendererRegistry().addRendererEventListener(new RendererEventListener() {
 			@Override
-			public void onFinish(@NonNull AppInitializer init) {
+			public void onRendererSelected(RenderingRulesStorage storage) {
 				registerRenderingPreferences(app);
 			}
 		});
 	}
-
 
 	public static void onRequestPermissionsResult(int requestCode, String[] permissions,
 	                                              int[] grantResults) {
@@ -446,14 +444,9 @@ public class PluginsHelper {
 		return null;
 	}
 
-	@SuppressWarnings("unchecked")
 	public static <T extends OsmandPlugin> T getActivePlugin(Class<T> clz) {
-		for (OsmandPlugin lr : getActivePlugins()) {
-			if (clz.isInstance(lr)) {
-				return (T) lr;
-			}
-		}
-		return null;
+		T plugin = getPlugin(clz);
+		return plugin != null && plugin.isActive() ? plugin : null;
 	}
 
 	@SuppressWarnings("unchecked")
@@ -619,27 +612,10 @@ public class PluginsHelper {
 		}
 	}
 
-	public static void createMapWidgets(@NonNull MapActivity mapActivity, @NonNull List<MapWidgetInfo> widgetInfos, @NonNull ApplicationMode appMode) {
+	public static void createMapWidgets(@NonNull MapActivity mapActivity, @NonNull List<MapWidgetInfo> widgetInfos,
+			@NonNull ApplicationMode appMode, @Nullable ScreenLayoutMode layoutMode) {
 		for (OsmandPlugin plugin : getEnabledPlugins()) {
-			plugin.createWidgets(mapActivity, widgetInfos, appMode);
-		}
-	}
-
-	public static void onGetImageCardsStart() {
-		for (OsmandPlugin plugin : getEnabledPlugins()) {
-			GetImageCardsListener listener = plugin.getImageCardsListener();
-			if (listener != null) {
-				listener.onTaskStarted();
-			}
-		}
-	}
-
-	public static void onGetImageCardsFinished(@NonNull ImageCardsHolder cardsHolder) {
-		for (OsmandPlugin plugin : getEnabledPlugins()) {
-			GetImageCardsListener listener = plugin.getImageCardsListener();
-			if (listener != null) {
-				listener.onFinish(cardsHolder);
-			}
+			plugin.createWidgets(mapActivity, widgetInfos, appMode, layoutMode);
 		}
 	}
 
@@ -655,7 +631,7 @@ public class PluginsHelper {
 	}
 
 	public static void registerMapContextMenu(@NonNull MapActivity mapActivity, double latitude, double longitude,
-	                                          ContextMenuAdapter adapter, Object selectedObj, boolean configureMenu) {
+	                                          @NonNull ContextMenuAdapter adapter, Object selectedObj, boolean configureMenu) {
 		for (OsmandPlugin plugin : getEnabledPlugins()) {
 			plugin.registerMapContextMenuActions(mapActivity, latitude, longitude, adapter, selectedObj, configureMenu);
 		}
@@ -697,7 +673,7 @@ public class PluginsHelper {
 		}
 	}
 
-	public static void registerOptionsMenu(MapActivity map, ContextMenuAdapter helper) {
+	public static void registerOptionsMenu(@NonNull MapActivity map, @NonNull ContextMenuAdapter helper) {
 		for (OsmandPlugin plugin : getEnabledPlugins()) {
 			plugin.registerOptionsMenuItems(map, helper);
 		}
@@ -776,14 +752,16 @@ public class PluginsHelper {
 	}
 
 	/**
-	 * @param holder      an object to collect results
-	 * @param imageObject json object that contains data for create an image card
-	 * @return 'true' if an image card was created
+	 * Lets enabled plugins handle a context-menu gallery JSON object.
+	 *
+	 * @param holder      an object used to collect gallery items
+	 * @param imageObject JSON object that may describe a media item or gallery action
+	 * @return true if the object was recognized and handled by a plugin, even if no item was added
 	 */
-	public static boolean createImageCardForJson(@NonNull ImageCardsHolder holder,
-	                                             @NonNull JSONObject imageObject) {
+	public static boolean addContextMenuGalleryItem(@NonNull OnlinePhotosHolder holder,
+	                                                @NonNull JSONObject imageObject) {
 		for (OsmandPlugin plugin : getEnabledPlugins()) {
-			if (plugin.createContextMenuImageCard(holder, imageObject)) {
+			if (plugin.addContextMenuGalleryItem(holder, imageObject)) {
 				return true;
 			}
 		}
@@ -885,6 +863,12 @@ public class PluginsHelper {
 				trackPointsAnalysers.add(plugin.getTrackPointsAnalyser());
 			}
 		}
+		if (!isActive(VehicleMetricsPlugin.class)) {
+			OsmandPlugin plugin = getPlugin(VehicleMetricsPlugin.class);
+			if (plugin != null) {
+				trackPointsAnalysers.add(plugin.getTrackPointsAnalyser());
+			}
+		}
 		return (gpxTrackAnalysis, wptPt, pointAttributes) -> {
 			for (TrackPointsAnalyser analyser : trackPointsAnalysers) {
 				analyser.onAnalysePoint(gpxTrackAnalysis, wptPt, pointAttributes);
@@ -907,7 +891,7 @@ public class PluginsHelper {
 		return null;
 	}
 
-	public static void getAvailableGPXDataSetTypes(@NonNull GpxTrackAnalysis analysis, @NonNull List<GPXDataSetType[]> availableTypes) {
+	public static void getAvailableGPXDataSetTypes(@NonNull GpxTrackAnalysis analysis, @NonNull List<GPXDataSetType> availableTypes) {
 		for (OsmandPlugin plugin : getAvailablePlugins()) {
 			plugin.getAvailableGPXDataSetTypes(analysis, availableTypes);
 		}
@@ -932,7 +916,7 @@ public class PluginsHelper {
 		}
 		AndroidNetworkUtils.sendRequestAsync(app, ONLINE_PLUGINS_URL, params, null,
 				false, false, (resultJson, error, resultCode) -> {
-					new AsyncTask<Void, Void, List<OnlineOsmandPlugin>>() {
+					OsmAndTaskManager.executeTask(new AsyncTask<Void, Void, List<OnlineOsmandPlugin>>() {
 						@Override
 						protected List<OnlineOsmandPlugin> doInBackground(Void... voids) {
 							List<OnlineOsmandPlugin> plugins = new ArrayList<>();
@@ -958,7 +942,7 @@ public class PluginsHelper {
 								callback.onFetchComplete(plugins);
 							}
 						}
-					}.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, (Void) null);
+					});
 				});
 	}
 }

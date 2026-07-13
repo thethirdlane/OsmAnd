@@ -69,6 +69,9 @@ public class IndexConstants {
 	public static final String OBJ_FILE_EXT = ".obj";
 	public static final String TXT_EXT = ".txt";
 
+	public static final String STAR_MAP_INDEX_EXT = ".stardb";
+	public static final String STAR_MAP_INDEX_EXT_GZ = ".stardb.gz";
+
 	public static final String POI_TABLE = "poi";
 
 	public static final String INDEX_DOWNLOAD_DOMAIN = "download.osmand.net";
@@ -107,8 +110,10 @@ public class IndexConstants {
 	public static final String CLR_PALETTE_DIR = "color-palette/";
 	public static final String WEATHER_FORECAST_DIR = "weather_forecast/";
 	public static final String MODEL_3D_DIR = "models/";
+	public static final String OPENGL_SHADERS_CACHE_DIR = "opengl_shaders_cache/";
 
 	public static final String VOICE_PROVIDER_SUFFIX = "-tts";
 	public static final String MODEL_NAME_PREFIX = "model_";
 	public static final String COLOR_PALETTE_DIR = "color-palette/";
+	public static final String ASTRO_DIR = "astro/";
 }

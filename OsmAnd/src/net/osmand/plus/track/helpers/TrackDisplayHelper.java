@@ -95,19 +95,31 @@ public class TrackDisplayHelper {
 	}
 
 	public boolean setJoinSegments(boolean joinSegments) {
+		SelectedGpxFile selectedGpxFile = app.getSelectedGpxHelper().getSelectedFileByPath(gpxFile.getPath());
 		if (gpxDataItem != null) {
 			boolean updated = app.getGpxDbHelper().updateDataItemParameter(gpxDataItem, JOIN_SEGMENTS, joinSegments);
-			SelectedGpxFile selectedGpxFile = app.getSelectedGpxHelper().getSelectedFileByPath(gpxFile.getPath());
 			if (updated && selectedGpxFile != null) {
 				selectedGpxFile.setJoinSegments(joinSegments);
 			}
 			return updated;
+		} else if (selectedGpxFile != null) {
+			selectedGpxFile.setJoinSegments(joinSegments);
+			return true;
 		}
 		return false;
 	}
 
 	public boolean isJoinSegments() {
-		return gpxDataItem != null ? gpxDataItem.getParameter(JOIN_SEGMENTS) : false;
+		if (gpxDataItem != null) {
+			Boolean joinSegments = gpxDataItem.getParameter(JOIN_SEGMENTS);
+			return joinSegments != null ? joinSegments : false;
+		} else {
+			SelectedGpxFile selectedGpxFile = app.getSelectedGpxHelper().getSelectedFileByPath(gpxFile.getPath());
+			if (selectedGpxFile != null) {
+				return selectedGpxFile.isJoinSegments();
+			}
+		}
+		return false;
 	}
 
 	public List<GpxDisplayGroup> getGpxFile(boolean useDisplayGroups) {
@@ -171,7 +183,7 @@ public class TrackDisplayHelper {
 		return filterGroups(true, filterTypes);
 	}
 
-	private boolean hasFilterType(GpxDisplayItemType filterType, GpxDisplayItemType[] filterTypes) {
+	private static boolean hasFilterType(GpxDisplayItemType filterType, GpxDisplayItemType[] filterTypes) {
 		for (GpxDisplayItemType type : filterTypes) {
 			if (type == filterType) {
 				return true;
@@ -182,13 +194,17 @@ public class TrackDisplayHelper {
 
 	@NonNull
 	private List<GpxDisplayGroup> filterGroups(boolean useDisplayGroups, GpxDisplayItemType[] filterTypes) {
-		List<GpxDisplayGroup> groups = new ArrayList<>();
-		for (GpxDisplayGroup group : getGpxFile(useDisplayGroups)) {
+		return filterGroups(getGpxFile(useDisplayGroups), filterTypes);
+	}
+
+	public static List<GpxDisplayGroup> filterGroups(@NonNull List<GpxDisplayGroup> groups, @NonNull GpxDisplayItemType[] filterTypes) {
+		List<GpxDisplayGroup> filteredGroup = new ArrayList<>();
+		for (GpxDisplayGroup group : groups) {
 			if (hasFilterType(group.getType(), filterTypes)) {
-				groups.add(group);
+				filteredGroup.add(group);
 			}
 		}
-		return groups;
+		return filteredGroup;
 	}
 
 	public static List<GpxDisplayItem> flatten(List<GpxDisplayGroup> groups) {

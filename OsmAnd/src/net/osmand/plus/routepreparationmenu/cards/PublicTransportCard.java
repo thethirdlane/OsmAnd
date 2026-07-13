@@ -312,6 +312,10 @@ public class PublicTransportCard extends MapBaseCard {
 				}
 			}
 			routesBadges.addView(createRouteBadge(s, badgesRowClickable), new FlowLayout.LayoutParams(itemsSpacing, itemsSpacing));
+			for (TransportRouteResultSegment a : s.alternatives) {
+				routesBadges.addView(createRouteBadge(a, badgesRowClickable), new FlowLayout.LayoutParams(itemsSpacing, itemsSpacing));
+			}
+
 			if (iterator.hasNext()) {
 				routesBadges.addView(createArrow(), new FlowLayout.LayoutParams(itemsSpacing, itemsSpacing));
 			} else {
@@ -413,8 +417,9 @@ public class PublicTransportCard extends MapBaseCard {
 	}
 
 	private View createArrow() {
-		LinearLayout container = new LinearLayout(app);
-		ImageView arrow = new ImageView(app);
+		MapActivity mapActivity = getMapActivity();
+		LinearLayout container = new LinearLayout(mapActivity);
+		ImageView arrow = new ImageView(mapActivity);
 		Drawable icArrow = getContentIcon(R.drawable.ic_action_arrow_forward_16);
 		arrow.setImageDrawable(AndroidUtils.getDrawableForDirection(app, icArrow));
 		container.addView(arrow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, AndroidUtils.dpToPx(app, 28)));

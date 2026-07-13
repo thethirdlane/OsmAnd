@@ -6,6 +6,7 @@ public interface OsmAndCustomizationConstants {
 	String DRAWER_ITEM_ID_SCHEME = "drawer.action.";
 	String DRAWER_SWITCH_PROFILE_ID = DRAWER_ITEM_ID_SCHEME + "switch_profile";
 	String DRAWER_CONFIGURE_PROFILE_ID = DRAWER_ITEM_ID_SCHEME + "configure_profile";
+	String DRAWER_SALE_ID = DRAWER_ITEM_ID_SCHEME + "sale";
 	String DRAWER_DASHBOARD_ID = DRAWER_ITEM_ID_SCHEME + "dashboard";
 	String DRAWER_MAP_MARKERS_ID = DRAWER_ITEM_ID_SCHEME + "map_markers";
 	String DRAWER_MY_PLACES_ID = DRAWER_ITEM_ID_SCHEME + "my_places";
@@ -33,6 +34,7 @@ public interface OsmAndCustomizationConstants {
 	String DRAWER_DIVIDER_ID = DRAWER_ITEM_ID_SCHEME + "divider";
 	String DRAWER_OSMAND_VERSION_ID = DRAWER_ITEM_ID_SCHEME + "osmand_version";
 	String DRAWER_VEHICLE_METRICS_ID = DRAWER_ITEM_ID_SCHEME + "vehicle_metrics";
+	String DRAWER_STAR_MAP_ID = DRAWER_ITEM_ID_SCHEME + "star_map";
 
 	// Configure Map:
 	String CONFIGURE_MAP_ITEM_ID_SCHEME = "map.configure.";
@@ -65,6 +67,8 @@ public interface OsmAndCustomizationConstants {
 	String CONTOUR_LINES = TERRAIN_ITEMS_ID_SCHEME + "contour_lines";
 	String RELIEF_3D_ID = TERRAIN_ITEMS_ID_SCHEME + "relief_3d";
 	String TERRAIN_DEPTH_CONTOURS = TERRAIN_ITEMS_ID_SCHEME + "depth_contours";
+	String TERRAIN_SPHERICAL_MAP = TERRAIN_ITEMS_ID_SCHEME + "spherical_map";
+	String TERRAIN_3D_MAP_OBJECTS = TERRAIN_ITEMS_ID_SCHEME + "3d_map_objects";
 
 	String OPEN_STREET_MAP_ITEMS_ID_SCHEME = CONFIGURE_MAP_ITEM_ID_SCHEME + "open_street_map.";
 	String OSM_NOTES = OPEN_STREET_MAP_ITEMS_ID_SCHEME + "osm_notes";
@@ -140,6 +144,7 @@ public interface OsmAndCustomizationConstants {
 	String PLUGIN_ANT_PLUS = "osmand.antplus";
 	String PLUGIN_VEHICLE_METRICS = "osmand.vehicle.metrics";
 	String PLUGIN_WEATHER = "osmand.weather";
+	String PLUGIN_ASTRONOMY = "osmand.astronomy";
 
 	//Settings:
 	String SETTINGS_ID = "settings.";
@@ -203,6 +208,7 @@ public interface OsmAndCustomizationConstants {
 	String FRAGMENT_TRIPLTEK_PROMO_ID = FRAGMENT_ID + "tripltek_promo";
 	String FRAGMENT_HUGEROCK_PROMO_ID = FRAGMENT_ID + "hugerock_promo";
 	String FRAGMENT_HMD_PROMO_ID = FRAGMENT_ID + "hmd_promo";
+	String FRAGMENT_ROUTE_INFO_MENU_ID = FRAGMENT_ID + "route_info_menu";
 
 	//Map Context Menu rows:
 	String MAP_CONTEXT_MENU_ROWS = "context.menu.rows.";

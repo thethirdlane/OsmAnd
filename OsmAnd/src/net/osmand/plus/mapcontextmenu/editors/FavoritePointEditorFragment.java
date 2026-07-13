@@ -1,7 +1,6 @@
 package net.osmand.plus.mapcontextmenu.editors;
 
 import static net.osmand.data.FavouritePoint.DEFAULT_BACKGROUND_TYPE;
-import static net.osmand.plus.dialogs.FavoriteDialogs.KEY_FAVORITE;
 
 import android.content.Context;
 import android.graphics.drawable.Drawable;
@@ -10,6 +9,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
+import android.widget.TextView;
 
 import androidx.annotation.ColorInt;
 import androidx.annotation.DrawableRes;
@@ -17,18 +17,24 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.core.content.ContextCompat;
+import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
 
 import net.osmand.data.BackgroundType;
 import net.osmand.data.FavouritePoint;
 import net.osmand.data.LatLon;
+import net.osmand.plus.gallery.data.GalleryKey;
+import net.osmand.shared.gpx.primitives.Linkable;
+import net.osmand.plus.myplaces.MyPlacesActivity;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.shared.gpx.GpxUtilities.PointsGroup;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.dialogs.FavoriteDialogs;
 import net.osmand.plus.mapcontextmenu.MapContextMenu;
+import net.osmand.plus.myplaces.favorites.FavoriteFolderFormatter;
 import net.osmand.plus.myplaces.favorites.FavoriteGroup;
 import net.osmand.plus.myplaces.favorites.FavouritesHelper;
 import net.osmand.plus.render.RenderingIcons;
@@ -59,14 +65,13 @@ public class FavoritePointEditorFragment extends PointEditorFragment {
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		favouritesHelper = app.getFavoritesHelper();
-		editor = requireMapActivity().getContextMenu().getFavoritePointEditor();
+		if (editor == null) {
+			setupEditor();
+		}
 
 		FavoritePointEditor editor = getFavoritePointEditor();
 		if (editor != null) {
 			FavouritePoint favorite = editor.getFavorite();
-			if (favorite == null && savedInstanceState != null) {
-				favorite = AndroidUtils.getSerializable(savedInstanceState, KEY_FAVORITE, FavouritePoint.class);
-			}
 			this.favorite = favorite;
 			this.group = favouritesHelper.getGroup(favorite);
 			this.selectedGroup = group != null ? group.toPointsGroup(app) : null;
@@ -74,6 +79,16 @@ public class FavoritePointEditorFragment extends PointEditorFragment {
 			setColor(getInitialColor());
 			setIcon(getInitialIconId());
 			setBackgroundType(getInitialBackgroundType());
+		}
+	}
+
+	private void setupEditor(){
+		MapActivity activity = getMapActivity();
+		if (activity != null) {
+			editor = activity.getContextMenu().getFavoritePointEditor();
+		}
+		if (getActivity() instanceof MyPlacesActivity) {
+			editor = new FavoritePointEditor(app);
 		}
 	}
 
@@ -93,19 +108,8 @@ public class FavoritePointEditorFragment extends PointEditorFragment {
 		return view;
 	}
 
-	@Override
-	public void onSaveInstanceState(@NonNull Bundle outState) {
-		super.onSaveInstanceState(outState);
-		outState.putSerializable(KEY_FAVORITE, getFavorite());
-	}
-
 	private void replacePressed() {
-		Bundle args = new Bundle();
-		args.putSerializable(KEY_FAVORITE, getFavorite());
-		FragmentActivity activity = getActivity();
-		if (activity != null) {
-			SelectFavouriteToReplaceBottomSheet.showInstance(activity, args);
-		}
+		callActivity(activity -> SelectFavouriteToReplaceBottomSheet.showInstance(activity, this));
 	}
 
 	@Nullable
@@ -184,7 +188,8 @@ public class FavoritePointEditorFragment extends PointEditorFragment {
 	@Override
 	protected void save(boolean needDismiss) {
 		FavouritePoint favorite = getFavorite();
-		if (favorite != null) {
+		FragmentActivity activity = getActivity();
+		if (activity != null && favorite != null) {
 			FavouritePoint point = new FavouritePoint(favorite.getLatitude(), favorite.getLongitude(),
 					getNameTextValue(), getCategoryTextValue(), favorite.getAltitude(), favorite.getTimestamp());
 			point.setDescription(getDescriptionTextValue());
@@ -192,7 +197,7 @@ public class FavoritePointEditorFragment extends PointEditorFragment {
 			point.setColor(getColor());
 			point.setIconId(getIconId());
 			point.setBackgroundType(getBackgroundType());
-			AlertDialog.Builder builder = FavoriteDialogs.checkDuplicates(point, requireActivity());
+			AlertDialog.Builder builder = FavoriteDialogs.checkDuplicates(point, activity);
 
 			if (isChanged(favorite, point)) {
 
@@ -204,11 +209,11 @@ public class FavoritePointEditorFragment extends PointEditorFragment {
 
 			if (builder != null && !skipConfirmationDialog) {
 				builder.setPositiveButton(R.string.shared_string_ok, (dialog, which) ->
-						doSave(favorite, point.getName(), point.getCategory(), point.getDescription(), point.getAddress(),
-								point.getColor(), point.getBackgroundType(), point.getIconIdOrDefault(), needDismiss));
+						doSave(activity, favorite, point.getName(), point.getCategory(), point.getDescription(),
+								point.getAddress(), point.getColor(), point.getBackgroundType(), point.getIconIdOrDefault(), needDismiss));
 				builder.create().show();
 			} else {
-				doSave(favorite, point.getName(), point.getCategory(), point.getDescription(), point.getAddress(),
+				doSave(activity, favorite, point.getName(), point.getCategory(), point.getDescription(), point.getAddress(),
 						point.getColor(), point.getBackgroundType(), point.getIconIdOrDefault(), needDismiss);
 			}
 			saved = true;
@@ -225,30 +230,31 @@ public class FavoritePointEditorFragment extends PointEditorFragment {
 				Algorithms.stringsEqual(favorite.getAddress(), point.getAddress());
 	}
 
-	private void doSave(FavouritePoint favorite, String name, String category, String description, String address,
+	private void doSave(@NonNull FragmentActivity activity, FavouritePoint favorite, String name, String category, String description, String address,
 	                    @ColorInt int color, BackgroundType backgroundType, @DrawableRes int iconId, boolean needDismiss) {
 		FavoritePointEditor editor = getFavoritePointEditor();
 		if (editor != null) {
 			if (editor.isNew()) {
-				doAddFavorite(name, category, description, address, color, backgroundType, iconId);
+				FavouritePoint favouritePoint = getFavorite();
+				if (favouritePoint != null) {
+					favouritesHelper.doAddFavorite(name, category, description, address, color, backgroundType, iconId, favouritePoint);
+				}
 			} else {
 				doEditFavorite(favorite, name, category, description, address, color, backgroundType, iconId, favouritesHelper);
 			}
 			addLastUsedIcon(iconId);
 		}
-		MapActivity mapActivity = getMapActivity();
-		if (mapActivity == null) {
-			return;
-		}
-		mapActivity.refreshMap();
 		if (needDismiss) {
 			dismiss(false);
 		}
+		if (activity instanceof MapActivity mapActivity) {
+			mapActivity.refreshMap();
 
-		MapContextMenu menu = mapActivity.getContextMenu();
-		LatLon latLon = new LatLon(favorite.getLatitude(), favorite.getLongitude());
-		if (menu.getLatLon() != null && menu.getLatLon().equals(latLon)) {
-			menu.update(latLon, favorite.getPointDescription(mapActivity), favorite);
+			MapContextMenu menu = mapActivity.getContextMenu();
+			LatLon latLon = new LatLon(favorite.getLatitude(), favorite.getLongitude());
+			if (menu.getLatLon() != null && menu.getLatLon().equals(latLon)) {
+				menu.update(latLon, favorite.getPointDescription(mapActivity), favorite);
+			}
 		}
 	}
 
@@ -262,29 +268,13 @@ public class FavoritePointEditorFragment extends PointEditorFragment {
 		helper.editFavouriteName(favorite, name, category, description, address);
 	}
 
-	private void doAddFavorite(String name, String category, String description, String address, @ColorInt int color,
-	                           BackgroundType backgroundType, @DrawableRes int iconId) {
-		FavouritePoint favorite = getFavorite();
-		if (favorite != null) {
-			favorite.setName(name);
-			favorite.setCategory(category);
-			favorite.setDescription(description);
-			favorite.setAddress(address);
-			favorite.setColor(color);
-			favorite.setBackgroundType(backgroundType);
-			favorite.setIconId(iconId);
-			app.getSettings().LAST_FAV_CATEGORY_ENTERED.set(category);
-			favouritesHelper.addFavourite(favorite);
-		}
-	}
-
 	@Override
 	protected void delete(boolean needDismiss) {
 		FragmentActivity activity = getActivity();
 		FavouritePoint favorite = getFavorite();
 		if (activity != null && favorite != null) {
 			OsmandApplication app = (OsmandApplication) activity.getApplication();
-			boolean nightMode = app.getDaynightHelper().isNightModeForMapControls();
+			boolean nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.OVER_MAP);
 			AlertDialog.Builder builder = new AlertDialog.Builder(UiUtilities.getThemedContext(activity, nightMode));
 			builder.setMessage(getString(R.string.favourites_remove_dialog_msg, favorite.getName()));
 			builder.setNegativeButton(R.string.shared_string_no, null);
@@ -294,10 +284,7 @@ public class FavoritePointEditorFragment extends PointEditorFragment {
 				if (needDismiss) {
 					dismiss(true);
 				} else {
-					MapActivity mapActivity = getMapActivity();
-					if (mapActivity != null) {
-						mapActivity.refreshMap();
-					}
+					callMapActivity(MapActivity::refreshMap);
 				}
 			});
 			builder.create().show();
@@ -368,10 +355,45 @@ public class FavoritePointEditorFragment extends PointEditorFragment {
 		return pointsGroups;
 	}
 
+	@Override
+	protected void setupGroupName(@NonNull TextView groupName, @NonNull PointsGroup group) {
+		FavoriteFolderFormatter.setupStyledBreadcrumb(groupName, group.getName(), nightMode);
+	}
+
 	@NonNull
 	@Override
 	protected LatLon getPointCoordinates() {
 		return new LatLon(favorite.getLatitude(), favorite.getLongitude());
+	}
+
+	private boolean canAttachMedia() {
+		return getFavorite() != null;
+	}
+
+	@Nullable
+	@Override
+	protected GalleryKey getMediaGalleryKey() {
+		FavouritePoint favorite = getFavorite();
+		if (favorite == null) {
+			return null;
+		}
+		return canAttachMedia() ? new GalleryKey.Favorite(favorite.getKey()) : null;
+	}
+
+	@Nullable
+	@Override
+	protected Linkable getMediaTarget() {
+		return canAttachMedia() ? getFavorite() : null;
+	}
+
+	@Nullable
+	@Override
+	protected LatLon getMediaLatLon() {
+		FavouritePoint favorite = getFavorite();
+		if (favorite == null) {
+			return null;
+		}
+		return canAttachMedia() ? new LatLon(favorite.getLatitude(), favorite.getLongitude()) : null;
 	}
 
 	@Override
@@ -453,15 +475,15 @@ public class FavoritePointEditorFragment extends PointEditorFragment {
 	}
 
 	public static void showInstance(@NonNull MapActivity mapActivity) {
-		showAutoFillInstance(mapActivity, false);
+		showInstance(mapActivity, false);
 	}
 
-	public static void showAutoFillInstance(MapActivity mapActivity, boolean skipConfirmationDialog) {
+	public static void showInstance(MapActivity mapActivity, boolean skipConfirmationDialog) {
 		FavoritePointEditor editor = mapActivity.getContextMenu().getFavoritePointEditor();
 		if (editor != null) {
 			FragmentManager fragmentManager = mapActivity.getSupportFragmentManager();
 			String tag = editor.getFragmentTag();
-			if (fragmentManager.findFragmentByTag(tag) == null) {
+			if (AndroidUtils.isFragmentCanBeAdded(fragmentManager, tag, true)) {
 				FavoritePointEditorFragment fragment = new FavoritePointEditorFragment();
 				fragment.skipConfirmationDialog = skipConfirmationDialog;
 				fragmentManager.beginTransaction()
@@ -469,6 +491,21 @@ public class FavoritePointEditorFragment extends PointEditorFragment {
 						.addToBackStack(null)
 						.commitAllowingStateLoss();
 			}
+		}
+	}
+
+	public static void showInstance(@NonNull FavoritePointEditor editor, @NonNull FragmentActivity activity,
+	                                @NonNull Fragment targetFragment, boolean skipConfirmationDialog) {
+		FragmentManager fragmentManager = activity.getSupportFragmentManager();
+		if (AndroidUtils.isFragmentCanBeAdded(fragmentManager, null, true)) {
+			FavoritePointEditorFragment fragment = new FavoritePointEditorFragment();
+			fragment.skipConfirmationDialog = skipConfirmationDialog;
+			fragment.editor = editor;
+			fragment.setTargetFragment(targetFragment, 0);
+			fragmentManager.beginTransaction()
+					.add(R.id.fragmentContainer, fragment)
+					.addToBackStack(null)
+					.commitAllowingStateLoss();
 		}
 	}
 }

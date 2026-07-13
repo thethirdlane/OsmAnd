@@ -11,6 +11,7 @@ import static net.osmand.plus.routing.AlarmInfoType.SPEED_LIMIT;
 import static net.osmand.plus.routing.AlarmInfoType.STOP;
 import static net.osmand.plus.routing.AlarmInfoType.TOLL_BOOTH;
 import static net.osmand.plus.routing.AlarmInfoType.TRAFFIC_CALMING;
+import static net.osmand.plus.routing.AlarmInfoType.RED_LIGHT_CAMERA;
 
 import android.content.Context;
 
@@ -81,10 +82,11 @@ public class AlarmInfo implements LocationPoint {
 	}
 
 	@NonNull
-	public static AlarmInfo createSpeedLimit(int speed, @NonNull Location location) {
+	public static AlarmInfo createSpeedLimit(int speed, @NonNull Location location, float speedMetersPerSecond) {
 		AlarmInfo info = new AlarmInfo(SPEED_LIMIT, 0);
 		info.setLatLon(location.getLatitude(), location.getLongitude());
 		info.setIntValue(speed);
+		info.setFloatValue(speedMetersPerSecond);
 		return info;
 	}
 
@@ -102,6 +104,10 @@ public class AlarmInfo implements LocationPoint {
 			} else if ("stop".equals(ruleType.getValue())) {
 				alarmInfo = new AlarmInfo(STOP, locInd);
 			}
+		} else if ("enforcement".equals(ruleType.getTag())) {
+			if ("traffic_signals".equals(ruleType.getValue())) {
+				alarmInfo = new AlarmInfo(RED_LIGHT_CAMERA, locInd);
+			}
 		} else if ("barrier".equals(ruleType.getTag())) {
 			if ("toll_booth".equals(ruleType.getValue())) {
 				alarmInfo = new AlarmInfo(TOLL_BOOTH, locInd);
@@ -109,7 +115,13 @@ public class AlarmInfo implements LocationPoint {
 				alarmInfo = new AlarmInfo(BORDER_CONTROL, locInd);
 			}
 		} else if ("traffic_calming".equals(ruleType.getTag())) {
-			alarmInfo = new AlarmInfo(TRAFFIC_CALMING, locInd);
+			String value = ruleType.getValue();
+			boolean isIslandType = "island".equals(value)
+					|| "choked_island".equals(value)
+					|| "painted_island".equals(value);
+			if (!isIslandType) {
+				alarmInfo = new AlarmInfo(TRAFFIC_CALMING, locInd);
+			}
 		} else if ("hazard".equals(ruleType.getTag())) {
 			alarmInfo = new AlarmInfo(HAZARD, locInd);
 		} else if ("railway".equals(ruleType.getTag()) && "level_crossing".equals(ruleType.getValue())) {
@@ -131,7 +143,7 @@ public class AlarmInfo implements LocationPoint {
 		if (time < 6 || distance < 75 || type == SPEED_LIMIT) {
 			return type.getPriority();
 		}
-		if (type == SPEED_CAMERA && (time < 15 || distance < 150)) {
+		if ((type == SPEED_CAMERA || type == RED_LIGHT_CAMERA) && (time < 15 || distance < 150)) {
 			return type.getPriority();
 		}
 		if (type == TOLL_BOOTH && (time < 30 || distance < 500)) {

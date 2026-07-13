@@ -27,7 +27,7 @@ public class EditWptDescriptionController extends EditPointDescriptionController
 		if (wpt == null) {
 			return;
 		}
-		OsmandApplication app = activity.getMyApplication();
+		OsmandApplication app = activity.getApp();
 		SelectedGpxFile selectedGpxFile = app.getSelectedGpxHelper().getSelectedGPXFile(wpt);
 		if (selectedGpxFile != null && selectedGpxFile.getGpxFile() != null) {
 			GpxFile gpx = selectedGpxFile.getGpxFile();
@@ -50,7 +50,8 @@ public class EditWptDescriptionController extends EditPointDescriptionController
 	@Override
 	public String getTitle() {
 		WptPt wpt = (WptPt) getContextMenuObject();
-		return wpt != null ? wpt.getName() : super.getTitle();
+		String title = wpt != null ? wpt.getName() : null;
+		return title != null ? title : super.getTitle();
 	}
 
 	@Override

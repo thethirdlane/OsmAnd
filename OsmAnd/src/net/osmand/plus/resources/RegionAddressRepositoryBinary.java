@@ -1,5 +1,6 @@
 package net.osmand.plus.resources;
 
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
@@ -8,7 +9,7 @@ import net.osmand.CollatorStringMatcher.StringMatcherMode;
 import net.osmand.OsmAndCollator;
 import net.osmand.PlatformUtil;
 import net.osmand.ResultMatcher;
-import net.osmand.binary.BinaryMapAddressReaderAdapter;
+import net.osmand.binary.BinaryMapAddressReaderAdapter.CityBlocks;
 import net.osmand.binary.BinaryMapIndexReader;
 import net.osmand.binary.BinaryMapIndexReader.SearchRequest;
 import net.osmand.data.Building;
@@ -68,7 +69,7 @@ public class RegionAddressRepositoryBinary implements RegionAddressRepository {
 				BinaryMapIndexReader reader = getOpenFile();
 				if (reader != null) {
 					List<City> cs = reader.getCities(BinaryMapIndexReader.buildAddressRequest(resultMatcher),
-							BinaryMapAddressReaderAdapter.CITY_TOWN_TYPE);
+							CityBlocks.CITY_TOWN_TYPE);
 					LinkedHashMap<Long, City> ncities = new LinkedHashMap<Long, City>();
 					for (City c : cs) {
 						ncities.put(c.getId(), c);
@@ -82,7 +83,7 @@ public class RegionAddressRepositoryBinary implements RegionAddressRepository {
 					}
 					cities = ncities;
 				}
-			} catch (IOException e) {
+			} catch (Exception e) {
 				log.error("Disk operation failed", e); //$NON-NLS-1$
 			}
 		}
@@ -125,10 +126,10 @@ public class RegionAddressRepositoryBinary implements RegionAddressRepository {
 			try {
 				BinaryMapIndexReader reader = getOpenFile();
 				if (reader != null) {
-					reader.preloadBuildings(street, BinaryMapIndexReader.buildAddressRequest(resultMatcher));
+					reader.preloadBuildings(street, BinaryMapIndexReader.buildAddressRequest(resultMatcher), null);
 					street.sortBuildings();
 				}
-			} catch (IOException e) {
+			} catch (Exception e) {
 				log.error("Disk operation failed", e); //$NON-NLS-1$
 			}
 		}
@@ -157,9 +158,9 @@ public class RegionAddressRepositoryBinary implements RegionAddressRepository {
 		try {
 			BinaryMapIndexReader reader = getOpenFile();
 			if (reader != null) {
-				reader.preloadStreets(o, BinaryMapIndexReader.buildAddressRequest(resultMatcher));
+				reader.preloadStreets(o, BinaryMapIndexReader.buildAddressRequest(resultMatcher), null);
 			}
-		} catch (IOException e) {
+		} catch (Exception e) {
 			log.error("Disk operation failed", e);  //$NON-NLS-1$
 		}
 	}
@@ -168,7 +169,7 @@ public class RegionAddressRepositoryBinary implements RegionAddressRepository {
 //	private StringMatcherMode[] streetsCheckMode = new StringMatcherMode[] {StringMatcherMode.CHECK_ONLY_STARTS_WITH,
 //			StringMatcherMode.CHECK_STARTS_FROM_SPACE_NOT_BEGINNING};
 
-	public synchronized List<MapObject> searchMapObjectsByName(String name, ResultMatcher<MapObject> resultMatcher, List<Integer> typeFilter) {
+	public synchronized List<MapObject> searchMapObjectsByName(String name, ResultMatcher<MapObject> resultMatcher, List<CityBlocks> typeFilter) {
 		SearchRequest<MapObject> req = BinaryMapIndexReader.buildAddressByNameRequest(resultMatcher, name,
 				StringMatcherMode.CHECK_STARTS_FROM_SPACE);
 		try {
@@ -176,7 +177,7 @@ public class RegionAddressRepositoryBinary implements RegionAddressRepository {
 			if (reader != null) {
 				reader.searchAddressDataByName(req, typeFilter);
 			}
-		} catch (IOException e) {
+		} catch (Exception e) {
 			log.error("Disk operation failed", e); //$NON-NLS-1$
 		}
 		return req.getSearchResults();
@@ -187,7 +188,7 @@ public class RegionAddressRepositoryBinary implements RegionAddressRepository {
 		return searchMapObjectsByName(name, resultMatcher, null);
 	}
 
-	private List<City> fillWithCities(String name, ResultMatcher<City> resultMatcher, List<Integer> typeFilter) throws IOException {
+	private List<City> fillWithCities(String name, ResultMatcher<City> resultMatcher, List<CityBlocks> typeFilter) throws IOException {
 		List<City> result = new ArrayList<City>();
 		ResultMatcher<MapObject> matcher = new ResultMatcher<MapObject>() {
 			final List<City> cache = new ArrayList<City>();
@@ -221,13 +222,13 @@ public class RegionAddressRepositoryBinary implements RegionAddressRepository {
 		return result;
 	}
 
-	private List<Integer> getCityTypeFilter(String name, boolean searchVillages) {
-		List<Integer> cityTypes = new ArrayList<>();
-		cityTypes.add(BinaryMapAddressReaderAdapter.CITY_TOWN_TYPE);
+	private List<CityBlocks> getCityTypeFilter(String name, boolean searchVillages) {
+		List<CityBlocks> cityTypes = new ArrayList<>();
+		cityTypes.add(CityBlocks.CITY_TOWN_TYPE);
 		if (searchVillages) {
-			cityTypes.add(BinaryMapAddressReaderAdapter.VILLAGES_TYPE);
+			cityTypes.add(CityBlocks.VILLAGES_TYPE);
 			if (name.length() >= POSTCODE_MIN_QUERY_LENGTH) {
-				cityTypes.add(BinaryMapAddressReaderAdapter.POSTCODES_TYPE);
+				cityTypes.add(CityBlocks.POSTCODES_TYPE);
 			}
 		}
 		return cityTypes;
@@ -238,7 +239,7 @@ public class RegionAddressRepositoryBinary implements RegionAddressRepository {
 		List<City> citiesToFill = new ArrayList<>(cities.values());
 		try {
 			citiesToFill.addAll(fillWithCities(name, resultMatcher, getCityTypeFilter(name, searchVillages)));
-		} catch (IOException e) {
+		} catch (Exception e) {
 			log.error("Disk operation failed", e); //$NON-NLS-1$
 		}
 		return citiesToFill;
@@ -336,9 +337,9 @@ public class RegionAddressRepositoryBinary implements RegionAddressRepository {
 							}
 							return false;
 						}
-					}), id < -1 ? BinaryMapAddressReaderAdapter.POSTCODES_TYPE : BinaryMapAddressReaderAdapter.VILLAGES_TYPE);
+					}), id < -1 ? CityBlocks.POSTCODES_TYPE : CityBlocks.VILLAGES_TYPE);
 				}
-			} catch (IOException e) {
+			} catch (Exception e) {
 				log.error("Disk operation failed", e); //$NON-NLS-1$
 			}
 		}

@@ -40,13 +40,14 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
-import net.osmand.plus.base.BaseOsmAndFragment;
+import net.osmand.plus.base.BaseFullScreenFragment;
 import net.osmand.plus.quickaction.ConfirmationBottomSheet.OnConfirmButtonClickListener;
 import net.osmand.plus.quickaction.MapButtonsHelper.QuickActionUpdatesListener;
 import net.osmand.plus.quickaction.controller.AddQuickActionController;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
+import net.osmand.plus.utils.InsetsUtils;
 import net.osmand.plus.utils.UiUtilities;
 import net.osmand.plus.views.OsmandMapTileView;
 import net.osmand.plus.views.controls.ReorderItemTouchHelperCallback;
@@ -73,7 +74,7 @@ import java.util.List;
  * Created by okorsun on 20.12.16.
  */
 
-public class QuickActionListFragment extends BaseOsmAndFragment implements QuickActionUpdatesListener,
+public class QuickActionListFragment extends BaseFullScreenFragment implements QuickActionUpdatesListener,
 		OnConfirmButtonClickListener {
 
 	public static final String TAG = QuickActionListFragment.class.getSimpleName();
@@ -144,10 +145,10 @@ public class QuickActionListFragment extends BaseOsmAndFragment implements Quick
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
 	                         @Nullable Bundle savedInstanceState) {
 		updateNightMode();
-		View view = themedInflater.inflate(R.layout.quick_action_list, container, false);
+		View view = inflate(R.layout.quick_action_list, container, false);
 
 		RecyclerView recyclerView = view.findViewById(R.id.recycler_view);
-		fab = view.findViewById(R.id.fabButton);
+		fab = view.findViewById(R.id.fab);
 		fab.setOnClickListener(v -> showAddQuickActionDialog());
 
 		AndroidUtils.addStatusBarPadding21v(requireMyActivity(), view);
@@ -181,6 +182,10 @@ public class QuickActionListFragment extends BaseOsmAndFragment implements Quick
 		ItemTouchHelper.Callback touchHelperCallback = new ReorderItemTouchHelperCallback(adapter);
 		touchHelper = new ItemTouchHelper(touchHelperCallback);
 		touchHelper.attachToRecyclerView(recyclerView);
+
+		if (!InsetsUtils.isEdgeToEdgeSupported()) {
+			view.setFitsSystemWindows(true);
+		}
 
 		recyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
 			@Override
@@ -308,7 +313,7 @@ public class QuickActionListFragment extends BaseOsmAndFragment implements Quick
 
 		ImageButton button = (ImageButton) inflater.inflate(R.layout.action_button, container, false);
 		button.setEnabled(hasActions);
-		button.setImageDrawable(getPaintedContentIcon(R.drawable.ic_action_delete_dark, color));
+		button.setImageDrawable(getPaintedIcon(R.drawable.ic_action_delete_dark, color));
 		button.setOnClickListener(view -> changeScreenType(SCREEN_TYPE_DELETE));
 		container.addView(button);
 	}
@@ -465,10 +470,6 @@ public class QuickActionListFragment extends BaseOsmAndFragment implements Quick
 	@Override
 	public int getStatusBarColorId() {
 		return ColorUtilities.getStatusBarColorId(nightMode);
-	}
-
-	private MapActivity getMapActivity() {
-		return (MapActivity) getActivity();
 	}
 
 	private void saveQuickActions() {
@@ -651,7 +652,7 @@ public class QuickActionListFragment extends BaseOsmAndFragment implements Quick
 					h.container.setEnabled(true);
 					h.divider.setVisibility(View.VISIBLE);
 				}
-				h.icon.setImageDrawable(getPaintedContentIcon(buttonInfo.iconRes, iconColor));
+				h.icon.setImageDrawable(getPaintedIcon(buttonInfo.iconRes, iconColor));
 				h.title.setTextColor(titleColor);
 				Drawable background = UiUtilities.getColoredSelectableDrawable(app,
 						ContextCompat.getColor(app, activeColorResId), 0.3f);

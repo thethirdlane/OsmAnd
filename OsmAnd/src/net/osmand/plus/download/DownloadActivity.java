@@ -6,6 +6,8 @@ import static net.osmand.plus.download.DownloadActivityType.WIKIPEDIA_FILE;
 import static net.osmand.plus.download.ui.SearchDialogFragment.SHOW_WIKI_KEY;
 
 import android.content.Intent;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.view.MenuItem;
 import android.view.View;
@@ -14,9 +16,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.UiThread;
 import androidx.appcompat.app.ActionBar;
-import androidx.fragment.app.DialogFragment;
 import androidx.fragment.app.Fragment;
-import androidx.fragment.app.FragmentActivity;
 import androidx.viewpager.widget.ViewPager;
 
 import net.osmand.IProgress;
@@ -49,6 +49,10 @@ import net.osmand.plus.plugins.srtm.SRTMPlugin;
 import net.osmand.plus.resources.ReloadIndexesTask.ReloadIndexesListener;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.utils.AndroidUtils;
+import net.osmand.plus.utils.ColorUtilities;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTargetsCollection;
+import net.osmand.plus.views.DirectionDrawable;
 import net.osmand.plus.views.controls.PagerSlidingTabStrip;
 import net.osmand.util.Algorithms;
 
@@ -82,7 +86,6 @@ public class DownloadActivity extends AbstractDownloadActivity implements Downlo
 	private static final boolean SUGGEST_TO_DOWNLOAD_BASEMAP = false;
 	private static boolean SUGGESTED_TO_DOWNLOAD_BASEMAP;
 
-	private OsmandApplication app;
 	private DownloadIndexesThread downloadThread;
 
 	private final List<TabItem> tabs = new ArrayList<>();
@@ -105,7 +108,6 @@ public class DownloadActivity extends AbstractDownloadActivity implements Downlo
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
-		app = getMyApplication();
 		downloadThread = app.getDownloadThread();
 		app.applyTheme(this);
 		super.onCreate(savedInstanceState);
@@ -117,6 +119,7 @@ public class DownloadActivity extends AbstractDownloadActivity implements Downlo
 		accessibilityAssistant = new AccessibilityAssistant(this);
 
 		setContentView(R.layout.download_activity);
+
 		updateToolbar();
 
 		View downloadProgressLayout = findViewById(R.id.downloadProgressLayout);
@@ -162,9 +165,9 @@ public class DownloadActivity extends AbstractDownloadActivity implements Downlo
 			String region = bundle.getString(REGION_TO_SEARCH);
 			if (region != null && !region.isEmpty()) {
 				if (getIntent().getBooleanExtra(SHOW_WIKI_KEY, false)) {
-					showDialog(this, SearchDialogFragment.createInstance(region, true, NORMAL_FILE, WIKIPEDIA_FILE));
+					SearchDialogFragment.showInstance(this, region, true, NORMAL_FILE, WIKIPEDIA_FILE);
 				} else {
-					showDialog(this, SearchDialogFragment.createInstance(region, true, NORMAL_FILE));
+					SearchDialogFragment.showInstance(this, region, true, NORMAL_FILE);
 				}
 			}
 			filter = bundle.getString(FILTER_KEY);
@@ -172,6 +175,13 @@ public class DownloadActivity extends AbstractDownloadActivity implements Downlo
 			filterGroup = bundle.getString(FILTER_GROUP);
 			localItemType = LocalItemType.getByName(bundle.getString(LOCAL_ITEM_TYPE));
 		}
+	}
+
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.add(InsetTarget.createHorizontalLandscape(R.id.sliding_tabs_container, R.id.freeVersionBanner, R.id.downloadProgressLayout).build());
+		return collection;
 	}
 
 	public void updateToolbar() {
@@ -291,7 +301,7 @@ public class DownloadActivity extends AbstractDownloadActivity implements Downlo
 				if (fileName.endsWith(IndexConstants.FONT_INDEX_EXT)) {
 					RestartActivity.doRestart(this);
 				} else if (fileName.startsWith(FileNameTranslationHelper.SEA_DEPTH)) {
-					app.getSettings().getCustomRenderBooleanProperty("depthContours").set(true);
+					settings.getCustomRenderBooleanProperty("depthContours").set(true);
 				}
 			}
 			downloadItem = null;
@@ -349,10 +359,6 @@ public class DownloadActivity extends AbstractDownloadActivity implements Downlo
 		return viewPager.getCurrentItem();
 	}
 
-	public void showDialog(FragmentActivity activity, DialogFragment fragment) {
-		fragment.show(activity.getSupportFragmentManager(), "dialog");
-	}
-
 	public static boolean isDownloadingPermitted(@NonNull OsmandSettings settings) {
 		Integer mapsDownloaded = settings.NUMBER_OF_FREE_DOWNLOADS.get();
 		int downloadsLeft = DownloadValidationManager.MAXIMUM_AVAILABLE_FREE_DOWNLOADS - mapsDownloaded;
@@ -392,10 +398,7 @@ public class DownloadActivity extends AbstractDownloadActivity implements Downlo
 	}
 
 	private void showGoToMap(@NonNull WorldRegion region) {
-		GoToMapFragment fragment = new GoToMapFragment();
-		fragment.setRegionCenter(region.getRegionCenter());
-		fragment.setRegionName(region.getLocaleName());
-		fragment.show(getSupportFragmentManager(), GoToMapFragment.TAG);
+		GoToMapFragment.showInstance(this, region);
 	}
 
 	private void showDownloadWorldMapIfNeeded() {
@@ -406,10 +409,7 @@ public class DownloadActivity extends AbstractDownloadActivity implements Downlo
 		if (SUGGEST_TO_DOWNLOAD_BASEMAP && !SUGGESTED_TO_DOWNLOAD_BASEMAP && item != null
 				&& item.isDownloaded() && item.isOutdated() && !downloadThread.isDownloading(item)) {
 			SUGGESTED_TO_DOWNLOAD_BASEMAP = true;
-
-			AskMapDownloadFragment fragment = new AskMapDownloadFragment();
-			fragment.setIndexItem(item);
-			fragment.show(getSupportFragmentManager(), AskMapDownloadFragment.TAG);
+			AskMapDownloadFragment.showInstance(this, item);
 		}
 	}
 

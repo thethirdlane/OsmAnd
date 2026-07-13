@@ -48,6 +48,14 @@ public abstract class AbstractDevice<T extends AbstractSensor> {
 		void onDeviceDisconnect(@NonNull AbstractDevice<?> device);
 
 		void onSensorData(@NonNull AbstractSensor sensor, @NonNull SensorData data);
+
+		default void onDeviceConnectionFailed(@NonNull AbstractDevice<?> device) {
+
+		}
+
+		default void onActualStateChanged(){
+
+		}
 	}
 
 	public AbstractDevice(@NonNull String deviceId) {
@@ -84,6 +92,14 @@ public abstract class AbstractDevice<T extends AbstractSensor> {
 
 	public int getRssi() {
 		return rssi;
+	}
+
+	public void setRssi(int rssi) {
+		this.rssi = rssi;
+	}
+
+	public DeviceConnectionState getCurrentState() {
+		return state;
 	}
 
 	public boolean isConnected() {
@@ -154,9 +170,21 @@ public abstract class AbstractDevice<T extends AbstractSensor> {
 		}
 	}
 
+	public void fireDeviceConnectionFailed() {
+		for (DeviceListener listener : listeners) {
+			listener.onDeviceConnectionFailed(this);
+		}
+	}
+
+	public void fireDeviceActualStateChanged() {
+		for (DeviceListener listener : listeners) {
+			listener.onActualStateChanged();
+		}
+	}
+
 	public void writeSensorDataToJson(@NonNull JSONObject json, @NonNull SensorWidgetDataFieldType widgetDataFieldType) throws JSONException {
 		for (T sensor : sensors) {
-			if (sensor.getSupportedWidgetDataFieldTypes().contains(widgetDataFieldType)) {
+			if (sensor.getSupportedWidgetDataFieldTypes().contains(widgetDataFieldType) && sensor.hasActualData()) {
 				sensor.writeSensorDataToJson(json, widgetDataFieldType);
 			}
 		}

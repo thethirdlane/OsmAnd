@@ -21,8 +21,12 @@ import net.osmand.plus.routing.GPXRouteParams.GPXRouteParamsBuilder;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.OsmAndAppCustomization.OsmAndAppCustomizationListener;
 import net.osmand.plus.settings.backend.OsmandSettings;
+import net.osmand.plus.settings.enums.RouteCalculationMethod;
+import net.osmand.plus.simulation.SimulationProvider;
 import net.osmand.plus.utils.OsmAndFormatter;
+import net.osmand.router.FastRoutingState;
 import net.osmand.router.GpxRouteApproximation;
+import net.osmand.router.MissingMapsCalculationResult;
 import net.osmand.router.RouteExporter;
 import net.osmand.router.RoutePlannerFrontEnd.GpxPoint;
 import net.osmand.router.RouteSegmentResult;
@@ -48,8 +52,10 @@ public class RoutingHelper {
 	// 3) calculate max allowed deviation before route recalculation * multiplier
 	private static final float POS_TOLERANCE = 60; // 60m or 30m + accuracy
 	private static final float POS_TOLERANCE_DEVIATION_MULTIPLIER = 2;
-	private static final int MAX_POSSIBLE_SPEED = 140;// 504 km/h
+	private static final int MAX_POSSIBLE_SPEED = 340; // ~ 1 Mach
 	private static final boolean ENABLE_LOG_POS_PROCESSED = false;
+	private static final int STOP_NAVIGATION_ON_AA_DISCONNECT_DISTANCE_THRESHOLD = 100;
+	private static final int PAUSE_NAVIGATION_ON_AA_DISCONNECT_SPEED_THRESHOLD = 1;
 
 	private List<WeakReference<IRouteInformationListener>> listeners = new LinkedList<>();
 	private List<WeakReference<IRoutingDataUpdateListener>> updateListeners = new LinkedList<>();
@@ -65,6 +71,7 @@ public class RoutingHelper {
 	private boolean isFollowingMode;
 	private boolean isRoutePlanningMode;
 	private boolean isPauseNavigation;
+	private boolean isPausedOnAADisconnect;
 
 	private GPXRouteParamsBuilder currentGPXRoute;
 
@@ -152,6 +159,29 @@ public class RoutingHelper {
 		setCurrentLocation(app.getLocationProvider().getLastKnownLocation(), false);
 	}
 
+	public void onCarNavigationStart() {
+		if (isPausedOnAADisconnect && isPauseNavigation()) {
+			isPausedOnAADisconnect = false;
+			resumeNavigation();
+		}
+	}
+
+	public void onCarNavigationSessionChanged() {
+		if (app.getCarNavigationSession() == null) {
+			if (isFollowingMode()) {
+				if (getLeftDistance() < STOP_NAVIGATION_ON_AA_DISCONNECT_DISTANCE_THRESHOLD) {
+					app.stopNavigation();
+				} else {
+					Location currentLocation = app.getLocationProvider().getLastKnownLocation();
+					if (currentLocation != null && currentLocation.getSpeed() < PAUSE_NAVIGATION_ON_AA_DISCONNECT_SPEED_THRESHOLD) {
+						isPausedOnAADisconnect = true;
+						pauseNavigation();
+					}
+				}
+			}
+		}
+	}
+
 	public void pauseNavigation() {
 		setRoutePlanningMode(true);
 		setFollowingMode(false);
@@ -179,6 +209,7 @@ public class RoutingHelper {
 
 	public void setFollowingMode(boolean follow) {
 		app.logRoutingEvent("setFollowingMode follow " + follow);
+		isPausedOnAADisconnect = false;
 		isFollowingMode = follow;
 		isPauseNavigation = false;
 		if (!follow) {
@@ -212,6 +243,7 @@ public class RoutingHelper {
 
 	public synchronized void clearCurrentRoute(LatLon newFinalLocation, List<LatLon> newIntermediatePoints) {
 		app.logRoutingEvent("clearCurrentRoute newFinalLocation " + newFinalLocation + " newIntermediatePoints " + newIntermediatePoints);
+		routeWasFinished = false; // Prevent stale "arrived" state from leaking into the next navigation session
 		route = new RouteCalculationResult("");
 		isDeviatedFromRoute = false;
 		routeRecalculationHelper.resetEvalWaitInterval();
@@ -322,6 +354,10 @@ public class RoutingHelper {
 
 	public List<LatLon> getIntermediatePoints() {
 		return intermediatePoints;
+	}
+
+	public boolean isOnRoute() {
+		return isRouteCalculated() && !isDeviatedFromRoute();
 	}
 
 	public boolean isRouteCalculated() {
@@ -449,6 +485,12 @@ public class RoutingHelper {
 				if (RoutingHelperUtils.identifyUTurnIsNeeded(this, currentLocation, posTolerance)) {
 					isDeviatedFromRoute = true;
 				}
+				// 4.5. Disable recalculation in tunnels (tunnel locations are simulated)
+				if (calculateRoute && SimulationProvider.isTunnelLocationSimulated(currentLocation)) {
+					log.info("Ignore route recalculation in tunnel: " + currentLocation); //$NON-NLS-1$
+					isDeviatedFromRoute = false;
+					calculateRoute = false;
+				}
 				// 5. Update Voice router
 				// Do not update in route planning mode
 				boolean inRecalc = (calculateRoute || isRouteBeingCalculated());
@@ -500,12 +542,12 @@ public class RoutingHelper {
 		}
 	}
 
-	private boolean isLocationJumping(Location currentLocation, boolean targetPointsChanged) {
+	private boolean isLocationJumping(@NonNull Location currentLocation, boolean targetPointsChanged) {
 		if (route.hasMissingMaps() && lastGoodRouteLocation != null && !targetPointsChanged) {
 			double time = currentLocation.getTime() - lastGoodRouteLocation.getTime();
 			double dist = currentLocation.distanceTo(lastGoodRouteLocation);
 			if (time > 0) {
-				double speed = dist / (time / 1000);
+				double speed = dist / (time / 1000.0);
 				return speed > MAX_POSSIBLE_SPEED;
 			}
 		}
@@ -801,8 +843,8 @@ public class RoutingHelper {
 	}
 
 	@NonNull
-	public synchronized CurrentStreetName getCurrentName(NextDirectionInfo n) {
-		return new CurrentStreetName(this, n);
+	public synchronized CurrentStreetName getCurrentName(NextDirectionInfo n, boolean showNextTurn) {
+		return new CurrentStreetName(this, n, showNextTurn);
 	}
 
 	public RouteSegmentResult getCurrentSegmentResult() {
@@ -826,7 +868,7 @@ public class RoutingHelper {
 	}
 
 	public List<RouteDirectionInfo> getRouteDirections() {
-		return new ArrayList<>(route.getRouteDirections());
+		return new ArrayList<>(route.getRouteDirections(app));
 	}
 
 	public void onSettingsChanged() {
@@ -931,5 +973,28 @@ public class RoutingHelper {
 		if (route.isCalculated()) {
 			voiceRouter.newRouteIsCalculated(true);
 		}
+	}
+
+	public boolean shouldDrawFastRoutingProgressBar() {
+		RouteCalculationMethod method = settings.ROUTE_CALCULATION_METHOD.getModeValue(mode);
+		return method.isFastRoutingPossible(mode) && !routeRecalculationHelper.isCurrentSlowRoutingActive();
+	}
+
+	public boolean hasCurrentMissingMaps() {
+		return routeRecalculationHelper.hasCurrentMissingMaps();
+	}
+
+	@Nullable
+	public FastRoutingState.Status getCurrentFastRoutingComplication() {
+		return routeRecalculationHelper.getCurrentFastRoutingComplication();
+	}
+
+	@Nullable
+	public MissingMapsCalculationResult getCurrentMissingMapsCalculationResult() {
+		return routeRecalculationHelper.getCurrentMissingMapsCalculationResult();
+	}
+
+	public void stopCalculationImmediately() {
+		routeRecalculationHelper.stopCalculation();
 	}
 }

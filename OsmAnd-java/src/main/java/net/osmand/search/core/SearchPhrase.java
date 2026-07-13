@@ -1,8 +1,5 @@
 package net.osmand.search.core;
 
-import java.util.*;
-import java.util.regex.Pattern;
-
 import net.osmand.Collator;
 import net.osmand.CollatorStringMatcher;
 import net.osmand.CollatorStringMatcher.StringMatcherMode;
@@ -10,15 +7,14 @@ import net.osmand.OsmAndCollator;
 import net.osmand.StringMatcher;
 import net.osmand.binary.Abbreviations;
 import net.osmand.binary.BinaryMapIndexReader;
-import net.osmand.binary.BinaryMapIndexReader.SearchRequest;
 import net.osmand.binary.CommonWords;
 import net.osmand.data.LatLon;
 import net.osmand.data.QuadRect;
 import net.osmand.osm.AbstractPoiType;
-import net.osmand.util.Algorithms;
-import net.osmand.util.ArabicNormalizer;
-import net.osmand.util.LocationParser;
-import net.osmand.util.MapUtils;
+import net.osmand.util.*;
+
+import java.util.*;
+import java.util.regex.Pattern;
 
 // Immutable object !
 public class SearchPhrase {
@@ -27,7 +23,6 @@ public class SearchPhrase {
 	public static final String ALLDELIMITERS_WITH_HYPHEN = "\\s|,|-";
 	private static final Pattern reg = Pattern.compile(ALLDELIMITERS);
 	private static Comparator<String> commonWordsComparator;
-	private static Set<String> conjunctions = new TreeSet<>();
 	
 	private final Collator clt;
 	private final SearchSettings settings;
@@ -59,75 +54,16 @@ public class SearchPhrase {
 	private AbstractPoiType unselectedPoiType;
 	private boolean acceptPrivate;
 	private QuadRect cache1kmRect;
+	private RegionPriorityProvider regionPriorityProvider;
 	
 	static {
-		// the
-		conjunctions.add("the");
-		conjunctions.add("der");
-		conjunctions.add("den");
-		conjunctions.add("die");
-		conjunctions.add("das");
-		conjunctions.add("la");
-		conjunctions.add("le");
-		conjunctions.add("el");
-		conjunctions.add("il");
-		// and
-		conjunctions.add("and");
-		conjunctions.add("und");
-		conjunctions.add("en");
-		conjunctions.add("et");
-		conjunctions.add("y");
-		conjunctions.add("и");
-		// short 
-		conjunctions.add("f");
-		conjunctions.add("u");
-		conjunctions.add("jl.");
-		conjunctions.add("j");
-		conjunctions.add("sk");
-		conjunctions.add("w");
-		conjunctions.add("a.");
-		conjunctions.add("of");
-		conjunctions.add("k");
-		conjunctions.add("r");
-		conjunctions.add("h");
-		conjunctions.add("mc");
-		conjunctions.add("sw");
-		conjunctions.add("g");
-		conjunctions.add("v");
-		conjunctions.add("m");
-		conjunctions.add("c.");
-		conjunctions.add("r.");
-		conjunctions.add("ct");
-		conjunctions.add("e.");
-		conjunctions.add("dr.");
-		conjunctions.add("j.");		
-		conjunctions.add("in");
-		conjunctions.add("al");
-		conjunctions.add("út");
-		conjunctions.add("per");
-		conjunctions.add("ne");
-		conjunctions.add("p");
-		conjunctions.add("et");
-		conjunctions.add("s.");
-		conjunctions.add("f.");
-		conjunctions.add("t");
-		conjunctions.add("fe");
-		conjunctions.add("à");
-		conjunctions.add("i");
-		conjunctions.add("c");
-		conjunctions.add("le");
-		conjunctions.add("s");
-		conjunctions.add("av.");
-		conjunctions.add("den");
-		conjunctions.add("dr");
-		conjunctions.add("y");
-
 		commonWordsComparator = new Comparator<String>() {
+			CommonWords instance = CommonWords.getInstance();
 
 			@Override
 			public int compare(String o1, String o2) {
-				int i1 = CommonWords.getCommonSearch(o1.toLowerCase());
-				int i2 = CommonWords.getCommonSearch(o2.toLowerCase());
+				int i1 = instance.getCommonSearch(o1.toLowerCase());
+				int i2 = instance.getCommonSearch(o2.toLowerCase());
 				if (i1 != i2) {
 					if(i1 == -1) {
 						return -1;
@@ -151,6 +87,9 @@ public class SearchPhrase {
 	private SearchPhrase(SearchSettings settings, Collator clt) {
 		this.settings = settings;
 		this.clt = clt;
+		if (settings != null) {
+			this.regionPriorityProvider = new RegionPriorityProvider(this);
+		}
 	}
 	
 	public Collator getCollator() {
@@ -161,31 +100,35 @@ public class SearchPhrase {
 		return fileRequest;
 	}
 	
-	public SearchPhrase generateNewPhrase(SearchPhrase phrase, BinaryMapIndexReader file) {
-		SearchPhrase nphrase = generateNewPhrase(phrase.getUnknownSearchPhrase(), phrase.getSettings());
-		nphrase.fileRequest = file;
-		return nphrase;
-	}
 	
 	
 	public SearchPhrase generateNewPhrase(String text, SearchSettings settings) {
-		String textToSearch = Algorithms.normalizeSearchText(text);
+		String textToSearch = SearchAlgorithms.canonicalizePunctuation(text);
 		List<SearchWord> leftWords = this.words;
 		String thisTxt = getText(true);
 		List<SearchWord> foundWords = new ArrayList<>();
-		thisTxt = Algorithms.normalizeSearchText(thisTxt);
+		thisTxt = SearchAlgorithms.canonicalizePunctuation(thisTxt);
 		if (textToSearch.startsWith(thisTxt)) {
 			// string is longer
 			textToSearch = textToSearch.substring(getText(false).length());
 			foundWords.addAll(this.words);
 			leftWords = leftWords.subList(leftWords.size(), leftWords.size());
 		}
+
 		for (SearchWord w : leftWords) {
 			if (textToSearch.startsWith(w.getWord() + DELIMITER)) {
 				foundWords.add(w);
 				textToSearch = textToSearch.substring(w.getWord().length() + DELIMITER.length());
 			} else {
 				break;
+			}
+		}
+		for (SearchWord w : foundWords) {
+			if (w.getResult() != null && w.getResult().object instanceof CustomSearchPoiFilter specialSorting
+					&& specialSorting.getDefaultSearchType() != null) {
+//						settings.getSortType() == null
+				settings = new SearchSettings(settings);
+				settings.setSortType(specialSorting.getDefaultSearchType());
 			}
 		}
 		return createNewSearchPhrase(settings, text, foundWords, textToSearch);
@@ -212,6 +155,7 @@ public class SearchPhrase {
 		sp.words = foundWords;
 		sp.fullTextSearchPhrase = fullText;
 		sp.unknownSearchPhrase = textToSearch;
+		
 		sp.lastUnknownSearchWordComplete = isTextComplete(fullText) ;
 		if (!reg.matcher(textToSearch).find()) {
 			sp.firstUnknownSearchWord = sp.unknownSearchPhrase.trim();
@@ -221,7 +165,7 @@ public class SearchPhrase {
 			boolean first = true;
 			for (int i = 0; i < ws.length ; i++) {
 				String wd = ws[i].trim();
-				boolean conjunction = conjunctions.contains(wd.toLowerCase());
+				boolean conjunction = Abbreviations.isConjunction(wd.toLowerCase());
 				boolean lastAndIncomplete = i == ws.length - 1 && !sp.lastUnknownSearchWordComplete;
 				boolean decryptAbbreviations = needDecryptAbbreviations();
 				if (wd.length() > 0 && (!conjunction || lastAndIncomplete)) {
@@ -277,8 +221,12 @@ public class SearchPhrase {
 		return cnt;
 	}
 	
-	public SearchPhrase selectWord(SearchResult res, List<String> unknownWords, boolean lastComplete) {
-		SearchPhrase sp = new SearchPhrase(this.settings, this.clt);
+	SearchPhrase selectWord(SearchResult res, List<String> unknownWords, boolean lastComplete) {
+		return selectWord(res, this.settings, unknownWords, lastComplete);
+	}
+	
+	SearchPhrase selectWord(SearchResult res, SearchSettings settings, List<String> unknownWords, boolean lastComplete) {
+		SearchPhrase sp = new SearchPhrase(settings, this.clt);
 		addResult(res, sp);
 		SearchResult prnt = res.parentSearchResult;
 		while (prnt != null) {
@@ -303,6 +251,16 @@ public class SearchPhrase {
 		return sp;
 	}
 	
+	public String selectMainUnknownWordToSearch(List<String> searchWords) {
+		Collections.sort(searchWords, commonWordsComparator);
+		for (String s : searchWords) {
+			s = s.trim();
+			if (s.length() > 0) {
+				return s;
+			}
+		}
+		return "";
+	}
 	
 	private void calcMainUnknownWordToSearch() {
 		if (mainUnknownWordToSearch != null) {
@@ -331,6 +289,10 @@ public class SearchPhrase {
 					break;
 				}
 			}
+		}
+		if (ArabicNormalizer.isSpecialArabic(mainUnknownWordToSearch)) {
+			String normalized = ArabicNormalizer.normalize(mainUnknownWordToSearch);
+			mainUnknownWordToSearch = normalized == null ? mainUnknownWordToSearch : normalized;
 		}
 	}
 
@@ -400,7 +362,7 @@ public class SearchPhrase {
 		
 		int radiusInMeters = getRadiusSearch(radius);
 		QuadRect cache1kmRect = get1km31Rect();
-		if(cache1kmRect == null) {
+		if (cache1kmRect == null) {
 			return null;
 		}
 		int max = (1 << 31) - 1;
@@ -414,25 +376,18 @@ public class SearchPhrase {
 	}
 	
 	public QuadRect get1km31Rect() {
-		if(cache1kmRect != null) {
+		if (cache1kmRect != null) {
 			return cache1kmRect;
 		}
 		LatLon l = getLastTokenLocation();
 		if (l == null) {
 			return null;
 		}
-		float coeff = (float) (1000 / MapUtils.getTileDistanceWidth(SearchRequest.ZOOM_TO_SEARCH_POI));
-		double tx = MapUtils.getTileNumberX(SearchRequest.ZOOM_TO_SEARCH_POI, l.getLongitude());
-		double ty = MapUtils.getTileNumberY(SearchRequest.ZOOM_TO_SEARCH_POI, l.getLatitude());
-		double topLeftX = Math.max(0, tx - coeff);
-		double topLeftY = Math.max(0, ty - coeff);
-		int max = (1 << SearchRequest.ZOOM_TO_SEARCH_POI)  - 1;
-		double bottomRightX = Math.min(max, tx + coeff);
-		double bottomRightY = Math.min(max, ty + coeff);
-		double pw = MapUtils.getPowZoom(31 - SearchRequest.ZOOM_TO_SEARCH_POI);
-		cache1kmRect = new QuadRect(topLeftX * pw, topLeftY * pw, bottomRightX * pw, bottomRightY * pw);
+		cache1kmRect = MapUtils.calculateBbox(1000, l);
 		return cache1kmRect;
 	}
+
+	
 	
 	
 	public Iterator<BinaryMapIndexReader> getRadiusOfflineIndexes(int meters, final SearchPhraseDataType dt) {
@@ -441,32 +396,53 @@ public class SearchPhrase {
 		
 	}
 
-	public Iterator<BinaryMapIndexReader> getOfflineIndexes(final QuadRect rect, final SearchPhraseDataType dt) {
-		List<BinaryMapIndexReader> list = indexes != null ? indexes : settings.getOfflineIndexes();
-		final Iterator<BinaryMapIndexReader> lit = list.iterator();
-		return new Iterator<BinaryMapIndexReader>() {
+	public Iterator<BinaryMapIndexReader> getRadiusOfflineIndexes(int minMeters, int maxMeters, SearchPhraseDataType dataType) {
+		List<BinaryMapIndexReader> list;
+		if (regionPriorityProvider != null) {
+			list = regionPriorityProvider.getOfflineIndexes(minMeters, maxMeters);
+		} else {
+			list = indexes != null ? indexes : settings.getOfflineIndexes();
+		}
+		final QuadRect rect = getRadiusBBoxToSearch(maxMeters);
+		return getOfflineIndexes(rect, dataType, list);
+	}
+
+	public Iterator<BinaryMapIndexReader> getOfflineIndexes(QuadRect rect, SearchPhraseDataType dataType) {
+		Collection<BinaryMapIndexReader> list;
+		if (regionPriorityProvider != null) {
+			list = regionPriorityProvider.getOfflineIndexes();
+		} else {
+			list = indexes != null ? indexes : settings.getOfflineIndexes();
+		}
+		return getOfflineIndexes(rect, dataType, list);
+	}
+
+	public static Iterator<BinaryMapIndexReader> getOfflineIndexes(QuadRect rect, SearchPhraseDataType dataType, Collection<BinaryMapIndexReader> list) {
+		Iterator<BinaryMapIndexReader> iterator = list.iterator();
+		return new Iterator<>() {
 			BinaryMapIndexReader next = null;
+
 			@Override
 			public boolean hasNext() {
-				while (lit.hasNext()) {
-					next = lit.next();
-					if(rect != null) {
-						if(dt == SearchPhraseDataType.POI) {
-							if(next.containsPoiData((int)rect.left, (int)rect.top, (int)rect.right, (int)rect.bottom)) {
+				while (iterator.hasNext()) {
+					next = iterator.next();
+					if (rect != null) {
+						if (dataType == SearchPhraseDataType.POI) {
+							if (next.containsPoiData((int) rect.left, (int) rect.top, (int) rect.right, (int) rect.bottom)) {
 								return true;
 							}
-						} else if(dt == SearchPhraseDataType.ADDRESS) {
+						} else if (dataType == SearchPhraseDataType.ADDRESS) {
 							// containsAddressData not all maps supported
-							if(next.containsPoiData((int)rect.left, (int)rect.top, (int)rect.right, (int)rect.bottom) && 
+							if (next.containsPoiData((int) rect.left, (int) rect.top, (int) rect.right, (int) rect.bottom) &&
 									next.containsAddressData()) {
 								return true;
 							}
-						} else if(dt == SearchPhraseDataType.ROUTING) {
-							if(next.containsRouteData((int)rect.left, (int)rect.top, (int)rect.right, (int)rect.bottom, 15)) {
+						} else if (dataType == SearchPhraseDataType.ROUTING) {
+							if (next.containsRouteData((int) rect.left, (int) rect.top, (int) rect.right, (int) rect.bottom, 15)) {
 								return true;
 							}
 						} else {
-							if(next.containsMapData((int)rect.left, (int)rect.top, (int)rect.right, (int)rect.bottom, 15)) {
+							if (next.containsMapData((int) rect.left, (int) rect.top, (int) rect.right, (int) rect.bottom, 15)) {
 								return true;
 							}
 						}
@@ -541,12 +517,8 @@ public class SearchPhrase {
 		return settings.isEmptyQueryAllowed();
 	}
 
-	public boolean isSortByName() {
-		return settings.isSortByName();
-	}
-
-	public SearchPhrase selectWord(SearchResult res) {
-		return selectWord(res, null, false);
+	public SearchPhrase selectWord(SearchResult res, SearchSettings settings) {
+		return selectWord(res, settings, null, false);
 	}
 	
 
@@ -670,16 +642,16 @@ public class SearchPhrase {
 	}
 
 	public SearchWord getLastSelectedWord() {
-		if(words.isEmpty()) {
+		if (words.isEmpty()) {
 			return null;
 		}
 		return words.get(words.size() - 1);
 	}
 	
 	public LatLon getWordLocation() {
-		for(int i = words.size() - 1; i >= 0; i--) {
+		for (int i = words.size() - 1; i >= 0; i--) {
 			SearchWord sw = words.get(i);
-			if(sw.getLocation() != null) {
+			if (sw.getLocation() != null) {
 				return sw.getLocation();
 			}
 		}
@@ -687,13 +659,13 @@ public class SearchPhrase {
 	}
 	
 	public LatLon getLastTokenLocation() {
-		for(int i = words.size() - 1; i >= 0; i--) {
+		for (int i = words.size() - 1; i >= 0; i--) {
 			SearchWord sw = words.get(i);
-			if(sw.getLocation() != null) {
+			if (sw.getLocation() != null) {
 				return sw.getLocation();
 			}
 		}
-		// last token or myLocationOrVisibleMap if not selected 
+		// last token or myLocationOrVisibleMap if not selected
 		if (settings != null) {
 			return settings.getOriginalLocation();
 		}
@@ -800,24 +772,35 @@ public class SearchPhrase {
 			}
 			return false;
 		}
+		
+		public CollatorStringMatcher getStringMatcher() {
+			return sm;
+		}
 
 		@Override
 		public boolean matches(String name) {
+			if (name == null || name.length() == 0) {
+				return false;
+			}
 			return sm.matches(name);
 		}
 		
 	}
 	
 	public int countUnknownWordsMatchMainResult(SearchResult sr) {
-		return countUnknownWordsMatch(sr, sr.localeName, sr.otherNames, 0);
+		return countUnknownWordsMatchInternal(sr, null, 0);
 	}
 	
 	public int countUnknownWordsMatchMainResult(SearchResult sr, int amountMatchingWords) {
-		return countUnknownWordsMatch(sr, sr.localeName, sr.otherNames, amountMatchingWords);
+		return countUnknownWordsMatchInternal(sr, null, amountMatchingWords);
+	}
+	
+	public int countUnknownWordsMatchMainResult(SearchResult sr, String name, int amountMatchingWords) {
+		return countUnknownWordsMatchInternal(sr, name, amountMatchingWords);
 	}
 	
 	
-	public int countUnknownWordsMatch(SearchResult sr, String localeName, Collection<String> otherNames, int amountMatchingWords) {
+	private int countUnknownWordsMatchInternal(SearchResult sr, String extraName, int amountMatchingWords) {
 		int r = 0;
 		if (otherUnknownWords.size() > 0) {
 			for (int i = 0; i < otherUnknownWords.size(); i++) {
@@ -826,13 +809,14 @@ public class SearchPhrase {
 					match = true;
 				} else {
 					NameStringMatcher ms = getUnknownNameStringMatcher(i);
-					if (ms.matches(localeName) || ms.matches(otherNames)) {
+					if (ms.matches(sr.localeName) || ms.matches(sr.otherNames)
+							|| ms.matches(sr.alternateName) || ms.matches(extraName) ) {
 						match = true;
 					}
 				}
 				if (match) {
 					if (sr.otherWordsMatch == null) {
-						sr.otherWordsMatch = new TreeSet<>();
+						sr.otherWordsMatch = new TreeSet<>(getCollator());
 					}
 					sr.otherWordsMatch.add(otherUnknownWords.get(i));
 					r++;
@@ -843,9 +827,11 @@ public class SearchPhrase {
 			sr.firstUnknownWordMatches = true;
 			r++;
 		} else {
-			boolean match = localeName.equals(getFirstUnknownSearchWord())
-					|| getFirstUnknownNameStringMatcher().matches(localeName)
-					|| getFirstUnknownNameStringMatcher().matches(otherNames);
+			boolean match =
+					getFirstUnknownNameStringMatcher().matches(sr.localeName) 
+					|| getFirstUnknownNameStringMatcher().matches(sr.otherNames)
+					|| getFirstUnknownNameStringMatcher().matches(sr.alternateName)
+					|| getFirstUnknownNameStringMatcher().matches(extraName);
 			if(match) {
 				r++;
 			}
@@ -942,5 +928,35 @@ public class SearchPhrase {
 		return lastUnknownSearchWordComplete;
 	}
 
+	public static Collection<String> stripBraces(Collection<String> names) {
+		List<String> lst = new ArrayList<String>();
+		for(String s : names) {
+			lst.add(stripBraces(s));
+		}
+		return lst;
+	}
 	
+	public static String stripBraces(String localeName) {
+		if (localeName == null) {
+			return null;
+		}
+		int i = localeName.indexOf('(');
+		String retName = localeName;
+		if (i > -1) {
+			retName = localeName.substring(0, i);
+			int j = localeName.indexOf(')', i);
+			if (j > -1) {
+				retName = (retName.trim() + ' ' + localeName.substring(j + 1)).trim();
+			}
+		}
+		return retName;
+	}
+
+	public int getRegionPriority(BinaryMapIndexReader reader) {
+		if (regionPriorityProvider != null) {
+			return regionPriorityProvider.getRegionWeight(reader);
+		}
+		return 0;
+	}
+
 }

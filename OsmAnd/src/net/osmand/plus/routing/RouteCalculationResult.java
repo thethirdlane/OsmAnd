@@ -431,6 +431,8 @@ public class RouteCalculationResult {
 			TurnType turn = s.getTurnType();
 
 			if (turn != null) {
+				String actualExitRef = null, actualExitName = null;
+				String currentExitRef = null, currentExitName = null;
 				RouteDirectionInfo info = new RouteDirectionInfo(s.getSegmentSpeed(), turn);
 				if (routeInd < list.size()) {
 					int lind = routeInd;
@@ -446,7 +448,7 @@ public class RouteCalculationResult {
 						info.routeEndPointOffset = roundAboutEnd;
 					}
 					RouteSegmentResult current = (routeInd == lind) ? s : list.get(lind);
-					String lang = ctx.getSettings().MAP_PREFERRED_LOCALE.get();
+					String lang = ctx.getSettings().MAP_PREFERRED_LOCALE.get().toLowerCase();
 					boolean transliterate = ctx.getSettings().MAP_TRANSLITERATE_NAMES.get();
 					info.setStreetName(current.getStreetName(lang, transliterate, list, lind));
 					info.setDestinationName(current.getDestinationName(lang, transliterate, list, lind, false));
@@ -454,10 +456,14 @@ public class RouteCalculationResult {
 
 					RouteDataObject rdoWithShield = null;
 					RouteDataObject rdoWithoutShield = null;
-					if (s.getObject().isExitPoint()) {
+					currentExitRef = current.getObject().getExitRef();
+					currentExitName = current.getObject().getExitName();
+					if (s.hasExitInfo()) {
 						ExitInfo exitInfo = new ExitInfo();
-						exitInfo.setRef(current.getObject().getExitRef());
-						exitInfo.setExitStreetName(current.getObject().getExitName());
+						actualExitRef = currentExitRef;
+						exitInfo.setRef(currentExitRef);
+						actualExitName = currentExitName;
+						exitInfo.setExitStreetName(currentExitName);
 						info.setExitInfo(exitInfo);
 						if (!exitInfo.isEmpty() && info.getDestinationRef() == null && routeInd > 0) {
 							// set ref and road name (or shield icon) from previous segment because exit point is not consist of highway ref
@@ -472,9 +478,9 @@ public class RouteCalculationResult {
 					}
 
 					if (info.getRef() == null) {
-						String ref = current.getObject().getRef(ctx.getSettings().MAP_PREFERRED_LOCALE.get(),
+						String ref = current.getObject().getRef(lang,
 								ctx.getSettings().MAP_TRANSLITERATE_NAMES.get(), current.isForwardDirection());
-						String destRef = current.getObject().getDestinationRef(ctx.getSettings().MAP_PREFERRED_LOCALE.get(),
+						String destRef = current.getObject().getDestinationRef(lang,
 								ctx.getSettings().MAP_TRANSLITERATE_NAMES.get(), current.isForwardDirection());
 						rdoWithoutShield = current.getObject();
 						if (ref != null && !ref.equals(destRef)) {
@@ -497,9 +503,19 @@ public class RouteCalculationResult {
 				String[] pointNames = s.getObject().getPointNames(s.getStartPointIndex());
 				if (pointNames != null) {
 					for (int t = 0; t < pointNames.length; t++) {
-						description = description.trim();
-						description += " " + pointNames[t];
+						String pointName = pointNames[t];
+						if (Algorithms.isEmpty(pointName)
+								|| pointName.equals(currentExitRef) || pointName.equals(currentExitName)) {
+							continue;
+						}
+						description += " " + pointName;
 					}
+				}
+				if (actualExitRef != null) {
+					description += " " + actualExitRef;
+				}
+				if (actualExitName != null) {
+					description += " " + actualExitName;
 				}
 				info.setDescriptionRoute(description);
 				info.routePointOffset = prevLocationSize;
@@ -864,11 +880,13 @@ public class RouteCalculationResult {
 				RouteSegmentResult lastSegmentResult = segs.get(segs.size() - 1);
 				RouteDataObject routeDataObject = lastSegmentResult.getObject();
 				info.setRouteDataObject(routeDataObject);
-				info.setRef(routeDataObject.getRef(ctx.getSettings().MAP_PREFERRED_LOCALE.get(),
+				String lang = ctx.getSettings().MAP_PREFERRED_LOCALE.get().toLowerCase();
+
+				info.setRef(routeDataObject.getRef(lang,
 						ctx.getSettings().MAP_TRANSLITERATE_NAMES.get(), lastSegmentResult.isForwardDirection()));
-				info.setStreetName(routeDataObject.getName(ctx.getSettings().MAP_PREFERRED_LOCALE.get(),
+				info.setStreetName(routeDataObject.getName(lang,
 						ctx.getSettings().MAP_TRANSLITERATE_NAMES.get()));
-				info.setDestinationName(routeDataObject.getDestinationName(ctx.getSettings().MAP_PREFERRED_LOCALE.get(),
+				info.setDestinationName(routeDataObject.getDestinationName(lang,
 						ctx.getSettings().MAP_TRANSLITERATE_NAMES.get(), lastSegmentResult.isForwardDirection()));
 			}
 			info.distance = 0;
@@ -1262,7 +1280,7 @@ public class RouteCalculationResult {
 	}
 
 
-	public List<RouteDirectionInfo> getRouteDirections() {
+	public List<RouteDirectionInfo> getRouteDirections(OsmandApplication app) {
 		if (currentDirectionInfo < directions.size() - 1) {
 			if (cacheCurrentTextDirectionInfo != currentDirectionInfo) {
 				cacheCurrentTextDirectionInfo = currentDirectionInfo;
@@ -1283,7 +1301,7 @@ public class RouteCalculationResult {
 						p.setDestinationName(i.getDestinationName());
 						p.setRef(i.getRef());
 						p.setStreetName(i.getStreetName());
-						p.setDescriptionRoute(i.getDescriptionRoutePart());
+						p.setDescriptionRoute(i.getDescriptionRoutePart(app));
 						cacheAgreggatedDirections.add(p);
 					}
 					float time = i.getExpectedTime() + p.getExpectedTime();
@@ -1460,9 +1478,10 @@ public class RouteCalculationResult {
 			RouteDirectionInfo current = directions.get(currentDirectionInfo);
 			int distanceToNextTurn = getListDistance(currentRoute);
 			distanceToNextTurn -= getListDistance(current.routePointOffset);
-			Location l = locations.get(currentRoute);
-			if (fromLoc != null) {
-				distanceToNextTurn += fromLoc.distanceTo(l);
+
+			Location location = currentRoute < locations.size() ? locations.get(currentRoute) : null;
+			if (fromLoc != null && location != null) {
+				distanceToNextTurn += fromLoc.distanceTo(location);
 			}
 			return (int) (distanceToNextTurn / current.getAverageSpeed());
 		}

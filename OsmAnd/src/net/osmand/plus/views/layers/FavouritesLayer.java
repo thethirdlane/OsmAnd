@@ -108,11 +108,7 @@ public class FavouritesLayer extends OsmandMapLayer implements IContextMenuProvi
 
 	@Override
 	public void onDraw(Canvas canvas, RotatedTileBox tileBox, DrawSettings settings) {
-		if (contextMenuLayer.getMoveableObject() instanceof FavouritePoint objectInMotion) {
-			PointF pf = contextMenuLayer.getMovableCenterPoint(tileBox);
-			MapMarker mapMarker = mapMarkersHelper.getMapMarker(objectInMotion);
-			float textScale = getTextScale();
-			drawBigPoint(canvas, objectInMotion, pf.x, pf.y, mapMarker, textScale);
+		if (contextMenuLayer.getMoveableObject() instanceof FavouritePoint) {
 			if (!changeMarkerPositionMode) {
 				changeMarkerPositionMode = true;
 				showFavorites();
@@ -142,6 +138,7 @@ public class FavouritesLayer extends OsmandMapLayer implements IContextMenuProvi
 		boolean favoritesChanged = this.favoritesChangedTime != favoritesChangedTime;
 		this.favoritesChangedTime = favoritesChangedTime;
 
+		cache.clear();
 		if (hasMapRenderer()) {
 			if (mapActivityInvalidated || mapRendererChanged || nightModeChanged || showFavoritesChanged
 					|| favoritesChanged || textScaleChanged || textVisibleChanged
@@ -153,7 +150,6 @@ public class FavouritesLayer extends OsmandMapLayer implements IContextMenuProvi
 				mapRendererChanged = false;
 			}
 		} else {
-			cache.clear();
 			if (showFavorites && favouritesHelper.isFavoritesLoaded()) {
 				if (tileBox.getZoom() >= START_ZOOM || customObjectsDelegate != null) {
 					float iconSize = getIconSize(view.getApplication());
@@ -239,20 +235,40 @@ public class FavouritesLayer extends OsmandMapLayer implements IContextMenuProvi
 
 	private void drawBigPoint(Canvas canvas, FavouritePoint favoritePoint, float x, float y,
 	                          @Nullable MapMarker marker, float textScale) {
-		int pointColor = favouritesHelper.getColorWithCategory(favoritePoint, defaultColor);
-		int iconId = favoritePoint.getOverlayIconId(getContext());
-		BackgroundType backgroundType = favoritePoint.getBackgroundType();
-		boolean synced = marker != null;
-
-		PointImageDrawable drawable = createFavoriteIcon(pointColor, iconId, backgroundType, synced);
+		PointImageDrawable drawable = createBigPointIcon(favoritePoint, marker);
 		boolean history = marker != null && marker.history;
 		drawable.drawPoint(canvas, x, y, textScale, history);
 	}
 
 	@NonNull
+	private PointImageDrawable createBigPointIcon(@NonNull FavouritePoint favoritePoint,
+	                                              @Nullable MapMarker marker) {
+		int pointColor = favouritesHelper.getColorWithCategory(favoritePoint, defaultColor);
+		int iconId = favoritePoint.getOverlayIconId(getContext());
+		BackgroundType backgroundType = favoritePoint.getBackgroundType();
+		boolean synced = marker != null;
+		return createFavoriteIcon(pointColor, iconId, backgroundType, synced);
+	}
+
+	@NonNull
+	public PointImageDrawable createHomeIcon() {
+		return createSpecialIcon(SpecialPointType.HOME);
+	}
+
+	@NonNull
+	public PointImageDrawable createWorkIcon() {
+		return createSpecialIcon(SpecialPointType.WORK);
+	}
+
+	@NonNull
 	public PointImageDrawable createParkingIcon() {
+		return createSpecialIcon(SpecialPointType.PARKING);
+	}
+
+	@NonNull
+	public PointImageDrawable createSpecialIcon(@NonNull SpecialPointType pointType) {
+		int iconId = pointType.getIconId(getContext());
 		int pointColor = favouritesHelper.getParkingIconColor();
-		int iconId = SpecialPointType.PARKING.getIconId(getContext());
 		return createFavoriteIcon(pointColor, iconId, DEFAULT_BACKGROUND_TYPE, false);
 	}
 
@@ -377,8 +393,7 @@ public class FavouritesLayer extends OsmandMapLayer implements IContextMenuProvi
 	}
 
 	@Override
-	public void collectObjectsFromPoint(@NonNull MapSelectionResult result,
-			boolean unknownLocation, boolean excludeUntouchableObjects) {
+	public void collectObjectsFromPoint(@NonNull MapSelectionResult result, @NonNull MapSelectionRules rules) {
 		if (settings.SHOW_FAVORITES.get() && result.getTileBox().getZoom() >= START_ZOOM) {
 			collectFavoritesFromPoint(result);
 		}
@@ -420,6 +435,15 @@ public class FavouritesLayer extends OsmandMapLayer implements IContextMenuProvi
 	@Override
 	public boolean isObjectMovable(Object o) {
 		return o instanceof FavouritePoint;
+	}
+
+	@Override
+	public Object getMoveableObjectIcon(@NonNull Object o) {
+		if (o instanceof FavouritePoint objectInMotion) {
+			MapMarker mapMarker = mapMarkersHelper.getMapMarker(objectInMotion);
+			return createBigPointIcon(objectInMotion, mapMarker);
+		}
+		return null;
 	}
 
 	@Override

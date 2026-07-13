@@ -4,17 +4,16 @@ import static net.osmand.IndexConstants.BINARY_MAP_INDEX_EXT;
 import static net.osmand.plus.Version.FULL_VERSION_NAME;
 import static net.osmand.plus.download.DownloadOsmandIndexesHelper.getSupportedTtsByLanguages;
 import static net.osmand.plus.download.DownloadValidationManager.MAXIMUM_AVAILABLE_FREE_DOWNLOADS;
+import static net.osmand.plus.download.local.OperationType.BACKUP_OPERATION;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
 import android.net.TrafficStats;
 import android.net.Uri;
-import android.os.AsyncTask;
 import android.os.AsyncTask.Status;
 import android.os.Build;
 import android.view.View;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.UiThread;
@@ -25,6 +24,7 @@ import net.osmand.IndexConstants;
 import net.osmand.PlatformUtil;
 import net.osmand.map.WorldRegion;
 import net.osmand.map.WorldRegion.RegionParams;
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.Version;
@@ -32,6 +32,8 @@ import net.osmand.plus.base.BasicProgressAsyncTask;
 import net.osmand.plus.download.DatabaseHelper.HistoryDownloadEntry;
 import net.osmand.plus.download.DownloadFileHelper.DownloadFileShowWarning;
 import net.osmand.plus.download.IndexItem.DownloadEntry;
+import net.osmand.plus.download.local.LocalItem;
+import net.osmand.plus.download.local.LocalOperationHelper;
 import net.osmand.plus.notifications.OsmandNotification.NotificationType;
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.resources.ResourceManager;
@@ -63,7 +65,8 @@ public class DownloadIndexesThread {
 	private IndexItem currentDownloadingItem;
 	private float currentDownloadProgress;
 	private DownloadResources indexes;
-	private static final int THREAD_ID = 10103;
+	private static final int RELOAD_INDEXES_THREAD_ID = 10103;
+	private static final int DOWNLOAD_INDEXES_THREAD_ID = 10107;
 
 	public interface DownloadEvents {
 
@@ -105,13 +108,17 @@ public class DownloadIndexesThread {
 
 	@UiThread
 	protected void downloadHasStarted() {
-		boolean shouldStartService = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || uiActivity != null;
+		boolean shouldStartService = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || app.isAppInForeground();
 		if (shouldStartService) {
 			if (app.getDownloadService() == null) {
-				startDownloadService();
+				try {
+					startDownloadService();
+				} catch (IllegalStateException e) {
+					LOG.error(e);
+				}
 			}
-			if (uiActivity instanceof FragmentActivity) {
-				AndroidUtils.requestNotificationPermissionIfNeeded((FragmentActivity) uiActivity);
+			if (uiActivity instanceof FragmentActivity activity) {
+				AndroidUtils.requestNotificationPermissionIfNeeded(activity);
 			}
 		}
 		updateNotification();
@@ -240,14 +247,14 @@ public class DownloadIndexesThread {
 		if (checkRunning(true)) {
 			return;
 		}
-		execute(new ReloadIndexesTask());
+		OsmAndTaskManager.executeTask(new ReloadIndexesTask());
 	}
 
 	public void runReloadIndexFiles() {
 		if (checkRunning(false)) {
 			return;
 		}
-		execute(new ReloadIndexesTask());
+		OsmAndTaskManager.executeTask(new ReloadIndexesTask());
 	}
 
 	public void runDownloadFiles(IndexItem... items) {
@@ -265,7 +272,7 @@ public class DownloadIndexesThread {
 			}
 		}
 		if (currentDownloadingItem == null) {
-			execute(new DownloadIndexesAsyncTask());
+			OsmAndTaskManager.executeTask(new DownloadIndexesAsyncTask());
 		} else {
 			downloadInProgress();
 		}
@@ -362,11 +369,6 @@ public class DownloadIndexesThread {
 		return false;
 	}
 
-	@SuppressWarnings("unchecked")
-	private <P> void execute(BasicProgressAsyncTask<?, P, ?, ?> task, P... indexItems) {
-		task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, indexItems);
-	}
-
 	private void updateNotification() {
 		app.getNotificationHelper().refreshNotification(NotificationType.DOWNLOAD);
 	}
@@ -387,7 +389,7 @@ public class DownloadIndexesThread {
 
 		@Override
 		protected DownloadResources doInBackground(Void... params) {
-			TrafficStats.setThreadStatsTag(THREAD_ID);
+			TrafficStats.setThreadStatsTag(RELOAD_INDEXES_THREAD_ID);
 			DownloadResources result = null;
 			DownloadOsmandIndexesHelper.IndexFileList indexFileList = DownloadOsmandIndexesHelper.getIndexesList(ctx);
 			try {
@@ -509,12 +511,13 @@ public class DownloadIndexesThread {
 				}
 			}
 			currentRunningTask.remove(this);
-			indexes.updateFilesToUpdate();
+			indexes.updateOutdatedFiles();
 			downloadHasFinished();
 		}
 
 		@Override
 		protected String doInBackground(IndexItem... filesToDownload) {
+			TrafficStats.setThreadStatsTag(DOWNLOAD_INDEXES_THREAD_ID);
 			try {
 				List<File> filesToReindex = new ArrayList<>();
 				boolean forceWifi = downloadFileHelper.isWifiConnected();
@@ -534,6 +537,9 @@ public class DownloadIndexesThread {
 						}
 						setTag(item);
 						boolean updatingFile = item.isDownloaded();
+						LocalItem localItem = item.toLocalItem(app);
+						boolean backuped = localItem != null && localItem.isBackuped(app);
+
 						boolean success = downloadFile(item, filesToReindex, forceWifi);
 						if (success) {
 							if (DownloadActivityType.isCountedInDownloads(item)) {
@@ -552,6 +558,14 @@ public class DownloadIndexesThread {
 							if (bf.exists()) {
 								Algorithms.removeAllFiles(bf);
 							}
+							if (backuped) {
+								// Return deactivated file to the backup folder after downloading
+								LocalItem newLocalItem = item.toLocalItem(app);
+								if (newLocalItem != null) {
+									LocalOperationHelper helper = new LocalOperationHelper(app);
+									helper.execute(newLocalItem, BACKUP_OPERATION);
+								}
+							}
 							publishProgress(item);
 							String warning = reindexFiles(filesToReindex);
 							if (!Algorithms.isEmpty(warning)) {
@@ -559,7 +573,7 @@ public class DownloadIndexesThread {
 							}
 							filesToReindex.clear();
 							// slow down but let update all button work properly
-							indexes.updateFilesToUpdate();
+							indexes.updateOutdatedFiles();
 						}
 					}
 				} finally {

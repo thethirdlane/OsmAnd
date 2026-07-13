@@ -306,7 +306,6 @@
     <string name="poi_toll_booth">Tolldy</string>
     <string name="poi_border_control">Rheolaeth ffin</string>
     <string name="poi_traffic_signals">Goleuadau traffig</string>
-    <string name="poi_service_tyres">Teiars</string>
     <string name="poi_vehicle_inspection">Archwilio cerbydau</string>
     <string name="poi_car_wash">Golchi ceir</string>
     <string name="poi_fuel">Gorsaf betrol</string>
@@ -578,7 +577,6 @@
     <string name="poi_club_shooting">Clwb saethu</string>
     <string name="poi_club_tourism">Clwb twristiaeth</string>
     <string name="poi_club_scout">Clwb sgowtiaid</string>
-    <string name="poi_piste_downhill">Llethr sgïo lawr allt</string>
     <string name="poi_piste_skitour">Llethr Sgitour</string>
     <string name="poi_piste_hike">Llethr heicio</string>
     <string name="poi_piste_sled">Llethr sled</string>
@@ -633,7 +631,7 @@
     <string name="poi_craft_stand_builder">Adeiladwyr stondinau</string>
     <string name="poi_craft_stonemason">Saeri maen</string>
     <string name="poi_craft_sun_protection">Crefft amddiffyn rhag yr haul</string>
-    <string name="poi_craft_sweep">Ysgubwyr simneiau</string>
+    <string name="poi_craft_chimney_sweeper">Ysgubwyr simneiau</string>
     <string name="poi_craft_tailor">Teiliwr</string>
     <string name="poi_craft_tiler">Teilsiwr</string>
     <string name="poi_craft_tinsmith">Gof tin</string>
@@ -1827,7 +1825,6 @@
     <string name="poi_cuisine_yogurt">Iogwrt</string>
     <string name="poi_cuisine_gyros">Gyros</string>
     <string name="poi_cuisine_empanada">Empanada</string>
-    <string name="poi_cuisine_crepes">Crêp</string>
     <string name="poi_cuisine_yakiniku">Yakiniku</string>
     <string name="poi_cuisine_suki">Suki</string>
     <string name="poi_cuisine_udon">Udon</string>
@@ -2978,7 +2975,6 @@
     <string name="poi_training_art">Hyfforddiant: celf</string>
     <string name="poi_training_cooking">Hyfforddiant: coginio</string>
     <string name="poi_training_computer">Hyfforddiant: cyfrifiaduron</string>
-    <string name="poi_training_yoga">Hyfforddiant: yoga</string>
     <string name="poi_training_martial_art">Hyfforddiant: crefft ymladd</string>
     <string name="poi_training_hairdressing">Hyfforddiant: trin gwallt</string>
     <string name="poi_monument_yes">Gwrthrych cofebol</string>
@@ -3116,7 +3112,7 @@
     <string name="poi_socket_schuko_output_high">Uchel</string>
     <string name="poi_flooring">Storfa lloriau</string>
     <string name="poi_pottery">Crochenwaith</string>
-    <string name="poi_whitewater_rapid_name">Enw dyfroedd gwylltion yr afon</string>
+    <string name="poi_rapids_name">Enw dyfroedd gwylltion yr afon</string>
     <string name="poi_outpost">Man danfon y siop</string>
     <string name="poi_barbecue_grill">Gril barbeciw: oes</string>
     <string name="poi_water_utility">Swyddfa cyfleustodau dŵr</string>
@@ -3404,7 +3400,7 @@
     <string name="poi_ice_rink">Llawr sglefrio</string>
     <string name="poi_marketplace">Y Farchnad</string>
     <string name="poi_ice_stock">Stoc iâ</string>
-    <string name="poi_korfbal">Korfball</string>
+    <string name="poi_korfball">Korfball</string>
     <string name="poi_sport_motor">Chwaraeon modur</string>
     <string name="poi_sport_multi">Aml chwaraeon</string>
     <string name="poi_orienteering">Cyfeiriannu</string>
@@ -3574,7 +3570,7 @@
     <string name="poi_cuisine">Coginio</string>
     <string name="poi_cuisine_pizza">Pitsa</string>
     <string name="poi_cuisine_burger">Byrgyr</string>
-    <string name="poi_cuisine_coffee">Coffi</string>
+    <string name="poi_cuisine_coffee_shop">Coffi</string>
     <string name="poi_cuisine_sandwich">Brechdan</string>
     <string name="poi_cuisine_kebab">Cebab</string>
     <string name="poi_cuisine_tea">Te</string>

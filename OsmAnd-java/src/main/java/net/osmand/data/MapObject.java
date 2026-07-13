@@ -3,6 +3,7 @@ package net.osmand.data;
 
 import net.osmand.Collator;
 import net.osmand.OsmAndCollator;
+import net.osmand.binary.ObfConstants;
 import net.osmand.util.Algorithms;
 import net.osmand.util.TransliterationHelper;
 
@@ -27,7 +28,7 @@ public abstract class MapObject implements Comparable<MapObject> {
 	protected String name = null;
 	protected String enName = null;
 	/**
-	 * Looks like: {ru=Москва, dz=མོསི་ཀོ...} and does not contain values of OSM tags "name" and "name:en",
+	 * Looks like: {dz=མོསི་ཀོ...} and does not contain values of OSM tags "name" and "name:en",
 	 * see {@link name} and {@link enName} respectively.
 	 */
 	protected Map<String, String> names = null;
@@ -35,6 +36,11 @@ public abstract class MapObject implements Comparable<MapObject> {
 	protected long fileOffset = 0;
 	protected Long id = null;
 	private Object referenceFile = null;
+	
+	public static final String NAME_PLACE_ATTR = "place";
+	public static final String NAME_ADMIN_LEVEL_ATTR = "admin_level";
+	public static final String NAME_WIKIDATA_ATTR = "wikidata";
+	public static final String NAME_ETYMOLOGY_ATTR = "etymology";
 
 
 	public void setId(Long id) {
@@ -66,7 +72,7 @@ public abstract class MapObject implements Comparable<MapObject> {
 			setEnName(name);
 		} else {
 			if (names == null) {
-				names = new HashMap<String, String>();
+				names = new LinkedHashMap<String, String>();
 			}
 			names.put(lang, unzipContent(name));
 		}
@@ -75,7 +81,7 @@ public abstract class MapObject implements Comparable<MapObject> {
 	public void setNames(Map<String, String> name) {
 		if (name != null) {
 			if (names == null) {
-				names = new HashMap<String, String>();
+				names = new LinkedHashMap<String, String>();
 			}
 			names.putAll(name);
 		}
@@ -85,7 +91,7 @@ public abstract class MapObject implements Comparable<MapObject> {
 		if ((!includeEn || Algorithms.isEmpty(enName)) && names == null) {
 			return Collections.emptyMap();
 		}
-		Map<String, String> mp = new HashMap<String, String>();
+		Map<String, String> mp = new LinkedHashMap<>();
 		if (names != null) {
 			Iterator<Entry<String, String>> it = names.entrySet().iterator();
 			while (it.hasNext()) {
@@ -104,17 +110,37 @@ public abstract class MapObject implements Comparable<MapObject> {
 	}
 	
 	public List<String> getOtherNames(boolean transliterate) {
+		return getOtherNames(transliterate, null);
+	}
+	
+	public List<String> getOtherNames(boolean transliterate, String localeName) {
 		List<String> l = new ArrayList<String>();
 		String enName = getEnName(transliterate);
 		if (!Algorithms.isEmpty(enName)) {
-			l.add(enName);
+			if (localeName == null || !localeName.equals(enName)) {
+				l.add(enName);
+			}
 		}
 		if (names != null) {
-			l.addAll(names.values());
+			for (String key : names.keySet()) {
+				// skip name:place, name:admin_level... (for search and indexing!)
+				if (key.equals(NAME_ADMIN_LEVEL_ATTR) || key.equals(NAME_PLACE_ATTR) 
+						|| key.contains(NAME_ETYMOLOGY_ATTR) || key.equals(NAME_WIKIDATA_ATTR)) {
+					continue;
+				}
+				String name = names.get(key);
+				if (localeName != null && localeName.equals(name)) {
+					continue;
+				}
+				l.add(name);
+			}
+		}
+		if (!Algorithms.isEmpty(name) && localeName != null && !localeName.equals(name)) {
+			l.add(name);
 		}
 		return l;
 	}
-
+	
 	public void copyNames(String otherName, String otherEnName, Map<String, String> otherNames, boolean overwrite) {
 		if (!Algorithms.isEmpty(otherName) && (overwrite || Algorithms.isEmpty(name))) {
 			name = otherName;
@@ -135,7 +161,7 @@ public abstract class MapObject implements Comparable<MapObject> {
 					key = key.substring("name:".length());
 				}
 				if (names == null) {
-					names = new HashMap<String, String>();
+					names = new LinkedHashMap<>();
 				}
 				if (overwrite || Algorithms.isEmpty(names.get(key))) {
 					names.put(key, e.getValue());
@@ -226,7 +252,8 @@ public abstract class MapObject implements Comparable<MapObject> {
 
 	@Override
 	public String toString() {
-		return getClass().getSimpleName() + " " + name + "(" + id + ")"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		return getClass().getSimpleName() + " " + name + "(" + (id == null || id < 0 ? id
+				: ObfConstants.getOsmIdFromMapObjectId(id)) + ")";
 	}
 
 	@Override
@@ -347,13 +374,10 @@ public abstract class MapObject implements Comparable<MapObject> {
 				String s;
 				while ((s = br.readLine()) != null) {
 					bld.append(s);
+					bld.append("\n"); // could be space for name
 				}
 				br.close();
-				str = bld.toString();
-				// ugly fix of temporary problem of map generation
-				if (isContentZipped(str)) {
-					str = unzipContent(str);
-				}
+				str = bld.toString().trim();
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
@@ -365,28 +389,32 @@ public abstract class MapObject implements Comparable<MapObject> {
 		return str != null && str.startsWith(" gz ");
 	}
 
-	protected static void parseJSON(JSONObject json, MapObject o) {
+	protected static void parseJSON(JSONObject json, MapObject object) {
 		if (json.has("name")) {
-			o.name = json.getString("name");
+			object.name = json.getString("name");
 		}
 		if (json.has("enName")) {
-			o.enName = json.getString("enName");
+			object.enName = json.getString("enName");
 		}
 		if (json.has("names")) {
 			JSONObject namesObj = json.getJSONObject("names");
-			o.names = new HashMap<>();
-			Iterator<String> iterator = namesObj.keys();
-			while (iterator.hasNext()) {
-				String key = iterator.next();
-				String value = namesObj.getString(key);
-				o.names.put(key, value);
-			}
+			parseNamesJSON(namesObj, object);
 		}
 		if (json.has("lat") && json.has("lon")) {
-			o.location = new LatLon(json.getDouble("lat"), json.getDouble("lon"));
+			object.location = new LatLon(json.getDouble("lat"), json.getDouble("lon"));
 		}
 		if (json.has("id")) {
-			o.id = json.getLong("id");
+			object.id = json.getLong("id");
+		}
+	}
+
+	public static void parseNamesJSON(JSONObject json, MapObject object) {
+		object.names = new LinkedHashMap<>();
+		Iterator<String> iterator = json.keys();
+		while (iterator.hasNext()) {
+			String key = iterator.next();
+			String value = json.getString(key);
+			object.names.put(key, value);
 		}
 	}
 
@@ -402,5 +430,10 @@ public abstract class MapObject implements Comparable<MapObject> {
 			}
 		}
 		return false;
+	}
+
+	public String getWikidata() {
+		String wikidata = names != null ? names.get(NAME_WIKIDATA_ATTR) : null;
+		return Algorithms.isNotEmpty(wikidata) ? unzipContent(wikidata) : null;
 	}
 }

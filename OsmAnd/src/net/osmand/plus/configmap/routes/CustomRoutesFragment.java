@@ -1,9 +1,6 @@
 package net.osmand.plus.configmap.routes;
 
-import static net.osmand.osm.OsmRouteType.MTB;
-
 import android.os.Bundle;
-import android.util.Pair;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -12,15 +9,9 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import net.osmand.plus.R;
-import net.osmand.plus.configmap.ConfigureMapUtils;
 import net.osmand.plus.helpers.AndroidUiHelper;
-import net.osmand.plus.routepreparationmenu.cards.BaseCard;
 import net.osmand.plus.utils.AndroidUtils;
-import net.osmand.render.RenderingClass;
-
-import org.jetbrains.annotations.NotNull;
-
-import java.util.List;
+import net.osmand.util.Algorithms;
 
 public class CustomRoutesFragment extends MapRoutesFragment {
 
@@ -30,7 +21,7 @@ public class CustomRoutesFragment extends MapRoutesFragment {
 
 	@Override
 	protected boolean isEnabled() {
-		return routeLayersHelper.isRoutesTypeEnabled(attrName);
+		return attrName != null && routeLayersHelper.isRoutesTypeEnabled(attrName);
 	}
 
 	@Override
@@ -41,7 +32,17 @@ public class CustomRoutesFragment extends MapRoutesFragment {
 	@Override
 	public void onCreate(@Nullable Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		attrName = app.getRouteLayersHelper().getSelectedAttrName();
+		if (savedInstanceState != null) {
+			attrName = savedInstanceState.getString(ATTR_NAME_KEY);
+		} else {
+			Bundle args = getArguments();
+			if (args != null) {
+				attrName = args.getString(ATTR_NAME_KEY);
+			}
+		}
+		if (Algorithms.isEmpty(attrName)) {
+			attrName = app.getRouteLayersHelper().getSelectedAttrName();
+		}
 	}
 
 	protected void setupHeader(@NonNull View view) {
@@ -58,7 +59,7 @@ public class CustomRoutesFragment extends MapRoutesFragment {
 		ImageView icon = container.findViewById(R.id.icon);
 		int iconId = RouteUtils.getIconIdForAttr(attrName);
 		if (iconId > 0) {
-			icon.setImageDrawable(getPaintedContentIcon(iconId, enabled ? selectedColor : disabledColor));
+			icon.setImageDrawable(getPaintedIcon(iconId, enabled ? selectedColor : disabledColor));
 		}
 
 		AndroidUiHelper.updateVisibility(container.findViewById(R.id.description), false);
@@ -69,5 +70,11 @@ public class CustomRoutesFragment extends MapRoutesFragment {
 		super.createCards(view);
 
 		addRenderingClassCard(attrName);
+	}
+
+	@Override
+	public void onSaveInstanceState(@NonNull Bundle outState) {
+		super.onSaveInstanceState(outState);
+		outState.putString(ATTR_NAME_KEY, attrName);
 	}
 }

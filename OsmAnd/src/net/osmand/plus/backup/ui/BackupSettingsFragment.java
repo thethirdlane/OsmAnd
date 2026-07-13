@@ -30,11 +30,14 @@ import net.osmand.plus.backup.PrepareBackupTask.OnPrepareBackupListener;
 import net.osmand.plus.backup.RemoteFile;
 import net.osmand.plus.backup.UserNotRegisteredException;
 import net.osmand.plus.backup.ui.DeleteAllDataConfirmationBottomSheet.OnConfirmDeletionListener;
-import net.osmand.plus.base.BaseOsmAndFragment;
+import net.osmand.plus.base.BaseFullScreenFragment;
 import net.osmand.plus.helpers.AndroidUiHelper;
+import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
 import net.osmand.plus.utils.FontCache;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTargetsCollection;
 import net.osmand.plus.utils.UiUtilities;
 import net.osmand.util.Algorithms;
 
@@ -44,7 +47,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class BackupSettingsFragment extends BaseOsmAndFragment implements OnDeleteFilesListener,
+public class BackupSettingsFragment extends BaseFullScreenFragment implements OnDeleteFilesListener,
 		OnConfirmDeletionListener, OnPrepareBackupListener {
 
 	public static final String TAG = BackupSettingsFragment.class.getSimpleName();
@@ -76,7 +79,7 @@ public class BackupSettingsFragment extends BaseOsmAndFragment implements OnDele
 	@Override
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
 		updateNightMode();
-		View view = themedInflater.inflate(R.layout.fragment_backup_settings, container, false);
+		View view = inflate(R.layout.fragment_backup_settings, container, false);
 		AndroidUtils.addStatusBarPadding21v(requireMyActivity(), view);
 		progressBar = view.findViewById(R.id.progress_bar);
 
@@ -87,8 +90,16 @@ public class BackupSettingsFragment extends BaseOsmAndFragment implements OnDele
 		setupRemoveOldData(view);
 		setupDeleteAccountData(view);
 		setupVersionHistory(view);
+		setupAutoBackup(view);
 
 		return view;
+	}
+
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.add(InsetTarget.createScrollable(R.id.main_view));
+		return collection;
 	}
 
 	@Override
@@ -136,7 +147,7 @@ public class BackupSettingsFragment extends BaseOsmAndFragment implements OnDele
 		container.setOnClickListener(v -> {
 			FragmentActivity activity = getActivity();
 			if (activity != null) {
-				BackupTypesFragment.showInstance(activity.getSupportFragmentManager());
+				BackupDataController.showScreen(activity);
 			}
 		});
 		setupSelectableBackground(container);
@@ -188,13 +199,32 @@ public class BackupSettingsFragment extends BaseOsmAndFragment implements OnDele
 		container.setOnClickListener(v -> {
 			FragmentActivity activity = getActivity();
 			if (activity != null) {
-				VersionHistoryFragment.showInstance(activity.getSupportFragmentManager());
+				VersionHistoryController.showScreen(activity);
 			}
 		});
 		setupSelectableBackground(container);
 
 		TextView summary = container.findViewById(android.R.id.summary);
 		setupSizeSummary(summary, oldRemoteFiles);
+	}
+
+	private void setupAutoBackup(@NonNull View view) {
+		View container = view.findViewById(R.id.auto_backup_container);
+
+		TextView title = container.findViewById(android.R.id.title);
+		title.setText(R.string.auto_backup_title);
+
+		ImageView icon = container.findViewById(android.R.id.icon);
+		icon.setImageDrawable(getContentIcon(R.drawable.ic_action_storage));
+
+		container.setOnClickListener(v -> {
+			FragmentActivity activity = getActivity();
+			if (activity != null) {
+				AutoBackupController.showScreen(activity);
+			}
+		});
+		setupSelectableBackground(container);
+		AndroidUiHelper.updateVisibility(container.findViewById(android.R.id.summary), false);
 	}
 
 	private void setupSizeSummary(@NonNull TextView summary, @NonNull Map<String, RemoteFile> remoteFiles) {
@@ -305,6 +335,7 @@ public class BackupSettingsFragment extends BaseOsmAndFragment implements OnDele
 			if (view != null) {
 				setupBackupTypes(view);
 				setupVersionHistory(view);
+				setupAutoBackup(view);
 			}
 		}
 	}

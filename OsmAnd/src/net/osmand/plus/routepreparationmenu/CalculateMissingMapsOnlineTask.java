@@ -8,6 +8,7 @@ import androidx.annotation.Nullable;
 
 import net.osmand.Location;
 import net.osmand.data.LatLon;
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.helpers.TargetPoint;
 import net.osmand.plus.helpers.TargetPointsHelper;
@@ -17,14 +18,14 @@ import net.osmand.plus.routing.RoutingHelperUtils;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.backend.preferences.CommonPreference;
-import net.osmand.plus.settings.enums.RoutingType;
+import net.osmand.plus.settings.enums.RouteCalculationMethod;
 import net.osmand.router.GeneralRouter;
 import net.osmand.router.GeneralRouter.RoutingParameter;
-import net.osmand.router.GeneralRouter.GeneralRouterProfile;
 import net.osmand.router.MissingMapsCalculationResult;
 import net.osmand.router.MissingMapsCalculator;
 import net.osmand.router.RoutingConfiguration;
 import net.osmand.router.RoutingContext;
+import net.osmand.shared.routing.GeneralRouterProfile;
 import net.osmand.util.Algorithms;
 import net.osmand.util.CollectionUtils;
 
@@ -56,8 +57,8 @@ public class CalculateMissingMapsOnlineTask extends AsyncTask<Void, Void, Void> 
 		MissingMapsCalculator calculator = new MissingMapsCalculator(app.getRegions());
 		RouteCalculationResult route = app.getRoutingHelper().getRoute();
 		MissingMapsCalculationResult previousResult = route.getMissingMapsCalculationResult();
-		RoutingContext routingContext = previousResult.getMissingMapsRoutingContext();
-		List<LatLon> routePoints = previousResult.getMissingMapsPoints();
+		RoutingContext routingContext = previousResult != null ? previousResult.getMissingMapsRoutingContext() : null;
+		List<LatLon> routePoints = previousResult != null ? previousResult.getMissingMapsPoints() : null;
 
 		TargetPointsHelper pointsHelper = app.getTargetPointsHelper();
 		TargetPoint start = pointsHelper.getPointToStart();
@@ -73,21 +74,20 @@ public class CalculateMissingMapsOnlineTask extends AsyncTask<Void, Void, Void> 
 			);
 		}
 
-		if (routingContext != null && routePoints != null)  {
+		if (routingContext != null && routePoints != null) {
 			StringBuilder url = new StringBuilder(ONLINE_CALCULATION_URL)
 					.append(getRoutingProfile())
 					.append(getFormattedRoutingParameters());
-			for(LatLon point : routePoints) {
+			for (LatLon point : routePoints) {
 				url.append("&").append(formatPointString(point));
 			}
 			try {
-				RoutingType routingType = app.getSettings().ROUTING_TYPE.get();
 				OnlineRoutingHelper helper = app.getOnlineRoutingHelper();
 				String response = helper.makeRequest(url.toString());
 				List<LatLon> locations = parseOnlineCalculationResponse(response);
-				calculator.checkIfThereAreMissingMaps(
-						routingContext, routePoints.get(0), locations, routingType.isHHRouting()
-				);
+				RouteCalculationMethod method = app.getSettings().ROUTE_CALCULATION_METHOD.get();
+				boolean hhCheckEditions = method.isFastRoutingPossible(app.getRoutingHelper().getAppMode());
+				calculator.checkIfThereAreMissingMaps(routingContext, routePoints.get(0), locations, hhCheckEditions);
 				if (routingContext.calculationProgress.missingMapsCalculationResult != null) {
 					route.setMissingMapsCalculationResult(routingContext.calculationProgress.missingMapsCalculationResult);
 				}
@@ -172,12 +172,13 @@ public class CalculateMissingMapsOnlineTask extends AsyncTask<Void, Void, Void> 
 	public static CalculateMissingMapsOnlineTask execute(@NonNull OsmandApplication app,
 	                                                     @NonNull CalculateMissingMapsOnlineListener listener) {
 		CalculateMissingMapsOnlineTask task = new CalculateMissingMapsOnlineTask(app, listener);
-		task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+		OsmAndTaskManager.executeTask(task);
 		return task;
 	}
 
 	public interface CalculateMissingMapsOnlineListener {
 		void onSuccess();
+
 		void onError(@Nullable String error);
 	}
 }

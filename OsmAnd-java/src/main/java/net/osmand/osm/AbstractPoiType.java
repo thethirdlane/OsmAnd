@@ -113,6 +113,10 @@ public abstract class AbstractPoiType {
 		}
 	}
 
+	public boolean hasValidTranslation() {
+		return registry.hasValidTranslation(this);
+	}
+
 	public void addPoiAdditional(PoiType tp) {
 		if (poiAdditionals == null) {
 			poiAdditionals = new ArrayList<>();
@@ -195,5 +199,9 @@ public abstract class AbstractPoiType {
 			return false;
 		}
 		return keyName != null && keyName.equals(that.keyName);
+	}
+
+	public String getOriginalIconName() {
+		return iconName;
 	}
 }

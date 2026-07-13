@@ -6,7 +6,6 @@ import static net.osmand.plus.simulation.OsmAndLocationSimulation.LocationSimula
 import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Debug;
 
@@ -14,7 +13,10 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
 import androidx.preference.Preference;
+import androidx.preference.SwitchPreferenceCompat;
 
+import net.osmand.core.android.MapRendererView;
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.importfiles.ImportHelper;
@@ -24,6 +26,7 @@ import net.osmand.plus.plugins.aistracker.AisTrackerPlugin;
 import net.osmand.plus.plugins.mapillary.MapillaryPlugin;
 import net.osmand.plus.plugins.srtm.SRTMPlugin;
 import net.osmand.plus.render.NativeOsmandLibrary;
+import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.backend.preferences.CommonPreference;
 import net.osmand.plus.settings.bottomsheets.BooleanRadioButtonsBottomSheet;
 import net.osmand.plus.settings.bottomsheets.ConfirmationBottomSheet.ConfirmationDialogListener;
@@ -44,6 +47,10 @@ public class DevelopmentSettingsFragment extends BaseSettingsFragment implements
 	private static final String AGPS_DATA_DOWNLOADED = "agps_data_downloaded";
 	private static final String RESET_TO_DEFAULT = "reset_to_default";
 	private static final String AISTRACKER_SIMULATION = "aistracker_simulation";
+	private static final String GRID_LAYOUT_SHOW_LOGS = "grid_layout_show_logs";
+	private static final String GRID_LAYOUT_DRAW_CELLS = "grid_layout_draw_cells";
+	private static final String GRID_LAYOUT_DRAW_SLOTS = "grid_layout_draw_slots";
+	private static final String GRID_LAYOUT_DRAW_BUTTON_FRAMES = "grid_layout_draw_button_frames";
 
 	private static final int OPEN_AIS_FILE_REQUEST = 1001;
 
@@ -82,23 +89,24 @@ public class DevelopmentSettingsFragment extends BaseSettingsFragment implements
 
 		setupBatterySavingModePref();
 		setupSimulateOBDDataPref();
-		setupDebugRenderingInfoPref();
-		setupDisableMapLayersPref();
 		setupSimulateInitialStartupPref();
 		setupFullscreenMapDrawingModePref();
 		setupShouldShowFreeVersionBannerPref();
+		setupShouldShowDiscountBottomSheetPref();
 		setupTestVoiceCommandsPref();
 		setupLogcatBufferPref();
 		setupPressedKeyInfoPref();
 
 		setupTripRecordingPrefs();
 
-		setupMapTextsPrefs();
+		setupMapRenderingPrefs();
 		setupAisTrackerPrefs();
+		setupGridPrefs();
 
 		Preference info = findPreference("info");
 		info.setIconSpaceReserved(false);
 
+		setupMaxRenderingThreadsPref();
 		setupMemoryAllocatedForRoutingPref();
 		setupGlobalAppAllocatedMemoryPref();
 		setupNativeAppAllocatedMemoryPref();
@@ -147,17 +155,6 @@ public class DevelopmentSettingsFragment extends BaseSettingsFragment implements
 		debugRenderingInfo.setIconSpaceReserved(false);
 	}
 
-	private void setupDebugRenderingInfoPref() {
-		SwitchPreferenceEx debugRenderingInfo = findPreference(settings.DEBUG_RENDERING_INFO.getId());
-		debugRenderingInfo.setDescription(getString(R.string.trace_rendering_descr));
-		debugRenderingInfo.setIconSpaceReserved(false);
-	}
-
-	private void setupDisableMapLayersPref() {
-		SwitchPreferenceEx disableMapLayers = findPreference(settings.DISABLE_MAP_LAYERS.getId());
-		disableMapLayers.setDescription(getString(R.string.disable_map_layers_descr));
-		disableMapLayers.setIconSpaceReserved(false);
-	}
 
 	private void setupSimulateInitialStartupPref() {
 		Preference simulateInitialStartup = findPreference(SIMULATE_INITIAL_STARTUP);
@@ -168,6 +165,12 @@ public class DevelopmentSettingsFragment extends BaseSettingsFragment implements
 		SwitchPreferenceEx shouldShowFreeVersionBanner = findPreference(settings.SHOULD_SHOW_FREE_VERSION_BANNER.getId());
 		shouldShowFreeVersionBanner.setDescription(getString(R.string.show_free_version_banner_description));
 		shouldShowFreeVersionBanner.setIconSpaceReserved(false);
+	}
+
+	private void setupShouldShowDiscountBottomSheetPref() {
+		SwitchPreferenceEx shouldShowDiscountBottomSheet = findPreference(settings.SHOULD_SHOW_DISCOUNT_BOTTOM_SHEET.getId());
+		shouldShowDiscountBottomSheet.setDescription(getString(R.string.show_discount_bottom_sheet_description));
+		shouldShowDiscountBottomSheet.setIconSpaceReserved(false);
 	}
 
 	private void setupFullscreenMapDrawingModePref() {
@@ -205,19 +208,47 @@ public class DevelopmentSettingsFragment extends BaseSettingsFragment implements
 		SwitchPreferenceEx headingPref = findPreference(plugin.SAVE_HEADING_TO_GPX.getId());
 		headingPref.setIconSpaceReserved(false);
 		headingPref.setDescription(R.string.write_heading_description);
+
+		SwitchPreferenceEx locationProviderPref = findPreference(plugin.SAVE_LOCATION_PROVIDER_TO_GPX.getId());
+		locationProviderPref.setIconSpaceReserved(false);
+		locationProviderPref.setDescription(R.string.write_location_provider_description);
 	}
 
-	private void setupMapTextsPrefs() {
+	private void setupMapRenderingPrefs() {
 		Preference textsCategory = findPreference("texts");
 		textsCategory.setIconSpaceReserved(false);
 
-		SwitchPreferenceEx syminfoPref = findPreference(plugin.SHOW_SYMBOLS_DEBUG_INFO.getId());
-		syminfoPref.setIconSpaceReserved(false);
-		syminfoPref.setDescription(R.string.show_debug_info_description);
+		SwitchPreferenceEx symRasterTilePref = findPreference(plugin.SHOW_PRIMITIVES_DEBUG_INFO.getId());
+		symRasterTilePref.setIconSpaceReserved(false);
+		symRasterTilePref.setDescription(R.string.show_debug_tile_description);
+
+		SwitchPreferenceEx msaaPref = findPreference(settings.ENABLE_MSAA.getId());
+		msaaPref.setIconSpaceReserved(false);
+		msaaPref.setVisible(MapRendererView.isMSAASupported());
+
+		SwitchPreferenceEx disableMapLayers = findPreference(settings.DISABLE_MAP_LAYERS.getId());
+		disableMapLayers.setDescription(getString(R.string.disable_map_layers_descr));
+		disableMapLayers.setIconSpaceReserved(false);
 
 		SwitchPreferenceEx symtopPref = findPreference(plugin.ALLOW_SYMBOLS_DISPLAY_ON_TOP.getId());
 		symtopPref.setIconSpaceReserved(false);
 		symtopPref.setDescription(R.string.allow_display_on_top_description);
+
+		SwitchPreferenceEx debugRenderingInfo = findPreference(settings.DEBUG_RENDERING_INFO.getId());
+		debugRenderingInfo.setDescription(getString(R.string.trace_rendering_descr));
+		debugRenderingInfo.setIconSpaceReserved(false);
+	}
+
+	private void setupMaxRenderingThreadsPref() {
+		MapRendererView mapRenderer = app.getOsmandMap().getMapView().getMapRenderer();
+		int value = settings.MAX_RENDERING_THREADS.get();
+		Preference preference = findPreference(settings.MAX_RENDERING_THREADS.getId());
+		if (value == 0) {
+			value = mapRenderer != null ? mapRenderer.getResourceWorkerThreadsLimit() : -1;
+		}
+		preference.setSummary(getString(R.string.ltr_or_rtl_combine_via_space, String.valueOf(value), (value == 1 ? "thread" : "threads")));
+		preference.setIconSpaceReserved(false);
+		preference.setVisible(mapRenderer != null);
 	}
 
 	private void setupMemoryAllocatedForRoutingPref() {
@@ -238,6 +269,25 @@ public class DevelopmentSettingsFragment extends BaseSettingsFragment implements
 
 		category.setIconSpaceReserved(false);
 		preference.setIconSpaceReserved(false);
+	}
+
+	private void setupGridPrefs() {
+		Preference category = findPreference("visualizing_button_grid");
+		SwitchPreferenceCompat showLogsPref = findPreference(GRID_LAYOUT_SHOW_LOGS);
+		SwitchPreferenceCompat efficientGridPref = findPreference(GRID_LAYOUT_DRAW_CELLS);
+		SwitchPreferenceCompat slotsPref = findPreference(GRID_LAYOUT_DRAW_SLOTS);
+		SwitchPreferenceCompat buttonFramesPref = findPreference(GRID_LAYOUT_DRAW_BUTTON_FRAMES);
+
+		showLogsPref.setChecked(OsmandSettings.DEV_GRID_LAYOUT_SHOW_LOGS);
+		efficientGridPref.setChecked(OsmandSettings.DEV_GRID_LAYOUT_DRAW_CELLS);
+		slotsPref.setChecked(OsmandSettings.DEV_GRID_LAYOUT_DRAW_SLOTS);
+		buttonFramesPref.setChecked(OsmandSettings.DEV_GRID_LAYOUT_DRAW_BUTTON_FRAMES);
+
+		category.setIconSpaceReserved(false);
+		showLogsPref.setIconSpaceReserved(false);
+		efficientGridPref.setIconSpaceReserved(false);
+		slotsPref.setIconSpaceReserved(false);
+		buttonFramesPref.setIconSpaceReserved(false);
 	}
 
 	private void setupGlobalAppAllocatedMemoryPref() {
@@ -353,6 +403,11 @@ public class DevelopmentSettingsFragment extends BaseSettingsFragment implements
 				preference.setSummary(getAgpsDataDownloadedSummary());
 			}
 			return true;
+		} else if (settings.MAX_RENDERING_THREADS.getId().equals(prefId)) {
+			FragmentManager fragmentManager = getFragmentManager();
+			if (fragmentManager != null) {
+				MaxRenderingThreadsBottomSheet.showInstance(fragmentManager, preference.getKey(), this, getSelectedAppMode());
+			}
 		} else if (settings.MEMORY_ALLOCATED_FOR_ROUTING.getId().equals(prefId)) {
 			FragmentManager fragmentManager = getFragmentManager();
 			if (fragmentManager != null) {
@@ -377,7 +432,7 @@ public class DevelopmentSettingsFragment extends BaseSettingsFragment implements
 				Uri uri = data.getData();
 				if (uri != null) {
 					AisLoadTask task = new AisLoadTask(app, uri);
-					task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+					OsmAndTaskManager.executeTask(task);
 				}
 			}
 		} else {
@@ -390,6 +445,9 @@ public class DevelopmentSettingsFragment extends BaseSettingsFragment implements
 		if (prefId.equals(settings.MEMORY_ALLOCATED_FOR_ROUTING.getId())) {
 			applyPreference(settings.MEMORY_ALLOCATED_FOR_ROUTING.getId(), applyToAllProfiles, newValue);
 			setupMemoryAllocatedForRoutingPref();
+		} else if (prefId.equals(settings.MAX_RENDERING_THREADS.getId())) {
+			applyPreference(settings.MAX_RENDERING_THREADS.getId(), applyToAllProfiles, newValue);
+			setupMaxRenderingThreadsPref();
 		} else {
 			super.onApplyPreferenceChange(prefId, applyToAllProfiles, newValue);
 		}
@@ -399,7 +457,8 @@ public class DevelopmentSettingsFragment extends BaseSettingsFragment implements
 	public void onDisplayPreferenceDialog(Preference preference) {
 		String prefId = preference.getKey();
 
-		if (plugin.SAVE_BEARING_TO_GPX.getId().equals(prefId) || plugin.SAVE_HEADING_TO_GPX.getId().equals(prefId)) {
+		if (plugin.SAVE_BEARING_TO_GPX.getId().equals(prefId) || plugin.SAVE_HEADING_TO_GPX.getId().equals(prefId)
+				|| plugin.SAVE_LOCATION_PROVIDER_TO_GPX.getId().equals(prefId)) {
 			FragmentManager manager = getFragmentManager();
 			if (manager != null) {
 				BooleanRadioButtonsBottomSheet.showInstance(manager, prefId, getApplyQueryType(),
@@ -418,6 +477,22 @@ public class DevelopmentSettingsFragment extends BaseSettingsFragment implements
 			return true;
 		} else if (settings.TRANSPARENT_STATUS_BAR.getId().equals(prefId) && newValue instanceof Boolean) {
 			restartActivity();
+			return true;
+		} else if (GRID_LAYOUT_DRAW_CELLS.equals(prefId)) {
+			OsmandSettings.DEV_GRID_LAYOUT_DRAW_CELLS = !OsmandSettings.DEV_GRID_LAYOUT_DRAW_CELLS;
+			app.getOsmandMap().getMapView().refreshMap();
+			return true;
+		} else if (GRID_LAYOUT_DRAW_SLOTS.equals(prefId)) {
+			OsmandSettings.DEV_GRID_LAYOUT_DRAW_SLOTS = !OsmandSettings.DEV_GRID_LAYOUT_DRAW_SLOTS;
+			app.getOsmandMap().getMapView().refreshMap();
+			return true;
+		} else if (GRID_LAYOUT_DRAW_BUTTON_FRAMES.equals(prefId)) {
+			OsmandSettings.DEV_GRID_LAYOUT_DRAW_BUTTON_FRAMES = !OsmandSettings.DEV_GRID_LAYOUT_DRAW_BUTTON_FRAMES;
+			app.getOsmandMap().getMapView().refreshMap();
+			return true;
+		} else if (GRID_LAYOUT_SHOW_LOGS.equals(prefId)) {
+			OsmandSettings.DEV_GRID_LAYOUT_SHOW_LOGS = !OsmandSettings.DEV_GRID_LAYOUT_SHOW_LOGS;
+			app.getOsmandMap().getMapView().refreshMap();
 			return true;
 		}
 		return super.onPreferenceChange(preference, newValue);
@@ -467,7 +542,7 @@ public class DevelopmentSettingsFragment extends BaseSettingsFragment implements
 		if (!NativeOsmandLibrary.isLoaded() && activity != null) {
 			RenderingRulesStorage storage = app.getRendererRegistry().getCurrentSelectedRenderer();
 			NativeLibraryLoadTask nativeLibraryLoadTask = new NativeLibraryLoadTask(activity, storage);
-			nativeLibraryLoadTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+			OsmAndTaskManager.executeTask(nativeLibraryLoadTask);
 		}
 	}
 }

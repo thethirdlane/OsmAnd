@@ -13,6 +13,7 @@ import net.osmand.core.jni.MapState;
 import net.osmand.core.jni.PointI;
 import net.osmand.data.LatLon;
 import net.osmand.data.RotatedTileBox;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.shared.gpx.GpxTrackAnalysis;
 import net.osmand.shared.gpx.GpxTrackAnalysis.TrackPointsAnalyser;
 import net.osmand.shared.gpx.primitives.WptPt;
@@ -157,7 +158,7 @@ public class AutoZoomBySpeedHelper implements MapZoomChangeListener, TouchListen
 
 		int minZoom = mapView.getMinZoom();
 		int maxZoom = mapView.getMaxZoom();
-		Zoom boundedZoom = Zoom.checkZoomBounds(expectedSurfaceZoom, minZoom, maxZoom);
+		Zoom boundedZoom = Zoom.checkZoomBounds(mapRenderer, expectedSurfaceZoom, minZoom, maxZoom);
 		return ComplexZoom.fromPreferredBase(boundedZoom.getBaseZoom() + boundedZoom.getZoomFloatPart(), mapView.getZoom());
 	}
 
@@ -212,7 +213,7 @@ public class AutoZoomBySpeedHelper implements MapZoomChangeListener, TouchListen
 
 		int minZoom = mapView.getMinZoom();
 		int maxZoom = mapView.getMaxZoom();
-		Zoom boundedZoom = Zoom.checkZoomBounds(expectedSurfaceZoom, minZoom, maxZoom);
+		Zoom boundedZoom = Zoom.checkZoomBounds(mapRenderer, expectedSurfaceZoom, minZoom, maxZoom);
 		return new ComplexZoom(boundedZoom.getBaseZoom(), boundedZoom.getZoomFloatPart());
 	}
 	@Nullable
@@ -401,8 +402,7 @@ public class AutoZoomBySpeedHelper implements MapZoomChangeListener, TouchListen
 	                                                 @NonNull GPXDataSetAxisType chartAxisType,
 	                                                 boolean calcWithoutGaps,
 	                                                 boolean useRightAxis) {
-		OsmandSettings settings = app.getSettings();
-		boolean nightMode = !settings.isLightContent();
+		boolean nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.APP);
 
 		float divX = ChartUtils.getDivX(app, chart, analysis, chartAxisType, calcWithoutGaps);
 

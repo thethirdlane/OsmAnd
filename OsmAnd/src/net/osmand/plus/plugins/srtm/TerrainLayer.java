@@ -26,6 +26,7 @@ import net.osmand.data.QuadRect;
 import net.osmand.data.QuadTree;
 import net.osmand.data.RotatedTileBox;
 import net.osmand.map.ITileSource;
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.api.SQLiteAPI.SQLiteConnection;
 import net.osmand.plus.plugins.PluginsHelper;
@@ -113,10 +114,10 @@ public class TerrainLayer extends MapTileLayer {
 	private IRasterMapLayerProvider createGeoTiffLayerProvider(TerrainMode mode, @NonNull GeoTiffCollection geoTiffCollection) {
 		OsmandApplication app = getApplication();
 		File heightmapDir = app.getAppPath(IndexConstants.CLR_PALETTE_DIR);
-		String mainColorFilename = new File(heightmapDir, mode.getMainFile()).getAbsolutePath();
+		String mainColorFilename = new File(heightmapDir, mode.getMainFileName()).getAbsolutePath();
 		IRasterMapLayerProvider provider = null;
 		if (mode.getType() == TerrainMode.TerrainType.HILLSHADE) {
-			String slopeSecondaryColorFilename = new File(heightmapDir, mode.getSecondFile()).getAbsolutePath();
+			String slopeSecondaryColorFilename = new File(heightmapDir, mode.getSecondFileName()).getAbsolutePath();
 			provider =
 					new HillshadeRasterMapLayerProvider(geoTiffCollection, mainColorFilename, slopeSecondaryColorFilename);
 			((HillshadeRasterMapLayerProvider) provider).setMinVisibleZoom(ZoomLevel.swigToEnum(srtmPlugin.getTerrainMinZoom()));
@@ -219,7 +220,7 @@ public class TerrainLayer extends MapTileLayer {
 				for(Map.Entry<String, Long> entry : fileModified.entrySet()) {
 					String filename = entry.getKey();
 					try {
-						log.info("Indexing " + mode.getMainFile() + " file " + filename);
+						log.info("Indexing " + mode.getMainFileName() + " file " + filename);
 						ContentValues cv = new ContentValues();
 						cv.put("filename", filename);
 						cv.put("date_modified", entry.getValue());
@@ -277,7 +278,7 @@ public class TerrainLayer extends MapTileLayer {
 				return rs;
 			}
 		};
-		executeTaskInBackground(task);
+		OsmAndTaskManager.executeTask(task);
 	}
 
 	private SQLiteTileSource createTileSource(@NonNull OsmandApplication app) {

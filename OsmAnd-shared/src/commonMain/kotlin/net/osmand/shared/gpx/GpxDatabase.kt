@@ -23,7 +23,7 @@ class GpxDatabase {
 	companion object {
 		val log = LoggerFactory.getLogger("GpxDatabase")
 
-		const val DB_VERSION = 30
+		const val DB_VERSION = 36
 		const val DB_NAME = "gpx_database"
 		const val GPX_TABLE_NAME = "gpxTable"
 		const val GPX_DIR_TABLE_NAME = "gpxDirTable"
@@ -39,16 +39,11 @@ class GpxDatabase {
 			"case when %1\$s is null then '' else %1\$s end as %1\$s"
 		val CHANGE_NULL_TO_EMPTY_GROUP_CONDITION_STRING_QUERY_PART =
 			"case when %1\$s is null then '' else %1\$s end"
-		val INCLUDE_NON_NULL_COLUMN_CONDITION = " WHERE %1\$s NOT NULL AND %1\$s <> '' "
+		val INCLUDE_NON_NULL_COLUMN_CONDITION = " WHERE %1\$s IS NOT NULL AND %1\$s <> '' "
 		val GET_ITEM_COUNT_COLLECTION_BASE =
 			"SELECT %s, count (*) as $TMP_NAME_COLUMN_COUNT FROM $GPX_TABLE_NAME%s group by %s ORDER BY %s %s"
 
 		val BATCH_SIZE = 100
-	}
-
-	init {
-		val db = openConnection(false)
-		db?.close()
 	}
 
 	fun openConnection(readonly: Boolean): SQLiteConnection? {
@@ -84,7 +79,12 @@ class GpxDatabase {
 	private fun updateGpxParameters(item: DataItem, map: Map<GpxParameter, Any?>): Boolean {
 		val file = item.file
 		val tableName = GpxDbUtils.getTableName(file)
-		return updateGpxParameters(map, tableName, GpxDbUtils.getItemRowsToSearch(file))
+		val success = updateGpxParameters(map, tableName, GpxDbUtils.getItemRowsToSearch(file))
+
+		if (success) {
+			updateAppearanceTimestamp(item)
+		}
+		return success
 	}
 
 	private fun updateGpxParameters(
@@ -253,7 +253,7 @@ class GpxDatabase {
 		var minDate = -1L
 		var db: SQLiteConnection? = null
 		try {
-			db = openConnection(false)
+			db = openConnection(true)
 			db?.let {
 				var query: SQLiteCursor? = null
 				try {
@@ -275,7 +275,7 @@ class GpxDatabase {
 		var maxValue = ""
 		var db: SQLiteConnection? = null
 		try {
-			db = openConnection(false)
+			db = openConnection(true)
 			if (db != null) {
 				val queryString = GPX_MAX_COLUMN_VALUE.format(parameter.columnName)
 				var query: SQLiteCursor? = null
@@ -326,7 +326,7 @@ class GpxDatabase {
 		val folderCollection = mutableListOf<StringIntPair>()
 		var db: SQLiteConnection? = null
 		try {
-			db = openConnection(false)
+			db = openConnection(true)
 			db?.let {
 				var query: SQLiteCursor? = null
 				try {
@@ -350,7 +350,7 @@ class GpxDatabase {
 		val items = mutableSetOf<GpxDataItem>()
 		var db: SQLiteConnection? = null
 		try {
-			db = openConnection(false)
+			db = openConnection(true)
 			db?.let {
 				var query: SQLiteCursor? = null
 				try {
@@ -447,7 +447,7 @@ class GpxDatabase {
 		val items = mutableSetOf<GpxDirItem>()
 		var db: SQLiteConnection? = null
 		try {
-			db = openConnection(false)
+			db = openConnection(true)
 			db?.let {
 				var query: SQLiteCursor? = null
 				try {
@@ -479,7 +479,7 @@ class GpxDatabase {
 	private fun getDataItem(file: KFile): DataItem? {
 		var db: SQLiteConnection? = null
 		try {
-			db = openConnection(false)
+			db = openConnection(true)
 			db?.let { return getDataItem(file, db) } ?: return null
 		} finally {
 			db?.close()
@@ -521,5 +521,34 @@ class GpxDatabase {
 		}
 		return false
 	}
-}
 
+	private fun updateAppearanceTimestamp(item: DataItem) {
+		var db: SQLiteConnection? = null
+		try {
+			db = openConnection(true)
+			db?.let {
+				var cursor: SQLiteCursor? = null
+				try {
+					val fileName = item.file.name()
+					val gpxFile = GpxDbUtils.isGpxFile(item.file)
+					val fileDir = GpxDbUtils.getGpxFileDir(item.file)
+
+					val selectQuery = if (gpxFile) GpxDbUtils.getSelectGpxQuery(APPEARANCE_LAST_MODIFIED_TIME)
+						else GpxDbUtils.getSelectGpxDirQuery(APPEARANCE_LAST_MODIFIED_TIME)
+
+					val query = "$selectQuery $GPX_FIND_BY_NAME_AND_DIR"
+
+					cursor = it.rawQuery(query, arrayOf(fileName, fileDir))
+					if (cursor != null && cursor.moveToFirst()) {
+						val timestamp = cursor.getLong(0)
+						item.setParameter(APPEARANCE_LAST_MODIFIED_TIME, timestamp)
+					}
+				} finally {
+					cursor?.close()
+				}
+			}
+		} finally {
+			db?.close()
+		}
+	}
+}

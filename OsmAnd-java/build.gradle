@@ -37,7 +37,7 @@ tasks.register('collectRenderingStylesResources', Sync) {
 }
 
 tasks.register('collectRegionsInfoResources', Download) {
-	src 'https://creator.osmand.net/basemap/regions.ocbf'
+	src 'https://builder.osmand.net/basemap/regions.ocbf'
 	dest 'src/main/resources/net/osmand/map/regions.ocbf'
 	onlyIfModified true
 }
@@ -51,6 +51,7 @@ tasks.register('collectTestPhrasesResources', Copy) {
 }
 
 tasks.register('collectTestResources', Copy) {
+	delete fileTree("src/test/resources/search")
 	into "src/test/resources/"
 	from("../../resources/test-resources") {
 		include "*"

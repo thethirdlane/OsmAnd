@@ -12,7 +12,8 @@ public enum GpxSplitType {
 
 	NO_SPLIT("no_split", -1, R.string.shared_string_none),
 	DISTANCE("distance", 1, R.string.distance),
-	TIME("time", 2, R.string.shared_string_time);
+	TIME("time", 2, R.string.shared_string_time),
+	UPHILL_DOWNHILL("uphill_downhill", 3, R.string.uphill_downhill_split);
 
 	private final String typeName;
 	private final int type;
@@ -48,10 +49,12 @@ public enum GpxSplitType {
 	}
 
 	@NonNull
-	public static GpxSplitType getSplitTypeByTypeId(int typeId) {
-		for (GpxSplitType splitType : values()) {
-			if (splitType.type == typeId) {
-				return splitType;
+	public static GpxSplitType getSplitTypeByTypeId(@Nullable Integer typeId) {
+		if (typeId != null) {
+			for (GpxSplitType splitType : values()) {
+				if (splitType.type == typeId) {
+					return splitType;
+				}
 			}
 		}
 		return NO_SPLIT;

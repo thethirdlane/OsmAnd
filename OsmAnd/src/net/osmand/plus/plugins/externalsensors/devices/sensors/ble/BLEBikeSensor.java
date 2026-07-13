@@ -256,10 +256,14 @@ public class BLEBikeSensor extends BLEAbstractSensor {
 				wheelCadence = (wheelRevolutions - lastWheelRevolutions) * 60.0f / timeDifference;
 				getDevice().fireSensorDataEvent(this, createBikeSpeedDistanceData(speed, distance, totalDistance));
 			}
+			if(wheelRevolutions > lastWheelRevolutions) {
+				lastTimeDifferentValue = System.currentTimeMillis();
+			}
 			lastWheelRevolutions = wheelRevolutions;
 			this.lastWheelEventTime = lastWheelEventTime;
 
-		} else if (crankRevPreset) {
+		}
+		if (crankRevPreset) {
 			int crankRevolutions = characteristic.getIntValue(BluetoothGattCharacteristic.FORMAT_UINT16, 1);
 			int lastCrankEventTime = characteristic.getIntValue(BluetoothGattCharacteristic.FORMAT_UINT16, 3);
 			if (lastCrankRevolutions >= 0) {
@@ -274,6 +278,9 @@ public class BLEBikeSensor extends BLEAbstractSensor {
 					float gearRatio = wheelCadence / crankCadence;
 					getDevice().fireSensorDataEvent(this, createBikeCadenceData(gearRatio, Math.round(crankCadence)));
 				}
+			}
+			if(crankRevolutions > lastCrankRevolutions) {
+				lastTimeDifferentValue = System.currentTimeMillis();
 			}
 			lastCrankRevolutions = crankRevolutions;
 			this.lastCrankEventTime = lastCrankEventTime;
@@ -317,5 +324,10 @@ public class BLEBikeSensor extends BLEAbstractSensor {
 			default:
 				break;
 		}
+	}
+
+	@Override
+	protected long getDataUpdateTimePeriod() {
+		return 2000;
 	}
 }

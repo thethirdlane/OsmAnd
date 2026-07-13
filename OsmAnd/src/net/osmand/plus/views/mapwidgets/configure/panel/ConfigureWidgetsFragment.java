@@ -1,13 +1,14 @@
 package net.osmand.plus.views.mapwidgets.configure.panel;
 
 import static net.osmand.plus.helpers.AndroidUiHelper.ANIMATION_DURATION;
-import static net.osmand.plus.settings.bottomsheets.WidgetsResetConfirmationBottomSheet.*;
-import static net.osmand.plus.utils.AndroidUtils.dpToPx;
+import static net.osmand.plus.settings.bottomsheets.WidgetsResetConfirmationBottomSheet.showResetSettingsDialog;
+import static net.osmand.plus.settings.enums.ScreenLayoutMode.LANDSCAPE;
+import static net.osmand.plus.settings.enums.ScreenLayoutMode.PORTRAIT;
 import static net.osmand.plus.utils.WidgetUtils.createNewWidget;
+import static net.osmand.plus.views.mapwidgets.configure.dialogs.ConfigureScreenFragment.SCREEN_LAYOUT_MODE;
 
 import android.graphics.PorterDuff;
 import android.graphics.drawable.Drawable;
-import android.os.Build;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -39,7 +40,7 @@ import com.google.android.material.tabs.TabLayoutMediator;
 
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
-import net.osmand.plus.base.BaseOsmAndFragment;
+import net.osmand.plus.base.BaseFullScreenFragment;
 import net.osmand.plus.base.dialog.DialogManager;
 import net.osmand.plus.helpers.AndroidUiHelper;
 import net.osmand.plus.inapp.InAppPurchaseHelper.InAppPurchaseListener;
@@ -47,8 +48,12 @@ import net.osmand.plus.profiles.SelectCopyAppModeBottomSheet;
 import net.osmand.plus.profiles.SelectCopyAppModeBottomSheet.CopyAppModePrefsListener;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.bottomsheets.ConfirmationBottomSheet.ConfirmationDialogListener;
+import net.osmand.plus.settings.enums.ScreenLayoutMode;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTargetsCollection;
+import net.osmand.plus.utils.InsetsUtils;
 import net.osmand.plus.views.layers.MapInfoLayer;
 import net.osmand.plus.views.mapwidgets.MapWidgetInfo;
 import net.osmand.plus.views.mapwidgets.WidgetsPanel;
@@ -59,13 +64,14 @@ import net.osmand.plus.widgets.dialogbutton.DialogButtonType;
 import net.osmand.plus.widgets.popup.PopUpMenu;
 import net.osmand.plus.widgets.popup.PopUpMenuDisplayData;
 import net.osmand.plus.widgets.popup.PopUpMenuItem;
+import net.osmand.util.Algorithms;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements WidgetsConfigurationChangeListener,
+public class ConfigureWidgetsFragment extends BaseFullScreenFragment implements WidgetsConfigurationChangeListener,
 		InAppPurchaseListener, AddWidgetListener, CopyAppModePrefsListener, ConfirmationDialogListener {
 
 	public static final String TAG = ConfigureWidgetsFragment.class.getSimpleName();
@@ -82,7 +88,6 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 
 	private WidgetsPanel selectedPanel;
 	private ApplicationMode selectedAppMode;
-	private WidgetsListFragment selectedFragment;
 	private OnBackPressedCallback onBackPressedCallback;
 	private FragmentLifecycleCallbacks lifecycleCallbacks;
 
@@ -98,23 +103,22 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 	private TextView toolbarTitleView;
 	private View view;
 
+	private ScreenLayoutMode layoutMode;
 	public boolean isEditMode = false;
-
-	public void setSelectedPanel(@NonNull WidgetsPanel panel) {
-		this.selectedPanel = panel;
-	}
-
-	public void setSelectedAppMode(@NonNull ApplicationMode appMode) {
-		this.selectedAppMode = appMode;
-	}
-
-	public void setSelectedFragment(@Nullable WidgetsListFragment fragment) {
-		this.selectedFragment = fragment;
-	}
 
 	@NonNull
 	public WidgetsPanel getSelectedPanel() {
 		return selectedPanel;
+	}
+
+	@NonNull
+	public ApplicationMode getSelectedAppMode() {
+		return selectedAppMode;
+	}
+
+	@Nullable
+	public ScreenLayoutMode getScreenLayoutMode() {
+		return layoutMode;
 	}
 
 	@Override
@@ -127,12 +131,20 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 			selectedAppMode = ApplicationMode.valueOfStringKey(appModeKey, settings.getApplicationMode());
 			selectedPanel = WidgetsPanel.valueOf(savedInstanceState.getString(SELECTED_GROUP_ATTR));
 			isEditMode = savedInstanceState.getBoolean(EDIT_MODE_KEY, false);
+			layoutMode = AndroidUtils.getSerializable(savedInstanceState, SCREEN_LAYOUT_MODE, ScreenLayoutMode.class);
+		} else {
+			if (getActivity() instanceof MapActivity mapActivity) {
+				layoutMode = ScreenLayoutMode.getDefault(mapActivity);
+			}
 		}
-
 		Bundle args = getArguments();
-		if (args != null && (args.containsKey(CONTEXT_SELECTED_WIDGET)
-				|| args.containsKey(ADD_TO_NEXT))) {
-			addNewWidget();
+		if (args != null) {
+			if (args.containsKey(SCREEN_LAYOUT_MODE)) {
+				layoutMode = AndroidUtils.getSerializable(args, SCREEN_LAYOUT_MODE, ScreenLayoutMode.class);
+			}
+			if (args.containsKey(CONTEXT_SELECTED_WIDGET) || args.containsKey(ADD_TO_NEXT)) {
+				addNewWidget();
+			}
 		}
 		onBackPressedCallback = new OnBackPressedCallback(true) {
 			@Override
@@ -146,8 +158,8 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 	@Override
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
 		updateNightMode();
-		view = themedInflater.inflate(R.layout.fragment_configure_widgets, container, false);
-		if (Build.VERSION.SDK_INT < 30) {
+		view = inflate(R.layout.fragment_configure_widgets, container, false);
+		if (!InsetsUtils.isEdgeToEdgeSupported()) {
 			AndroidUtils.addStatusBarPadding21v(requireMyActivity(), view);
 		}
 		appBar = view.findViewById(R.id.appbar);
@@ -156,10 +168,10 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 		tabLayout = view.findViewById(R.id.tab_layout);
 		viewPager = view.findViewById(R.id.view_pager);
 		collapsingToolbarLayout = view.findViewById(R.id.toolbar_layout);
-		fabNewWidget = view.findViewById(R.id.new_entry_fab);
+		fabNewWidget = view.findViewById(R.id.fab);
 		bottomButtonsShadow = view.findViewById(R.id.buttons_shadow);
 		toolbarTitleView = toolbar.findViewById(R.id.toolbar_title);
-		bottomButtons = view.findViewById(R.id.buttons_container);
+		bottomButtons = view.findViewById(R.id.bottom_buttons_container);
 		shadowView = view.findViewById(R.id.shadow_view);
 
 		bottomButtons.setVisibility(View.GONE);
@@ -192,6 +204,13 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 	}
 
 	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.replace(InsetTarget.createCollapsingAppBar(R.id.appbar));
+		return collection;
+	}
+
+	@Override
 	public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
 		super.onViewCreated(view, savedInstanceState);
 		requireActivity().getOnBackPressedDispatcher().addCallback(getViewLifecycleOwner(), onBackPressedCallback);
@@ -200,7 +219,11 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 	private void closeFragment() {
 		if (isEditMode) {
 			toggleEditMode(false);
-			selectedFragment.updateEditMode();
+
+			WidgetsListFragment fragment = getSelectedFragment();
+			if (fragment != null) {
+				fragment.updateEditMode();
+			}
 		} else {
 			requireActivity().getSupportFragmentManager().popBackStack();
 		}
@@ -214,11 +237,14 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 
 		AppCompatImageButton infoButton = toolbar.findViewById(R.id.info_button);
 		infoButton.setOnClickListener(v -> {
+			WidgetsListFragment fragment = getSelectedFragment();
 			if (!isEditMode) {
 				toggleEditMode(true);
-				selectedFragment.updateEditMode();
-			} else if (selectedFragment != null) {
-				selectedFragment.resetToOriginal();
+				if (fragment != null) {
+					fragment.updateEditMode();
+				}
+			} else if (fragment != null) {
+				fragment.resetToOriginal();
 			}
 		});
 
@@ -239,6 +265,13 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 	private void openActionMenu(@NonNull AppCompatImageButton actionButton) {
 		List<PopUpMenuItem> items = new ArrayList<>();
 
+		if (layoutMode != null) {
+			boolean portrait = layoutMode.isPortrait();
+			items.add(new PopUpMenuItem.Builder(app)
+					.setTitle(getString(portrait ? R.string.copy_from_landscape_layout : R.string.copy_from_portrait_layout))
+					.setIcon(getContentIcon(portrait ? R.drawable.ic_action_copy_from_landscape : R.drawable.ic_action_copy_from_portrait))
+					.setOnClickListener(v -> copyPreferences(appMode, portrait ? LANDSCAPE : PORTRAIT)).create());
+		}
 		items.add(new PopUpMenuItem.Builder(app)
 				.setTitle(getString(R.string.copy_from_other_profile))
 				.setIcon(getContentIcon(R.drawable.ic_action_copy))
@@ -287,10 +320,11 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 		applyButton.setButtonType(DialogButtonType.PRIMARY);
 		applyButton.setTitleId(R.string.shared_string_apply);
 		applyButton.setOnClickListener(view -> {
-			if (isEditMode && selectedFragment != null) {
-				selectedFragment.onApplyChanges();
+			WidgetsListFragment fragment = getSelectedFragment();
+			if (isEditMode && fragment != null) {
+				fragment.onApplyChanges();
 				toggleEditMode(false);
-				selectedFragment.reloadWidgets();
+				fragment.reloadWidgets();
 			}
 		});
 		AndroidUiHelper.updateVisibility(applyButton, true);
@@ -381,7 +415,7 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 				bottomButtons.setVisibility(View.GONE);
 				bottomButtonsShadow.setVisibility(View.GONE);
 			} else {
-				animateView(tabLayout, 0, true, () -> appBar.setElevation(getResources().getDimension(R.dimen.abp__shadow_height)));
+				animateView(tabLayout, 0, true, () -> appBar.setElevation(view.getResources().getDimension(R.dimen.abp__shadow_height)));
 				animateView(viewPager, 0, null, null);
 				animateView(shadowView, 0, null, null);
 				animateView(bottomButtons, bottomButtons.getHeight(), false, () -> bottomButtons.setVisibility(View.INVISIBLE));
@@ -411,7 +445,7 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 	}
 
 	private void updateFabPosition(boolean isEditing) {
-		int translationY = isEditing ? -dpToPx(requireMapActivity(), 60) : 0;
+		int translationY = isEditing ? -dpToPx(60) : 0;
 		if (isDisableAnimations()) {
 			fabNewWidget.setTranslationY(translationY);
 		} else {
@@ -429,6 +463,10 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 		outState.putString(APP_MODE_ATTR, selectedAppMode.getStringKey());
 		outState.putString(SELECTED_GROUP_ATTR, selectedPanel.name());
 		outState.putBoolean(EDIT_MODE_KEY, isEditMode);
+
+		if (layoutMode != null) {
+			outState.putSerializable(SCREEN_LAYOUT_MODE, layoutMode);
+		}
 	}
 
 	private void setupTabLayout() {
@@ -473,7 +511,7 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 			WidgetsPanel panel = panels.get(i);
 			if (tab != null) {
 				tab.setTag(panel);
-				tab.setIcon(panel.getIconId(AndroidUtils.isLayoutRtl(app)));
+				tab.setIcon(panel.getIconId(AndroidUtils.isLayoutRtl(app), layoutMode));
 			}
 		}
 
@@ -497,15 +535,18 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 
 	@Override
 	public void onWidgetsConfigurationChanged() {
-		if (selectedFragment != null && !isEditMode) {
-			selectedFragment.reloadWidgets();
+		WidgetsListFragment fragment = getSelectedFragment();
+		if (fragment != null && !isEditMode) {
+			fragment.reloadWidgets();
 		}
 	}
 
 	@Override
 	public void onWidgetAdded(@NonNull MapWidgetInfo widgetInfo) {
-		if (isEditMode && selectedFragment != null) {
-			selectedFragment.addWidget(widgetInfo);
+		WidgetsListFragment fragment = getFragment(widgetInfo.getWidgetPanel());
+		if (isEditMode && fragment != null) {
+			fragment.addWidget(widgetInfo);
+			onWidgetsConfigurationChanged();
 		} else {
 			createWidgets(Collections.singletonList(widgetInfo));
 		}
@@ -513,22 +554,24 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 
 	@Override
 	public void onWidgetSelectedToAdd(@NonNull String widgetsId, @NonNull WidgetsPanel panel, boolean recreateControls) {
-		controller.openAddNewWidgetScreen(requireMapActivity(), selectedPanel, widgetsId, selectedAppMode, this);
+		controller.openAddNewWidgetScreen(requireMapActivity(), panel, widgetsId, selectedAppMode, this);
 	}
 
 	public void createWidgets(@NonNull List<MapWidgetInfo> newWidgetInfos) {
 		for (MapWidgetInfo widgetInfo : newWidgetInfos) {
+			WidgetsPanel widgetPanel = widgetInfo.getWidgetPanel();
 			Bundle args = getArguments();
 			if (args != null) {
 				String selectedWidget = args.getString(CONTEXT_SELECTED_WIDGET);
 				boolean addToNext = args.getBoolean(ADD_TO_NEXT);
 				if (selectedWidget != null) {
-					createNewWidget(requireMapActivity(), widgetInfo, selectedPanel, selectedAppMode, true, selectedWidget, addToNext);
+					createNewWidget(requireMapActivity(), widgetInfo, widgetPanel, selectedAppMode,
+							layoutMode, true, selectedWidget, addToNext);
 					onWidgetsConfigurationChanged();
 					return;
 				}
 			}
-			createNewWidget(requireMapActivity(), widgetInfo, selectedPanel, selectedAppMode, true);
+			createNewWidget(requireMapActivity(), widgetInfo, widgetPanel, selectedAppMode, layoutMode, true);
 			onWidgetsConfigurationChanged();
 		}
 	}
@@ -561,15 +604,6 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 		return nightMode;
 	}
 
-	@NonNull
-	public MapActivity requireMapActivity() {
-		FragmentActivity activity = getActivity();
-		if (!(activity instanceof MapActivity)) {
-			throw new IllegalStateException("Fragment " + this + " not attached to an activity.");
-		}
-		return (MapActivity) activity;
-	}
-
 	@Override
 	public void onItemPurchased(String sku, boolean active) {
 		onWidgetsConfigurationChanged();
@@ -579,13 +613,31 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 		return app.getSettings().DO_NOT_USE_ANIMATIONS.getModeValue(selectedAppMode);
 	}
 
+	@Nullable
+	private WidgetsListFragment getSelectedFragment() {
+		return getFragment(selectedPanel);
+	}
+
+	@Nullable
+	private WidgetsListFragment getFragment(@NonNull WidgetsPanel panel) {
+		FragmentManager manager = getChildFragmentManager();
+		for (Fragment fragment : manager.getFragments()) {
+			if (fragment instanceof WidgetsListFragment widgetsFragment
+					&& Algorithms.objectEquals(widgetsFragment.getSelectedPanel(), panel)) {
+				return widgetsFragment;
+			}
+		}
+		return null;
+	}
+
 	@Override
 	public void onActionConfirmed(int actionId) {
 		WidgetsSettingsHelper helper = new WidgetsSettingsHelper(requireMapActivity(), selectedAppMode);
 		helper.resetWidgetsForPanel(selectedPanel);
 
-		if (selectedFragment != null) {
-			selectedFragment.reloadWidgets();
+		WidgetsListFragment fragment = getSelectedFragment();
+		if (fragment != null) {
+			fragment.reloadWidgets();
 		}
 		MapInfoLayer mapInfoLayer = app.getOsmandMap().getMapLayers().getMapInfoLayer();
 		if (mapInfoLayer != null) {
@@ -595,20 +647,26 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 
 	@Override
 	public void copyAppModePrefs(@NonNull ApplicationMode appMode) {
-		if (isEditMode && selectedFragment != null) {
-			selectedFragment.copyAppModePrefs(appMode);
+		WidgetsListFragment fragment = getSelectedFragment();
+		if (isEditMode && fragment != null) {
+			fragment.copyAppModePrefs(appMode);
 		} else {
-			WidgetsSettingsHelper helper = new WidgetsSettingsHelper(requireMapActivity(), selectedAppMode);
+			copyPreferences(appMode, layoutMode);
+		}
+	}
 
-			helper.copyWidgetsForPanel(appMode, selectedPanel);
+	private void copyPreferences(@NonNull ApplicationMode fromAppMode, @Nullable ScreenLayoutMode fromLayoutMode) {
+		WidgetsSettingsHelper helper = new WidgetsSettingsHelper(requireMapActivity(), selectedAppMode);
+		helper.setLayoutMode(layoutMode);
+		helper.copyWidgetsForPanel(fromAppMode, fromLayoutMode, selectedPanel);
 
-			MapInfoLayer mapInfoLayer = app.getOsmandMap().getMapLayers().getMapInfoLayer();
-			if (settings.getApplicationMode().equals(selectedAppMode) && mapInfoLayer != null) {
-				mapInfoLayer.recreateAllControls(requireMapActivity());
-			}
-			if (selectedFragment != null) {
-				selectedFragment.reloadWidgets();
-			}
+		MapInfoLayer mapInfoLayer = app.getOsmandMap().getMapLayers().getMapInfoLayer();
+		if (settings.getApplicationMode().equals(selectedAppMode) && mapInfoLayer != null) {
+			mapInfoLayer.recreateAllControls(requireMapActivity());
+		}
+		WidgetsListFragment fragment = getSelectedFragment();
+		if (fragment != null) {
+			fragment.reloadWidgets();
 		}
 	}
 
@@ -616,8 +674,8 @@ public class ConfigureWidgetsFragment extends BaseOsmAndFragment implements Widg
 		FragmentManager fragmentManager = activity.getSupportFragmentManager();
 		if (AndroidUtils.isFragmentCanBeAdded(fragmentManager, TAG)) {
 			ConfigureWidgetsFragment fragment = new ConfigureWidgetsFragment();
-			fragment.setSelectedPanel(panel);
-			fragment.setSelectedAppMode(appMode);
+			fragment.selectedPanel = panel;
+			fragment.selectedAppMode = appMode;
 			if (args != null) {
 				fragment.setArguments(args);
 			}

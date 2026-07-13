@@ -6,9 +6,9 @@ import net.osmand.binary.RouteDataObject;
 import net.osmand.data.QuadRect;
 import net.osmand.data.QuadTree;
 import net.osmand.osm.edit.Node;
-import net.osmand.router.GeneralRouter.GeneralRouterProfile;
 import net.osmand.router.GeneralRouter.RouteAttributeContext;
 import net.osmand.router.GeneralRouter.RouteDataObjectAttribute;
+import net.osmand.shared.routing.GeneralRouterProfile;
 import net.osmand.util.Algorithms;
 import net.osmand.util.MapUtils;
 
@@ -42,6 +42,7 @@ public class RoutingConfiguration {
 	// 1.1 tile load parameters (should not affect routing)
 	public int ZOOM_TO_LOAD_TILES = 16;
 	public long memoryLimitation;
+	public long memoryMaxHits = -1;
 	public long nativeMemoryLimitation;
 
 	// 1.2 Build A* graph in backward/forward direction (can affect results)
@@ -387,10 +388,12 @@ public class RoutingConfiguration {
 		String type = parser.getAttributeValue("", "type");
 		String profilesList = parser.getAttributeValue("", "profiles");
 		String[] profiles = Algorithms.isEmpty(profilesList) ? null : profilesList.split(",");
-		boolean defaultValue = Boolean.parseBoolean(parser.getAttributeValue("", "default"));
 		if ("boolean".equalsIgnoreCase(type)) {
-			currentRouter.registerBooleanParameter(id, Algorithms.isEmpty(group) ? null : group, name, description, profiles, defaultValue);
+			boolean defaultBoolean = Boolean.parseBoolean(parser.getAttributeValue("", "default"));
+			currentRouter.registerBooleanParameter(id, Algorithms.isEmpty(group) ? null : group,
+					name, description, profiles, defaultBoolean);
 		} else if ("numeric".equalsIgnoreCase(type)) {
+			double defaultNumeric = Algorithms.parseDoubleSilently(parser.getAttributeValue("", "default"), 0);
 			String values = parser.getAttributeValue("", "values");
 			String valueDescriptions = parser.getAttributeValue("", "valueDescriptions");
 			String[] vlsDesc = valueDescriptions.split(",");
@@ -399,7 +402,7 @@ public class RoutingConfiguration {
 			for (int i = 0; i < vls.length; i++) {
 				vls[i] = Double.parseDouble(strValues[i].trim());
 			}
-			currentRouter.registerNumericParameter(id, name, description, profiles, vls , vlsDesc);
+			currentRouter.registerNumericParameter(id, name, description, profiles, vls , vlsDesc, defaultNumeric);
 		} else {
 			throw new UnsupportedOperationException("Unsupported routing parameter type - " + type);
 		}
@@ -468,8 +471,8 @@ public class RoutingConfiguration {
 
 	private static boolean checkTag(String pname) {
 		return "select".equals(pname) || "if".equals(pname) || "ifnot".equals(pname)
-				|| "gt".equals(pname) || "le".equals(pname) || "eq".equals(pname)
-				|| "min".equals(pname) || "max".equals(pname);
+				|| "gt".equals(pname) || "ge".equals(pname) || "lt".equals(pname) || "le".equals(pname)
+				|| "eq".equals(pname) || "min".equals(pname) || "max".equals(pname);
 	}
 
 	private static void addSubclause(RoutingRule rr, RouteAttributeContext ctx) {
@@ -494,8 +497,14 @@ public class RoutingConfiguration {
 			case "gt":
 				ctx.getLastRule().registerGreatCondition(rr.value1, rr.value2, rr.type);
 				break;
-			case "le":
+			case "ge":
+				ctx.getLastRule().registerGreatOrEqualCondition(rr.value1, rr.value2, rr.type);
+				break;
+			case "lt":
 				ctx.getLastRule().registerLessCondition(rr.value1, rr.value2, rr.type);
+				break;
+			case "le":
+				ctx.getLastRule().registerLessOrEqualCondition(rr.value1, rr.value2, rr.type);
 				break;
 			case "eq":
 				ctx.getLastRule().registerEqualCondition(rr.value1, rr.value2, rr.type);

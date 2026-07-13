@@ -4,11 +4,9 @@ import static net.osmand.plus.utils.ColorUtilities.getDividerColor;
 import static net.osmand.plus.utils.ColorUtilities.getListBgColorId;
 import static net.osmand.plus.utils.ColorUtilities.getPrimaryTextColor;
 import static net.osmand.plus.utils.ColorUtilities.getSecondaryTextColor;
-import static net.osmand.router.network.NetworkRouteSelector.RouteKey;
 
 import android.content.Context;
 import android.graphics.drawable.Drawable;
-import android.util.Pair;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -25,7 +23,6 @@ import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.UiUtilities;
-import net.osmand.util.Algorithms;
 
 import java.util.LinkedList;
 
@@ -40,7 +37,7 @@ public class MultiSelectionArrayAdapter extends ArrayAdapter<MenuObject> {
 		super(menu.getMapActivity(), R.layout.menu_obj_list_item, new LinkedList<>(menu.getObjects()));
 		this.menu = menu;
 		MapActivity mapActivity = menu.getMapActivity();
-		OsmandApplication app = mapActivity.getMyApplication();
+		OsmandApplication app = mapActivity.getApp();
 		this.iconsCache = app.getUIUtilities();
 	}
 
@@ -94,7 +91,7 @@ public class MultiSelectionArrayAdapter extends ArrayAdapter<MenuObject> {
 		// Text line 2
 		TextView line2 = convertView.findViewById(R.id.context_menu_line2);
 		line2.setTextColor(getSecondaryTextColor(context, nightMode));
-		line2.setText(MenuObjectUtils.getSecondLineText(item));
+		MenuObjectUtils.setSecondLineText(item, line2, nightMode);
 		Drawable slIcon = item.getTypeIcon();
 		line2.setCompoundDrawablesWithIntrinsicBounds(slIcon, null, null, null);
 		line2.setCompoundDrawablePadding(AndroidUtils.dpToPx(context, 5f));

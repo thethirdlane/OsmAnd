@@ -28,15 +28,15 @@ import net.osmand.plus.settings.bottomsheets.SimpleSingleSelectionBottomSheet;
 import net.osmand.plus.settings.bottomsheets.VehicleParametersBottomSheet;
 import net.osmand.plus.settings.enums.DrivingRegion;
 import net.osmand.plus.settings.preferences.ListPreferenceEx;
-import net.osmand.plus.settings.preferences.SizePreference;
-import net.osmand.plus.settings.vehiclesize.SizeType;
-import net.osmand.plus.settings.vehiclesize.VehicleSizes;
-import net.osmand.plus.settings.vehiclesize.WeightMetric;
-import net.osmand.plus.settings.vehiclesize.containers.Metric;
+import net.osmand.plus.settings.preferences.VehicleSpecificationPreference;
+import net.osmand.shared.vehicle.specification.domain.SpecificationType;
+import net.osmand.shared.vehicle.specification.domain.profiles.VehicleSpecs;
+import net.osmand.shared.vehicle.specification.data.VehicleSpecsFactory;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.OsmAndFormatter;
 import net.osmand.router.GeneralRouter;
 import net.osmand.shared.settings.enums.MetricsConstants;
+import net.osmand.shared.routing.GeneralRouterProfile;
 
 import java.util.Map;
 
@@ -66,7 +66,7 @@ public class VehicleParametersFragment extends BaseSettingsFragment {
 
 				showDimensionsCategory(parameters, routerProfile, derivedProfile);
 				showFuelCategory(parameters, routerProfile);
-				showOtherCategory(parameters, routerProfile);
+				showOtherCategory(parameters, routerProfile, derivedProfile);
 			}
 		} else {
 			setupCategoryPref(R.string.shared_string_other);
@@ -74,7 +74,8 @@ public class VehicleParametersFragment extends BaseSettingsFragment {
 		}
 	}
 
-	private void showOtherCategory(@NonNull Map<String, RoutingParameter> parameters, @Nullable GeneralRouterProfile routerProfile) {
+	private void showOtherCategory(@NonNull Map<String, RoutingParameter> parameters, @Nullable GeneralRouterProfile routerProfile,
+	                               @Nullable String derivedProfile) {
 		boolean shouldShowOtherCategory = parameters.get(MAX_AXLE_LOAD) != null
 				|| parameters.get(WEIGHT_RATING) != null
 				|| routerProfile != GeneralRouterProfile.PUBLIC_TRANSPORT;
@@ -82,8 +83,9 @@ public class VehicleParametersFragment extends BaseSettingsFragment {
 			addDividerPref();
 			setupCategoryPref(R.string.shared_string_other);
 		}
-		setupRoutingParameterPref(parameters.get(MAX_AXLE_LOAD));
-		setupRoutingParameterPref(parameters.get(WEIGHT_RATING));
+
+		setupVehiclePropertyPref(parameters.get(MAX_AXLE_LOAD), routerProfile, derivedProfile);
+		setupVehiclePropertyPref(parameters.get(WEIGHT_RATING), routerProfile, derivedProfile);
 		if (routerProfile != GeneralRouterProfile.PUBLIC_TRANSPORT) {
 			setupDefaultSpeedPref();
 		}
@@ -156,8 +158,8 @@ public class VehicleParametersFragment extends BaseSettingsFragment {
 		}
 
 		String parameterId = parameter.getId();
-		VehicleSizes vehicle = VehicleSizes.newInstance(profile, derivedProfile);
-		SizeType type = SizeType.getByKey(parameterId);
+		VehicleSpecs vehicle = VehicleSpecsFactory.createSpecifications(profile, derivedProfile);
+		SpecificationType type = SpecificationType.getByKey(parameterId);
 		if (vehicle == null || type == null) {
 			return;
 		}
@@ -168,12 +170,12 @@ public class VehicleParametersFragment extends BaseSettingsFragment {
 		ApplicationMode appMode = getSelectedAppMode();
 		StringPreference preference = (StringPreference) settings.getCustomRoutingProperty(parameterId, defValue);
 
-		SizePreference uiPreference = new SizePreference(requireContext());
+		VehicleSpecificationPreference uiPreference = new VehicleSpecificationPreference(requireContext());
 		uiPreference.setKey(preference.getId());
-		uiPreference.setSizeType(type);
-		uiPreference.setVehicleSizes(vehicle);
+		uiPreference.setSpecificationType(type);
+		uiPreference.setSpecifications(vehicle);
 		uiPreference.setDefaultValue(defValue);
-		uiPreference.setMetric(createMetrics(appMode));
+		uiPreference.setMetric(shouldUseMetricSystem(type, appMode));
 		uiPreference.setTitle(title);
 		uiPreference.setSummary(description);
 		uiPreference.setIcon(getPreferenceIcon(parameterId));
@@ -183,12 +185,13 @@ public class VehicleParametersFragment extends BaseSettingsFragment {
 		screen.addPreference(uiPreference);
 	}
 
-	@NonNull
-	private Metric createMetrics(@NonNull ApplicationMode appMode) {
-		boolean usePounds = settings.DRIVING_REGION.getModeValue(appMode) == DrivingRegion.US;
-		WeightMetric weightMetric = usePounds ? WeightMetric.POUNDS : WeightMetric.TONES;
+	private boolean shouldUseMetricSystem(@NonNull SpecificationType specificationType,
+	                                      @NonNull ApplicationMode appMode) {
+		if (specificationType.isWeightRelated()) {
+			return settings.DRIVING_REGION.getModeValue(appMode) != DrivingRegion.US;
+		}
 		MetricsConstants lengthMetric = settings.METRIC_SYSTEM.getModeValue(appMode);
-		return new Metric(weightMetric, lengthMetric);
+		return !lengthMetric.shouldUseFeet();
 	}
 
 	private void setupDefaultSpeedPref() {
@@ -224,10 +227,10 @@ public class VehicleParametersFragment extends BaseSettingsFragment {
 						&& !ROUTING_PARAMETER_SYMBOLIC_DEFAULT.equals(currentValue);
 				imageView.setEnabled(enabled);
 			}
-		} else if (preference instanceof SizePreference) {
+		} else if (preference instanceof VehicleSpecificationPreference) {
 			ImageView imageView = (ImageView) holder.findViewById(android.R.id.icon);
 			if (imageView != null) {
-				Object currentValue = ((SizePreference) preference).getValue();
+				Object currentValue = ((VehicleSpecificationPreference) preference).getValue();
 				boolean enabled = preference.isEnabled() && !ROUTING_PARAMETER_NUMERIC_DEFAULT.equals(currentValue)
 						&& !ROUTING_PARAMETER_SYMBOLIC_DEFAULT.equals(currentValue);
 				imageView.setEnabled(enabled);
@@ -258,7 +261,7 @@ public class VehicleParametersFragment extends BaseSettingsFragment {
 
 	@Override
 	public void onDisplayPreferenceDialog(Preference preference) {
-		if (preference instanceof SizePreference) {
+		if (preference instanceof VehicleSpecificationPreference) {
 			FragmentManager fragmentManager = getFragmentManager();
 			if (fragmentManager != null) {
 				VehicleParametersBottomSheet.showInstance(fragmentManager, preference.getKey(),
@@ -306,6 +309,8 @@ public class VehicleParametersFragment extends BaseSettingsFragment {
 			case VEHICLE_WIDTH -> getPersistentPrefIcon(R.drawable.ic_action_width_limit);
 			case VEHICLE_LENGTH -> getPersistentPrefIcon(R.drawable.ic_action_length_limit);
 			case MOTOR_TYPE -> getPersistentPrefIcon(R.drawable.ic_action_fuel);
+			case MAX_AXLE_LOAD -> getPersistentPrefIcon(R.drawable.ic_action_hgv_axle_load);
+			case WEIGHT_RATING -> getPersistentPrefIcon(R.drawable.ic_action_hgv_full_load);
 			default -> null;
 		};
 	}

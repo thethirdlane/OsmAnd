@@ -9,7 +9,6 @@ import static net.osmand.plus.download.ui.ItemViewHolder.RightButtonAction.ASK_F
 import android.content.Intent;
 import android.content.res.Resources;
 import android.graphics.drawable.Drawable;
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.MenuItem;
@@ -21,9 +20,10 @@ import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.widget.Toast;
 
+import androidx.annotation.ColorRes;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.widget.PopupMenu;
 import androidx.core.view.ViewCompat;
@@ -31,6 +31,7 @@ import androidx.core.view.accessibility.AccessibilityNodeInfoCompat;
 
 import net.osmand.map.OsmandRegions;
 import net.osmand.map.WorldRegion;
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.Version;
@@ -38,15 +39,20 @@ import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.chooseplan.ChoosePlanFragment;
 import net.osmand.plus.chooseplan.OsmAndFeature;
 import net.osmand.plus.download.*;
+import net.osmand.plus.download.SelectIndexesHelper.MultiSelectionMode;
 import net.osmand.plus.download.local.LocalItem;
 import net.osmand.plus.download.local.LocalItemType;
 import net.osmand.plus.download.local.LocalItemUtils;
 import net.osmand.plus.download.local.LocalOperationTask;
+import net.osmand.plus.download.local.LocalOperationTask.OperationListener;
+import net.osmand.plus.download.local.OperationType;
 import net.osmand.plus.helpers.FileNameTranslationHelper;
 import net.osmand.plus.inapp.InAppPurchaseUtils;
 import net.osmand.plus.plugins.PluginsFragment;
 import net.osmand.plus.plugins.accessibility.AccessibilityAssistant;
 import net.osmand.plus.plugins.custom.CustomIndexItem;
+import net.osmand.plus.utils.AndroidUtils;
+import net.osmand.plus.utils.ColorUtilities;
 import net.osmand.util.Algorithms;
 
 import java.io.File;
@@ -56,6 +62,7 @@ import java.util.List;
 public class ItemViewHolder {
 
 	protected final OsmandApplication app;
+	protected final View view;
 	protected final TextView tvName;
 	protected final TextView tvDesc;
 	protected final ImageView ivLeft;
@@ -81,6 +88,7 @@ public class ItemViewHolder {
 	boolean showRemoteDate;
 	boolean silentCancelDownload;
 	boolean showProgressInDesc;
+	boolean isUpdatesMode;
 
 	private final DateFormat dateFormat;
 
@@ -92,13 +100,15 @@ public class ItemViewHolder {
 		ASK_FOR_SRTM_PLUGIN_ENABLE,
 		ASK_FOR_FULL_VERSION_PURCHASE,
 		ASK_FOR_DEPTH_CONTOURS_PURCHASE,
-		ASK_FOR_WEATHER_PURCHASE
+		ASK_FOR_WEATHER_PURCHASE,
+		ASK_FOR_ASTRONOMY_PURCHASE
 	}
 
 
 	public ItemViewHolder(@NonNull View view, @NonNull DownloadActivity context) {
 		this.context = context;
-		this.app = context.getMyApplication();
+		this.app = context.getApp();
+		this.view = view;
 		dateFormat = android.text.format.DateFormat.getMediumDateFormat(context);
 		pbProgress = view.findViewById(R.id.progressBar);
 		btnRight = view.findViewById(R.id.rightButton);
@@ -147,6 +157,10 @@ public class ItemViewHolder {
 		this.useShortName = useShortName;
 	}
 
+	public void setUpdatesMode(boolean inUpdatesMode) {
+		this.isUpdatesMode = inUpdatesMode;
+	}
+
 	private void initAppStatusVariables() {
 		srtmDisabled = context.isSrtmDisabled();
 		nauticalPluginDisabled = context.isNauticalPluginDisabled();
@@ -155,11 +169,11 @@ public class ItemViewHolder {
 		weatherAvailable = InAppPurchaseUtils.isWeatherAvailable(app);
 	}
 
-	public void bindDownloadItem(DownloadItem downloadItem) {
+	public void bindDownloadItem(@NonNull DownloadItem downloadItem) {
 		bindDownloadItem(downloadItem, null);
 	}
 
-	public void bindDownloadItem(DownloadItem downloadItem, String cityName) {
+	public void bindDownloadItem(@NonNull DownloadItem downloadItem, @Nullable String cityName) {
 		initAppStatusVariables();
 		boolean isDownloading = downloadItem.isDownloading(context.getDownloadThread());
 		float progress = -1;
@@ -180,8 +194,8 @@ public class ItemViewHolder {
 		ViewCompat.setAccessibilityDelegate(ivBtnRight, new AccessibilityAssistant(context) {
 
 			@Override
-			public void onInitializeAccessibilityNodeInfo(View host,
-					AccessibilityNodeInfoCompat info) {
+			public void onInitializeAccessibilityNodeInfo(@NonNull View host,
+			                                              @NonNull AccessibilityNodeInfoCompat info) {
 				super.onInitializeAccessibilityNodeInfo(host, info);
 				info.setContentDescription(context.getString(R.string.shared_string_download) + tvName.getText());
 				info.addAction(new AccessibilityNodeInfoCompat.AccessibilityActionCompat(
@@ -196,14 +210,13 @@ public class ItemViewHolder {
 		} else {
 			tvName.setTextColor(textColorSecondary);
 		}
-		int color = textColorSecondary;
+		int iconColor = textColorSecondary;
 		if (downloadItem.isDownloaded() && !isDownloading) {
-			int colorId = downloadItem.isOutdated() ? R.color.color_distance : R.color.color_ok;
-			color = context.getColor(colorId);
+			iconColor = ColorUtilities.getColor(context, getIconColorId(downloadItem));
 		}
 		if (downloadItem.isDownloaded()) {
 			ivLeft.setImageDrawable(getContentIcon(context,
-					downloadItem.getType().getIconResource(), color));
+					downloadItem.getType().getIconResource(), iconColor));
 		} else if (disabled) {
 			ivLeft.setImageDrawable(getContentIcon(context,
 					downloadItem.getType().getIconResource(), textColorSecondary));
@@ -274,27 +287,31 @@ public class ItemViewHolder {
 	}
 
 	private void setupCommonMultipleDescription(@NonNull MultipleDownloadItem item) {
-		String regionsHeader = context.getString(R.string.regions);
-		String allRegionsHeader = context.getString(R.string.shared_strings_all_regions);
-		String allRegionsCount = String.valueOf(item.getAllItems().size());
-		String leftToDownloadCount = String.valueOf(item.getItemsToDownload().size());
+		String fullDescription;
+		if (!showTypeInDesc) {
+			String regionsHeader = context.getString(R.string.regions);
+			String allRegionsHeader = context.getString(R.string.shared_strings_all_regions);
+			String allRegionsCount = String.valueOf(item.getAllItems().size());
+			String leftToDownloadCount = String.valueOf(item.getItemsToDownload().size());
 
-		String header = allRegionsHeader;
-		String count = allRegionsCount;
-		if (item.hasActualDataToDownload()) {
-			if (!item.isDownloaded()) {
-				header = allRegionsHeader;
-				count = leftToDownloadCount;
-			} else {
-				header = regionsHeader;
-				count = String.format(
-						context.getString(R.string.ltr_or_rtl_combine_via_slash),
-						leftToDownloadCount,
-						allRegionsCount);
+			String header = allRegionsHeader;
+			String count = allRegionsCount;
+			if (item.hasActualDataToDownload()) {
+				if (!item.isDownloaded()) {
+					header = allRegionsHeader;
+					count = leftToDownloadCount;
+				} else {
+					header = regionsHeader;
+					count = String.format(
+							context.getString(R.string.ltr_or_rtl_combine_via_slash),
+							leftToDownloadCount,
+							allRegionsCount);
+				}
 			}
+			fullDescription = context.getString(R.string.ltr_or_rtl_combine_via_colon, header, count);
+		} else {
+			fullDescription = item.getType().getString(context);
 		}
-
-		String fullDescription = context.getString(R.string.ltr_or_rtl_combine_via_colon, header, count);
 		String additionalDescription = item.getAdditionalDescription(context);
 		if (additionalDescription != null) {
 			fullDescription += " " + additionalDescription;
@@ -304,21 +321,33 @@ public class ItemViewHolder {
 					R.string.ltr_or_rtl_combine_via_bold_point, fullDescription,
 					item.getSizeDescription(context));
 		}
+		String date = item.getDate(dateFormat, showRemoteDate);
+		if (!Algorithms.isEmpty(date)) {
+			fullDescription = context.getString(
+					R.string.ltr_or_rtl_combine_via_bold_point, fullDescription,
+					date);
+		}
 		tvDesc.setText(fullDescription);
 	}
 
-	private void setupCommonDescription(@NonNull DownloadItem downloadItem) {
+	private void setupCommonDescription(@NonNull DownloadItem item) {
+		String size = item.getSizeDescription(context);
+		String date = item.getDate(dateFormat, showRemoteDate);
+		String additional = item.getAdditionalDescription(context);
 		String pattern = context.getString(R.string.ltr_or_rtl_combine_via_bold_point);
-		String size = downloadItem.getSizeDescription(context);
-		String addDesc = downloadItem.getAdditionalDescription(context);
-		if (addDesc != null) {
-			size += " " + addDesc;
-		}
-		String date = downloadItem.getDate(dateFormat, showRemoteDate);
-		String fullDescription = String.format(pattern, size, date);
+
+		String fullDescription;
 		if (showTypeInDesc) {
-			String type = downloadItem.getType().getString(context);
-			fullDescription = String.format(pattern, type, fullDescription);
+			String type = item.getType().getString(context);
+			if (additional != null) {
+				type += " " + additional;
+			}
+			fullDescription = String.format(pattern, type, String.format(pattern, size, date));
+		} else {
+			if (additional != null) {
+				size += " " + additional;
+			}
+			fullDescription = String.format(pattern, size, date);
 		}
 		tvDesc.setText(fullDescription);
 	}
@@ -364,6 +393,11 @@ public class ItemViewHolder {
 		return disabled;
 	}
 
+	@ColorRes
+	protected int getIconColorId(@NonNull DownloadItem downloadItem) {
+		return downloadItem.isOutdated() ? R.color.color_distance : R.color.color_ok;
+	}
+
 	private int getDownloadActionIconId(@NonNull DownloadItem item) {
 		return item instanceof MultipleDownloadItem ? R.drawable.ic_action_multi_download : R.drawable.ic_action_gsave_dark;
 	}
@@ -388,6 +422,8 @@ public class ItemViewHolder {
 				action = RightButtonAction.ASK_FOR_FULL_VERSION_PURCHASE;
 			} else if ((item.getType() == DEPTH_CONTOUR_FILE || item.getType() == DEPTH_MAP_FILE) && !depthContoursPurchased) {
 				action = RightButtonAction.ASK_FOR_DEPTH_CONTOURS_PURCHASE;
+			} else if (item.getType() == STAR_MAP_FILE && !InAppPurchaseUtils.isAstronomyAvailable(app)) {
+				return RightButtonAction.ASK_FOR_ASTRONOMY_PURCHASE;
 			}
 		}
 		return action;
@@ -402,6 +438,9 @@ public class ItemViewHolder {
 						case ASK_FOR_FULL_VERSION_PURCHASE:
 							app.logEvent("in_app_purchase_show_from_wiki_context_menu");
 							ChoosePlanFragment.showInstance(context, OsmAndFeature.WIKIPEDIA);
+							break;
+						case ASK_FOR_ASTRONOMY_PURCHASE:
+							ChoosePlanFragment.showInstance(context, OsmAndFeature.ASTRONOMY);
 							break;
 						case ASK_FOR_WEATHER_PURCHASE:
 							app.logEvent("in_app_purchase_show_from_weather_context_menu");
@@ -466,7 +505,7 @@ public class ItemViewHolder {
 		}
 		if (removeItemClickListener != null) {
 			optionsMenu.getMenu()
-					.add(R.string.shared_string_remove)
+					.add(R.string.shared_string_delete)
 					.setIcon(getThemedIcon(context, R.drawable.ic_action_remove_dark))
 					.setOnMenuItemClickListener(removeItemClickListener);
 		}
@@ -484,8 +523,7 @@ public class ItemViewHolder {
 
 	protected void download(DownloadItem item, DownloadResourceGroup parentOptional) {
 		boolean handled = false;
-		if (parentOptional != null && item instanceof IndexItem) {
-			IndexItem indexItem = (IndexItem) item;
+		if (parentOptional != null && item instanceof IndexItem indexItem) {
 			WorldRegion region = DownloadResourceGroup.getRegion(parentOptional);
 			context.setDownloadItem(region, indexItem.getTargetFile(app).getAbsolutePath());
 		}
@@ -515,8 +553,7 @@ public class ItemViewHolder {
 	}
 
 	private void startDownload(DownloadItem item) {
-		if (item instanceof IndexItem) {
-			IndexItem indexItem = (IndexItem) item;
+		if (item instanceof IndexItem indexItem) {
 			context.startDownload(indexItem);
 		} else {
 			selectIndexesToDownload(item);
@@ -524,7 +561,8 @@ public class ItemViewHolder {
 	}
 
 	private void selectIndexesToDownload(@NonNull DownloadItem item) {
-		SelectIndexesHelper.showDialog(item, context, dateFormat, showRemoteDate, indexes -> {
+		MultiSelectionMode mode = isUpdatesMode ? MultiSelectionMode.UPDATE : MultiSelectionMode.DOWNLOAD;
+		SelectIndexesHelper.showDialog(item, context, dateFormat, showRemoteDate, mode, indexes -> {
 			IndexItem[] indexesArray = new IndexItem[indexes.size()];
 			context.startDownload(indexes.toArray(indexesArray));
 		});
@@ -560,8 +598,15 @@ public class ItemViewHolder {
 				params[i] = new LocalItem(file, type);
 			}
 		}
-		LocalOperationTask removeTask = new LocalOperationTask(app, DELETE_OPERATION, null);
-		removeTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, params);
+		LocalOperationTask removeTask = new LocalOperationTask(app, DELETE_OPERATION, new OperationListener() {
+			@Override
+			public void onOperationFinished(@NonNull OperationType type, @NonNull String result) {
+				if (AndroidUtils.isActivityNotDestroyed(context)) {
+					context.onUpdatedIndexesList();
+				}
+			}
+		});
+		OsmAndTaskManager.executeTask(removeTask, params);
 	}
 
 	private Drawable getThemedIcon(DownloadActivity context, int resourceId) {

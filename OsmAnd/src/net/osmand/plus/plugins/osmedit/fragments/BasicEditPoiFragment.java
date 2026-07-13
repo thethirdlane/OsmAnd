@@ -14,6 +14,7 @@ import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.fragment.app.FragmentManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -21,7 +22,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import net.osmand.osm.edit.OSMSettings;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
-import net.osmand.plus.base.BaseOsmAndFragment;
+import net.osmand.plus.base.BaseFullScreenFragment;
 import net.osmand.plus.helpers.LocaleHelper;
 import net.osmand.plus.plugins.osmedit.data.EditPoiData;
 import net.osmand.plus.plugins.osmedit.dialogs.EditPoiDialogFragment;
@@ -29,6 +30,10 @@ import net.osmand.plus.plugins.osmedit.dialogs.EditPoiDialogFragment.OnFragmentA
 import net.osmand.plus.plugins.osmedit.dialogs.OpeningHoursDaysDialogFragment;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTarget.Type;
+import net.osmand.plus.utils.InsetTargetsCollection;
+import net.osmand.plus.utils.InsetsUtils.InsetSide;
 import net.osmand.util.OpeningHoursParser;
 
 import java.util.ArrayList;
@@ -36,7 +41,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-public class BasicEditPoiFragment extends BaseOsmAndFragment implements OnFragmentActivatedListener {
+public class BasicEditPoiFragment extends BaseFullScreenFragment implements OnFragmentActivatedListener {
 
 	private static final String OPENING_HOURS = "opening_hours";
 	private OpeningHoursAdapter openingHoursAdapter;
@@ -48,7 +53,7 @@ public class BasicEditPoiFragment extends BaseOsmAndFragment implements OnFragme
 	@Override
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
 		updateNightMode();
-		View view = themedInflater.inflate(R.layout.fragment_edit_poi_advanced_new, container, false);
+		View view = inflate(R.layout.fragment_edit_poi_advanced_new, container, false);
 
 		RecyclerView recyclerView = view.findViewById(R.id.content_recycler_view);
 		InputFilter[] lengthLimit = {
@@ -56,8 +61,8 @@ public class BasicEditPoiFragment extends BaseOsmAndFragment implements OnFragme
 		};
 
 		int iconColor = ColorUtilities.getSecondaryTextColor(app, nightMode);
-		Drawable clockDrawable = getPaintedContentIcon(R.drawable.ic_action_time, iconColor);
-		Drawable deleteDrawable = getPaintedContentIcon(R.drawable.ic_action_remove_dark, iconColor);
+		Drawable clockDrawable = getPaintedIcon(R.drawable.ic_action_time, iconColor);
+		Drawable deleteDrawable = getPaintedIcon(R.drawable.ic_action_remove_dark, iconColor);
 		if (savedInstanceState != null && savedInstanceState.containsKey(OPENING_HOURS)) {
 			OpeningHoursParser.OpeningHours openingHours = AndroidUtils.getSerializable(savedInstanceState, OPENING_HOURS, OpeningHoursParser.OpeningHours.class);
 			openingHoursAdapter = new OpeningHoursAdapter(app, openingHours,
@@ -78,8 +83,8 @@ public class BasicEditPoiFragment extends BaseOsmAndFragment implements OnFragme
 					if (openingHoursAdapter.openingHours.getRules().isEmpty()) {
 						rule.setDays(new boolean[]{true, true, true, true, true, false, false});
 					}
-					OpeningHoursDaysDialogFragment fragment = OpeningHoursDaysDialogFragment.createInstance(rule, -1);
-					fragment.show(getChildFragmentManager(), "OpenTimeDialogFragment");
+					FragmentManager fragmentManager = getChildFragmentManager();
+					OpeningHoursDaysDialogFragment.showInstance(fragmentManager, rule, -1);
 				}
 			}
 
@@ -116,6 +121,19 @@ public class BasicEditPoiFragment extends BaseOsmAndFragment implements OnFragme
 		onFragmentActivated();
 
 		return view;
+	}
+
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.add(InsetTarget.createCustomBuilder(R.id.content_recycler_view)
+				.portraitSides(InsetSide.TOP)
+				.typeMask(WindowInsetsCompat.Type.ime())
+				.applyPadding(true)
+				.build());
+		collection.add(InsetTarget.createHorizontalLandscape(R.id.content_recycler_view).build());
+		collection.removeType(Type.ROOT_INSET);
+		return collection;
 	}
 
 	@Nullable

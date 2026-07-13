@@ -12,18 +12,18 @@ import android.os.Bundle;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.style.StyleSpan;
-import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.widget.SwitchCompat;
 
 import net.osmand.plus.R;
 import net.osmand.plus.views.mapwidgets.WidgetType;
-import net.osmand.plus.views.mapwidgets.widgets.routeinfo.DisplayValue;
 import net.osmand.plus.views.mapwidgets.widgets.routeinfo.DisplayPriority;
+import net.osmand.plus.views.mapwidgets.widgets.routeinfo.DisplayValue;
 import net.osmand.plus.views.mapwidgets.widgets.routeinfo.RouteInfoWidget;
 import net.osmand.plus.widgets.alert.AlertDialogData;
 import net.osmand.plus.widgets.alert.CustomAlert;
@@ -38,6 +38,7 @@ public class RouteInfoWidgetInfoFragment extends BaseResizableWidgetSettingFragm
 
 	private static final String KEY_DEFAULT_VIEW = "default_view";
 	private static final String KEY_PRIORITY_VALUE = "display_priority";
+	private static final String SHOW_EXPAND_BUTTON = "show_expand_button";
 
 	private static final long HOUR_IN_MILLISECONDS = 60 * 60 * 1000;
 	private static final long ONE_HUNDRED_KM_IN_METERS = 100_000;
@@ -46,6 +47,7 @@ public class RouteInfoWidgetInfoFragment extends BaseResizableWidgetSettingFragm
 
 	private DisplayValue selectedDefaultView;
 	private DisplayPriority selectedDisplayPriority;
+	private boolean showExpandButton;
 
 	@NonNull
 	@Override
@@ -66,14 +68,16 @@ public class RouteInfoWidgetInfoFragment extends BaseResizableWidgetSettingFragm
 			selectedDisplayPriority = displayPriorityKey != null
 					? DisplayPriority.valueOf(displayPriorityKey)
 					: widget.getDisplayPriority(appMode);
+			showExpandButton = bundle.containsKey(SHOW_EXPAND_BUTTON) ?
+					bundle.getBoolean(SHOW_EXPAND_BUTTON) : widget.isShowExpandButtonEnabled(appMode);
 		} else {
 			dismiss();
 		}
 	}
 
 	@Override
-	protected void setupMainContent(@NonNull LayoutInflater themedInflater, @NonNull ViewGroup container) {
-		themedInflater.inflate(R.layout.fragment_widget_settings_route_info, container);
+	protected void setupMainContent(@NonNull ViewGroup container) {
+		inflate(R.layout.fragment_widget_settings_route_info, container);
 
 		View defaultValueButton = container.findViewById(R.id.default_view_container);
 		defaultValueButton.setOnClickListener(v -> showDefaultViewDialog(container));
@@ -84,6 +88,25 @@ public class RouteInfoWidgetInfoFragment extends BaseResizableWidgetSettingFragm
 		displayPriorityButton.setOnClickListener(v -> showDisplayPriorityDialog(container));
 		displayPriorityButton.setBackground(getPressedStateDrawable());
 		updateDisplayPriorityButton(displayPriorityButton);
+	}
+
+	@Override
+	protected void setupTopContent(@NonNull ViewGroup container) {
+		super.setupTopContent(container);
+		inflate(R.layout.simple_widget_settings, container);
+
+		TextView title = container.findViewById(R.id.title);
+		title.setText(R.string.show_expand_button);
+
+		SwitchCompat switchCompat = container.findViewById(R.id.show_icon_toggle);
+		switchCompat.setChecked(showExpandButton);
+
+		View switchContainer = container.findViewById(R.id.show_icon_container);
+		switchContainer.setOnClickListener(v -> {
+			showExpandButton = !showExpandButton;
+			switchCompat.setChecked(showExpandButton);
+		});
+		switchContainer.setBackground(getPressedStateDrawable());
 	}
 
 	private void showDefaultViewDialog(@NonNull View container) {
@@ -189,6 +212,7 @@ public class RouteInfoWidgetInfoFragment extends BaseResizableWidgetSettingFragm
 		super.onSaveInstanceState(outState);
 		outState.putString(KEY_DEFAULT_VIEW, selectedDefaultView.name());
 		outState.putString(KEY_PRIORITY_VALUE, selectedDisplayPriority.name());
+		outState.putBoolean(SHOW_EXPAND_BUTTON, showExpandButton);
 	}
 
 	@Override
@@ -196,5 +220,6 @@ public class RouteInfoWidgetInfoFragment extends BaseResizableWidgetSettingFragm
 		super.applySettings();
 		widget.setDefaultView(appMode, selectedDefaultView);
 		widget.setDisplayPriority(appMode, selectedDisplayPriority);
+		widget.setShowExpandButtonEnabled(appMode, showExpandButton);
 	}
 }

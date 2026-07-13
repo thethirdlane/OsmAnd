@@ -12,6 +12,7 @@ import android.app.PendingIntent;
 import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.res.AssetManager;
 import android.os.AsyncTask;
 import android.os.Build;
 
@@ -29,6 +30,7 @@ import net.osmand.map.OsmandRegions.RegionTranslation;
 import net.osmand.map.WorldRegion;
 import net.osmand.osm.MapPoiTypes;
 import net.osmand.plus.avoidroads.AvoidRoadsHelper;
+import net.osmand.plus.backup.AutoBackupHelper;
 import net.osmand.plus.backup.BackupHelper;
 import net.osmand.plus.backup.NetworkSettingsHelper;
 import net.osmand.plus.base.MapViewTrackingUtilities;
@@ -40,6 +42,8 @@ import net.osmand.plus.download.local.LocalItem;
 import net.osmand.plus.exploreplaces.ExplorePlacesOnlineProvider;
 import net.osmand.plus.feedback.AnalyticsHelper;
 import net.osmand.plus.feedback.FeedbackHelper;
+import net.osmand.plus.gallery.GalleryHelper;
+import net.osmand.plus.help.HelpArticlesHelper;
 import net.osmand.plus.helpers.*;
 import net.osmand.plus.importfiles.ImportHelper;
 import net.osmand.plus.inapp.InAppPurchaseHelperImpl;
@@ -52,7 +56,7 @@ import net.osmand.plus.myplaces.favorites.FavouritesHelper;
 import net.osmand.plus.notifications.NotificationHelper;
 import net.osmand.plus.onlinerouting.OnlineRoutingHelper;
 import net.osmand.plus.plugins.PluginsHelper;
-import net.osmand.plus.plugins.monitoring.LiveMonitoringHelper;
+import net.osmand.plus.plugins.monitoring.live.LiveMonitoringHelper;
 import net.osmand.plus.plugins.monitoring.OsmandMonitoringPlugin;
 import net.osmand.plus.plugins.monitoring.SavingTrackHelper;
 import net.osmand.plus.plugins.osmedit.oauth.OsmOAuthHelper;
@@ -68,9 +72,13 @@ import net.osmand.plus.routepreparationmenu.RoutingOptionsHelper;
 import net.osmand.plus.routing.RoutingHelper;
 import net.osmand.plus.routing.TransportRoutingHelper;
 import net.osmand.plus.search.QuickSearchHelper;
+import net.osmand.plus.search.history.SearchHistoryHelper;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.backend.backup.FileSettingsHelper;
+import net.osmand.plus.settings.backend.backup.SettingsHelper.ImportListener;
+import net.osmand.plus.settings.backend.backup.items.SettingsItem;
+import net.osmand.plus.track.clickable.ClickableWayHelper;
 import net.osmand.plus.track.helpers.GpsFilterHelper;
 import net.osmand.plus.track.helpers.GpxDisplayHelper;
 import net.osmand.plus.track.helpers.GpxSelectionHelper;
@@ -85,6 +93,8 @@ import net.osmand.plus.wikivoyage.data.TravelHelper;
 import net.osmand.plus.wikivoyage.data.TravelObfHelper;
 import net.osmand.render.RenderingRulesStorage;
 import net.osmand.router.RoutingConfiguration;
+import net.osmand.shared.palette.data.PaletteRepository;
+import net.osmand.shared.gpx.SmartFolderHelper;
 import net.osmand.util.Algorithms;
 import net.osmand.util.CollectionUtils;
 import net.osmand.util.OpeningHoursParser;
@@ -98,12 +108,15 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 public class AppInitializer implements IProgress {
 
@@ -244,6 +257,33 @@ public class AppInitializer implements IProgress {
 				InputStream stream = OsmandRegions.class.getResourceAsStream("regions.ocbf");
 				Algorithms.streamCopy(stream, new FileOutputStream(file));
 			}
+			app.regions.setTranslator(new RegionTranslation() {
+
+				@Override
+				public String getTranslation(String id) {
+					if (WorldRegion.AFRICA_REGION_ID.equals(id)) {
+						return app.getString(R.string.index_name_africa);
+					} else if (WorldRegion.AUSTRALIA_AND_OCEANIA_REGION_ID.equals(id)) {
+						return app.getString(R.string.index_name_oceania);
+					} else if (WorldRegion.ASIA_REGION_ID.equals(id)) {
+						return app.getString(R.string.index_name_asia);
+					} else if (WorldRegion.CENTRAL_AMERICA_REGION_ID.equals(id)) {
+						return app.getString(R.string.index_name_central_america);
+					} else if (WorldRegion.EUROPE_REGION_ID.equals(id)) {
+						return app.getString(R.string.index_name_europe);
+					} else if (WorldRegion.RUSSIA_REGION_ID.equals(id)) {
+						return app.getString(R.string.index_name_russia);
+					} else if (WorldRegion.NORTH_AMERICA_REGION_ID.equals(id)) {
+						return app.getString(R.string.index_name_north_america);
+					} else if (WorldRegion.SOUTH_AMERICA_REGION_ID.equals(id)) {
+						return app.getString(R.string.index_name_south_america);
+					} else if (WorldRegion.ANTARCTICA_REGION_ID.equals(id)) {
+						return app.getString(R.string.index_name_antarctica);
+					}
+					return null;
+				}
+			});
+			app.regions.setLocale(app.getLanguage(), app.getLocaleHelper().getCountry());
 			app.regions.prepareFile(file.getAbsolutePath());
 			PlatformUtil.setOsmandRegions(app.regions);
 		} catch (Exception e) {
@@ -252,6 +292,12 @@ public class AppInitializer implements IProgress {
 			LOG.error(e.getMessage(), e);
 		}
 		notifyEvent(INDEX_REGION_BOUNDARIES);
+	}
+
+	public void reInitPoiTypes() {
+		MapPoiTypes.setDefault(new MapPoiTypes(null));
+		app.poiTypes = MapPoiTypes.getDefaultNoInit();
+		initPoiTypes();
 	}
 
 	private void initPoiTypes() {
@@ -291,7 +337,7 @@ public class AppInitializer implements IProgress {
 		app.daynightHelper = startupInit(new DayNightHelper(app), DayNightHelper.class);
 		app.avoidRoadsHelper = startupInit(new AvoidRoadsHelper(app), AvoidRoadsHelper.class);
 		app.gpxDisplayHelper = startupInit(new GpxDisplayHelper(app), GpxDisplayHelper.class);
-		app.colorPaletteHelper = startupInit(new ColorPaletteHelper(app), ColorPaletteHelper.class);
+		app.paletteRepository = startupInit(new PaletteRepository(), PaletteRepository.class);
 		app.savingTrackHelper = startupInit(new SavingTrackHelper(app), SavingTrackHelper.class);
 		app.analyticsHelper = startupInit(new AnalyticsHelper(app), AnalyticsHelper.class);
 		app.feedbackHelper = startupInit(new FeedbackHelper(app), FeedbackHelper.class);
@@ -301,10 +347,6 @@ public class AppInitializer implements IProgress {
 		app.favoritesHelper = startupInit(new FavouritesHelper(app), FavouritesHelper.class);
 		app.waypointHelper = startupInit(new WaypointHelper(app), WaypointHelper.class);
 		app.aidlApi = startupInit(new OsmandAidlApi(app), OsmandAidlApi.class);
-
-		app.regions = startupInit(new OsmandRegions(), OsmandRegions.class);
-		updateRegionVars();
-
 		app.poiFilters = startupInit(new PoiFiltersHelper(app), PoiFiltersHelper.class);
 		app.rendererRegistry = startupInit(new RendererRegistry(app), RendererRegistry.class);
 		app.geocodingLookupService = startupInit(new GeocodingLookupService(app), GeocodingLookupService.class);
@@ -312,6 +354,7 @@ public class AppInitializer implements IProgress {
 		app.mapMarkersDbHelper = startupInit(new MapMarkersDbHelper(app), MapMarkersDbHelper.class);
 		app.mapMarkersHelper = startupInit(new MapMarkersHelper(app), MapMarkersHelper.class);
 		app.searchUICore = startupInit(new QuickSearchHelper(app), QuickSearchHelper.class);
+		app.searchHistoryHelper = startupInit(new SearchHistoryHelper(app), SearchHistoryHelper.class);
 		app.mapViewTrackingUtilities = startupInit(new MapViewTrackingUtilities(app), MapViewTrackingUtilities.class);
 		app.osmandMap = startupInit(new OsmandMap(app), OsmandMap.class);
 
@@ -333,10 +376,15 @@ public class AppInitializer implements IProgress {
 		app.averageGlideComputer = startupInit(new AverageGlideComputer(app), AverageGlideComputer.class);
 		app.weatherHelper = startupInit(new WeatherHelper(app), WeatherHelper.class);
 		app.dialogManager = startupInit(new DialogManager(), DialogManager.class);
+		app.smartFolderHelper = startupInit(new SmartFolderHelper(), SmartFolderHelper.class);
 		app.routeLayersHelper = startupInit(new RouteLayersHelper(app), RouteLayersHelper.class);
 		app.model3dHelper = startupInit(new Model3dHelper(app), Model3dHelper.class);
 		app.trackSortModesHelper = startupInit(new TrackSortModesHelper(app), TrackSortModesHelper.class);
 		app.explorePlacesProvider = startupInit(new ExplorePlacesOnlineProvider(app), ExplorePlacesOnlineProvider.class);
+		app.helpArticlesHelper = startupInit(new HelpArticlesHelper(app), HelpArticlesHelper.class);
+		app.clickableWayHelper = startupInit(new ClickableWayHelper(app), ClickableWayHelper.class);
+		app.autoBackupHelper = startupInit(new AutoBackupHelper(app), AutoBackupHelper.class);
+		app.galleryHelper = startupInit(new GalleryHelper(app), GalleryHelper.class);
 		initOpeningHoursParser();
 	}
 
@@ -345,43 +393,22 @@ public class AppInitializer implements IProgress {
 		OpeningHoursParser.setAdditionalString("is_open", app.getString(R.string.poi_dialog_opening_hours));
 		OpeningHoursParser.setAdditionalString("is_open_24_7", app.getString(R.string.shared_string_is_open_24_7));
 		OpeningHoursParser.setAdditionalString("will_open_at", app.getString(R.string.will_open_at));
+		OpeningHoursParser.setAdditionalString("will_open_at_short", app.getString(R.string.open_from_short));
 		OpeningHoursParser.setAdditionalString("open_from", app.getString(R.string.open_from));
+		OpeningHoursParser.setAdditionalString("open_from_short", app.getString(R.string.open_from_short));
 		OpeningHoursParser.setAdditionalString("will_close_at", app.getString(R.string.will_close_at));
+		OpeningHoursParser.setAdditionalString("will_close_at_short", app.getString(R.string.open_till_short));
 		OpeningHoursParser.setAdditionalString("open_till", app.getString(R.string.open_till));
+		OpeningHoursParser.setAdditionalString("open_till_short", app.getString(R.string.open_till_short));
 		OpeningHoursParser.setAdditionalString("will_open_tomorrow_at", app.getString(R.string.will_open_tomorrow_at));
+		OpeningHoursParser.setAdditionalString("will_open_tomorrow_at_short", app.getString(R.string.tomorrow));
 		OpeningHoursParser.setAdditionalString("will_open_on", app.getString(R.string.will_open_on));
+		OpeningHoursParser.setAdditionalString("will_open_on_short", app.getString(R.string.open_from_short));
 	}
 
-	private void updateRegionVars() {
-		app.regions.setTranslator(new RegionTranslation() {
+	private void updateRegionVars(OsmandRegions regions) {
 
-			@Override
-			public String getTranslation(String id) {
-				if (WorldRegion.AFRICA_REGION_ID.equals(id)) {
-					return app.getString(R.string.index_name_africa);
-				} else if (WorldRegion.AUSTRALIA_AND_OCEANIA_REGION_ID.equals(id)) {
-					return app.getString(R.string.index_name_oceania);
-				} else if (WorldRegion.ASIA_REGION_ID.equals(id)) {
-					return app.getString(R.string.index_name_asia);
-				} else if (WorldRegion.CENTRAL_AMERICA_REGION_ID.equals(id)) {
-					return app.getString(R.string.index_name_central_america);
-				} else if (WorldRegion.EUROPE_REGION_ID.equals(id)) {
-					return app.getString(R.string.index_name_europe);
-				} else if (WorldRegion.RUSSIA_REGION_ID.equals(id)) {
-					return app.getString(R.string.index_name_russia);
-				} else if (WorldRegion.NORTH_AMERICA_REGION_ID.equals(id)) {
-					return app.getString(R.string.index_name_north_america);
-				} else if (WorldRegion.SOUTH_AMERICA_REGION_ID.equals(id)) {
-					return app.getString(R.string.index_name_south_america);
-				} else if (WorldRegion.ANTARCTICA_REGION_ID.equals(id)) {
-					return app.getString(R.string.index_name_antarctica);
-				}
-				return null;
-			}
-		});
-		app.regions.setLocale(app.getLanguage(), app.getLocaleHelper().getCountry());
 	}
-
 
 	private <T> T startupInit(T object, Class<T> class1) {
 		long t = System.currentTimeMillis();
@@ -401,7 +428,7 @@ public class AppInitializer implements IProgress {
 	}
 
 	public static void loadRoutingFiles(@NonNull OsmandApplication app, @Nullable LoadRoutingFilesCallback callback) {
-		new AsyncTask<Void, Void, Map<String, RoutingConfiguration.Builder>>() {
+		OsmAndTaskManager.executeTask(new AsyncTask<Void, Void, Map<String, RoutingConfiguration.Builder>>() {
 
 			@Override
 			protected Map<String, RoutingConfiguration.Builder> doInBackground(Void... voids) {
@@ -454,7 +481,7 @@ public class AppInitializer implements IProgress {
 				return defaultAttributes;
 			}
 
-		}.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+		});
 	}
 
 
@@ -494,7 +521,11 @@ public class AppInitializer implements IProgress {
 		try {
 			notifyStart();
 			startBgTime = System.currentTimeMillis();
-			app.getRendererRegistry().initRenderers();
+			if (isFirstTime()) {
+				importBundledSettingsSync();
+				notifyEvent(BUNDLED_OSF_IMPORTED);
+			}
+			app.getRendererRegistry().initRenderers(warnings);
 			notifyEvent(INIT_RENDERERS);
 			// native depends on renderers
 			initOpenGl();
@@ -524,8 +555,10 @@ public class AppInitializer implements IProgress {
 			notifyEvent(SEARCH_UI_CORE_INITIALIZED);
 			checkLiveUpdatesAlerts();
 			connectToBRouter();
+			app.helpArticlesHelper.loadArticles();
+			notifyEvent(HELP_ARTICLES_INITIALIZED);
 		} catch (RuntimeException e) {
-			e.printStackTrace();
+			LOG.error(e);
 			warnings.add(e.getMessage());
 		} finally {
 			appInitializing = false;
@@ -552,14 +585,22 @@ public class AppInitializer implements IProgress {
 					continue;
 				}
 				int updateFrequencyOrd = preferenceUpdateFrequency(fileName, settings).get();
-				UpdateFrequency updateFrequency = UpdateFrequency.values()[updateFrequencyOrd];
+				UpdateFrequency[] updateFrequencies = UpdateFrequency.values();
+				if (updateFrequencyOrd < 0 || updateFrequencyOrd >= updateFrequencies.length) {
+					continue;
+				}
+				UpdateFrequency updateFrequency = updateFrequencies[updateFrequencyOrd];
 				long lastCheck = preferenceLastSuccessfulUpdateCheck(fileName, settings).get();
 
 				if (System.currentTimeMillis() - lastCheck > updateFrequency.intervalMillis * 2) {
 					runLiveUpdate(app, fileName, false, null);
 					PendingIntent alarmIntent = getPendingIntent(app, fileName);
 					int timeOfDayOrd = preferenceTimeOfDayToUpdate(fileName, settings).get();
-					TimeOfDay timeOfDayToUpdate = TimeOfDay.values()[timeOfDayOrd];
+					TimeOfDay[] timeOfDayValues = TimeOfDay.values();
+					if (timeOfDayOrd < 0 || timeOfDayOrd >= timeOfDayValues.length) {
+						continue;
+					}
+					TimeOfDay timeOfDayToUpdate = timeOfDayValues[timeOfDayOrd];
 					setAlarmForPendingIntent(alarmIntent, manager, updateFrequency, timeOfDayToUpdate);
 				}
 			}
@@ -591,7 +632,7 @@ public class AppInitializer implements IProgress {
 
 	@SuppressLint("StaticFieldLeak")
 	public void initOpenglAsync(@Nullable InitOpenglListener listener) {
-		new AsyncTask<Void, Void, Void>() {
+		OsmAndTaskManager.executeTask(new AsyncTask<Void, Void, Void>() {
 
 			@Override
 			protected Void doInBackground(Void... voids) {
@@ -605,7 +646,7 @@ public class AppInitializer implements IProgress {
 					listener.onOpenglInitialized();
 				}
 			}
-		}.executeOnExecutor(initOpenglSingleThreadExecutor);
+		}, initOpenglSingleThreadExecutor);
 	}
 
 	private void initOpenGl() {
@@ -673,6 +714,73 @@ public class AppInitializer implements IProgress {
 			app.getResourceManager().initMapBoundariesCacheNative();
 		}
 		notifyEvent(NATIVE_INITIALIZED);
+	}
+
+	private void importBundledSettingsSync() {
+		AssetManager assets = app.getAssets();
+		String[] osfFiles;
+		try {
+			osfFiles = assets.list("osf");
+			if (osfFiles == null) {
+				return;
+			}
+		} catch (IOException e) {
+			return;
+		}
+		Arrays.sort(osfFiles);
+
+		File cacheDir = app.getCacheDir();
+		for (String filename : osfFiles) {
+			String assetOsfPath = "osf/" + filename;
+			File tempOsfFile = new File(cacheDir, filename + ".tmp");
+			try {
+				ResourceManager.copyAssets(assets, assetOsfPath, tempOsfFile, null);
+				importBundledOsf(tempOsfFile, 30);
+			} catch (IOException e) {
+				LOG.error("Error importing bundled settings file: " + assetOsfPath, e);
+			}
+			LOG.info("Imported bundled settings file: " + filename);
+		}
+	}
+
+	private void importBundledOsf(@NonNull File file, int timeoutSec) {
+		final Semaphore semaphore = new Semaphore(0);
+		long start = System.currentTimeMillis();
+		app.getFileSettingsHelper().collectSettings(file, "", 1, (succeed, empty, items) -> {
+			if (succeed && !items.isEmpty()) {
+				for (SettingsItem item : items) {
+					item.setShouldReplace(true);
+				}
+				app.getFileSettingsHelper().importSettings(file, items, "", 1, new ImportListener() {
+							@Override
+							public void onImportFinished(boolean succeed, boolean needRestart,
+														 @NonNull List<SettingsItem> importedItems) {
+								if (!succeed) {
+									LOG.error("Import bundled settings failed for " + file.getName());
+								}
+								LOG.info("Import bundled settings done for " + file.getName() + " in " + (System.currentTimeMillis() - start) + " ms");
+								semaphore.release();
+							}
+						}
+				);
+			} else {
+				LOG.error("Error importing bundled settings file: " + file.getName() + " succeed=" + succeed
+						+ " items=" + items.size() + " empty=" + empty);
+				semaphore.release();
+			}
+		}
+		);
+
+		try {
+			boolean acquired = semaphore.tryAcquire(timeoutSec, TimeUnit.SECONDS);
+			if (!acquired) {
+				LOG.warn("Import bundled settings (Semaphore) still running after "
+						+ timeoutSec + " seconds, continuing startup.");
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			LOG.error("Interrupted while waiting for settings import (Semaphore)", e);
+		}
 	}
 
 	public void notifyStart() {

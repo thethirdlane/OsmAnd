@@ -1,10 +1,9 @@
 package net.osmand.plus.settings.backend.preferences;
 
-import android.util.Log;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import net.osmand.PlatformUtil;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.api.SettingsAPI;
 import net.osmand.plus.plugins.OsmandPlugin;
@@ -13,6 +12,7 @@ import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.util.Algorithms;
 
+import org.apache.commons.logging.Log;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -20,6 +20,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public abstract class CommonPreference<T> extends PreferenceWithListener<T> {
+
+	private static final Log log = PlatformUtil.getLog(CommonPreference.class);
 
 	private final OsmandSettings settings;
 	private Object cachedPreference;
@@ -90,6 +92,10 @@ public abstract class CommonPreference<T> extends PreferenceWithListener<T> {
 		return settings.getContext();
 	}
 
+	protected OsmandSettings getSettings() {
+		return settings;
+	}
+
 	// common methods
 
 	public final CommonPreference<T> makeGlobal() {
@@ -145,7 +151,7 @@ public abstract class CommonPreference<T> extends PreferenceWithListener<T> {
 		boolean valueSaved = setValue(profilePrefs, obj);
 		if (valueSaved) {
 			if (changed) {
-				settings.updateLastPreferencesEditTime(profilePrefs);
+				updateLastPreferencesEditTime(profilePrefs);
 			}
 			if (cache && cachedPreference == profilePrefs) {
 				cachedValue = obj;
@@ -172,6 +178,10 @@ public abstract class CommonPreference<T> extends PreferenceWithListener<T> {
 
 	public void setDefaultValue(T defaultValue) {
 		this.defaultValue = defaultValue;
+	}
+
+	public void setDefaultValues(Map<ApplicationMode, T> defaultValues) {
+		this.defaultValues = defaultValues;
 	}
 
 	public final boolean hasDefaultValues() {
@@ -233,10 +243,9 @@ public abstract class CommonPreference<T> extends PreferenceWithListener<T> {
 				}
 				if (changed && isShared()) {
 					if (PluginsHelper.isDevelopment()) {
-						Log.d("CommonPreference", "RESET_TO_DEFAULT id=" + getId()
-								+ " value=" + newValue + " cached=" + cachedValue);
+						log.debug("RESET_TO_DEFAULT id=" + getId() + " value=" + newValue + " cached=" + cachedValue);
 					}
-					settings.updateLastPreferencesEditTime(prefs);
+					updateLastPreferencesEditTime(prefs);
 				}
 				cachedValue = newValue;
 				cachedPreference = prefs;
@@ -258,7 +267,7 @@ public abstract class CommonPreference<T> extends PreferenceWithListener<T> {
 				T newValue = getModeValue(mode);
 				boolean changed = !Algorithms.objectEquals(oldValue, newValue);
 				if (changed) {
-					settings.updateLastPreferencesEditTime(prefs);
+					updateLastPreferencesEditTime(prefs);
 				}
 				if (cache && cachedPreference == prefs) {
 					cachedValue = newValue;
@@ -274,12 +283,12 @@ public abstract class CommonPreference<T> extends PreferenceWithListener<T> {
 		boolean changed = !Algorithms.objectEquals(obj, get());
 		if (setValue(prefs, obj)) {
 			if (changed && isShared() && isGlobal() && PluginsHelper.isDevelopment()) {
-				Log.d("CommonPreference", "SET GLOBAL id=" + getId() + " value=" + obj + " cached=" + cachedValue);
+				log.debug("SET GLOBAL id=" + getId() + " value=" + obj + " cached=" + cachedValue);
 			}
 			cachedValue = obj;
 			cachedPreference = prefs;
 			if (changed && (isShared() || !global)) {
-				settings.updateLastPreferencesEditTime(prefs);
+				updateLastPreferencesEditTime(prefs);
 			}
 			fireEvent(obj);
 			return true;
@@ -300,6 +309,10 @@ public abstract class CommonPreference<T> extends PreferenceWithListener<T> {
 
 	public void setLastModifiedTime(long lastModifiedTime) {
 		setLastModifiedTime(getPreferences(), lastModifiedTime);
+	}
+
+	private void updateLastPreferencesEditTime(@NonNull Object preferences) {
+		settings.updateLastPreferencesEditTime(preferences);
 	}
 
 	public final boolean isSet() {
@@ -389,6 +402,29 @@ public abstract class CommonPreference<T> extends PreferenceWithListener<T> {
 	public final String asStringModeValue(@Nullable ApplicationMode mode) {
 		T v = getModeValue(mode);
 		return toString(v);
+	}
+
+	public abstract CommonPreference<T> copyWithId(@NonNull String newId);
+
+	protected <P extends CommonPreference<T>> P setupCopy(P copy) {
+		if (global) {
+			copy.makeGlobal();
+		} else {
+			copy.makeProfile();
+		}
+		if (shared) {
+			copy.makeShared();
+		}
+		if (cache) {
+			copy.cache();
+		}
+		if (lastModifiedTimeStored) {
+			copy.storeLastModifiedTime();
+		}
+		copy.setDefaultValue(defaultValue);
+		copy.setDefaultValues(defaultValues);
+
+		return copy;
 	}
 
 	@NonNull

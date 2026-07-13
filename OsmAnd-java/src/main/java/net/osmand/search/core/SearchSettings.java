@@ -3,7 +3,10 @@ package net.osmand.search.core;
 import net.osmand.PlatformUtil;
 import net.osmand.binary.BinaryMapDataObject;
 import net.osmand.binary.BinaryMapIndexReader;
+import net.osmand.binary.BinaryMapIndexReaderStats.SearchStat;
+import net.osmand.data.City;
 import net.osmand.data.LatLon;
+import net.osmand.data.MapObject;
 import net.osmand.data.QuadRect;
 import net.osmand.map.OsmandRegions;
 import net.osmand.map.WorldRegion;
@@ -25,6 +28,11 @@ public class SearchSettings {
 
 	public static final Log LOG = PlatformUtil.getLog(SearchSettings.class);
 	private static final double MIN_DISTANCE_REGION_LANG_RECALC = 10000;
+	public enum SortType {
+		BY_RELEVANCE,
+		ONLY_BY_DISTANCE,
+		IGNORE_DISTANCE
+	}
 
 	private LatLon originalLocation;
 	private OsmandRegions regions;
@@ -32,36 +40,74 @@ public class SearchSettings {
 	private List<BinaryMapIndexReader> offlineIndexes = new ArrayList<>();
 	private int radiusLevel = 1;
 	private int totalLimit = -1;
-	private String lang;
+	private String appLang;
+	private String mapLang;
 	private boolean transliterateIfMissing;
 	private ObjectType[] searchTypes;
 	private boolean emptyQueryAllowed;
 	private boolean sortByName;
 	private QuadRect searchBBox31;
-	private boolean addressSearch;
+	private SearchStat stat;
 	private SearchExportSettings exportSettings; // = new SearchExportSettings(true, true, -1);
+	private List<MapObject> exportedObjects;
+	private List<City> exportedCities;
+	private SortType sortType;
 
 	public SearchSettings(SearchSettings s) {
-		if(s != null) {
+		if (s != null) {
 			this.radiusLevel = s.radiusLevel;
-			this.lang = s.lang;
+			this.appLang = s.appLang;
+			this.mapLang = s.mapLang;
 			this.transliterateIfMissing = s.transliterateIfMissing;
 			this.totalLimit = s.totalLimit;
 			this.offlineIndexes = s.offlineIndexes;
 			this.originalLocation = s.originalLocation;
 			this.searchBBox31 = s.searchBBox31;
-			this.addressSearch = s.addressSearch;
 			this.regions = s.regions;
 			this.regionLang = s.regionLang;
 			this.searchTypes = s.searchTypes;
 			this.emptyQueryAllowed = s.emptyQueryAllowed;
 			this.sortByName = s.sortByName;
 			this.exportSettings = s.exportSettings;
+			this.stat = s.stat;
+			this.sortType = s.sortType;
 		}
 	}
 	
 	public SearchSettings(List<? extends BinaryMapIndexReader> offlineIndexes) {
 		this.offlineIndexes = Collections.unmodifiableList(offlineIndexes);
+	}
+
+	public List<MapObject> getExportedObjects() {
+		return exportedObjects;
+	}
+
+	public void setExportedObjects(List<MapObject> exportedObjects) {
+		if (exportedObjects == null) {
+			this.exportedObjects = null;
+			return;
+		}
+
+		if (this.exportedObjects == null)
+			this.exportedObjects = exportedObjects;
+		else
+			this.exportedObjects.addAll(exportedObjects);
+	}
+
+	public List<City> getExportedCities() {
+		return exportedCities;
+	}
+
+	public void setExportedCities(List<City> exportedCities) {
+		if (exportedCities == null) {
+			this.exportedCities = null;
+			return;
+		}
+
+		if (this.exportedCities == null)
+			this.exportedCities = exportedCities;
+		else
+			this.exportedCities.addAll(exportedCities);
 	}
 
 	public List<BinaryMapIndexReader> getOfflineIndexes() {
@@ -75,14 +121,23 @@ public class SearchSettings {
 	public int getRadiusLevel() {
 		return radiusLevel;
 	}
-	
+
+	public String getAppLang() {
+		return appLang;
+	}
+
 	public String getLang() {
-		return lang;
+		return mapLang;
 	}
 	
 	public SearchSettings setLang(String lang, boolean transliterateIfMissing) {
+		return setLangs(lang, lang, transliterateIfMissing);
+	}
+
+	public SearchSettings setLangs(String appLang, String mapLang, boolean transliterateIfMissing) {
 		SearchSettings s = new SearchSettings(this);
-		s.lang = lang;
+		s.appLang = appLang;
+		s.mapLang = mapLang;
 		s.transliterateIfMissing = transliterateIfMissing;
 		return s;
 	}
@@ -125,12 +180,6 @@ public class SearchSettings {
 		return s;
 	}
 	
-	public SearchSettings setAddressSearch(boolean addressSearch) {
-		SearchSettings s = new SearchSettings(this);
-		s.addressSearch = addressSearch;
-		return s;
-	}
-
 	public boolean isTransliterate() {
 		return transliterateIfMissing;
 	}
@@ -149,6 +198,10 @@ public class SearchSettings {
 		return s;
 	}
 
+	public void updateSearchTypes(ObjectType... searchTypes) {
+		this.searchTypes = searchTypes;
+	}
+
 	public SearchSettings resetSearchTypes() {
 		SearchSettings s = new SearchSettings(this);
 		s.searchTypes = null;
@@ -165,14 +218,19 @@ public class SearchSettings {
 		return s;
 	}
 
-	public boolean isSortByName() {
-		return sortByName;
-	}
 
 	public SearchSettings setSortByName(boolean sortByName) {
 		SearchSettings s = new SearchSettings(this);
-		s.sortByName = sortByName;
+		s.sortType = sortByName ?  SortType.IGNORE_DISTANCE : SortType.BY_RELEVANCE;
 		return s;
+	}
+	
+	public SortType getSortType() {
+		return sortType;
+	}
+
+	public void setSortType(SortType sortType) {
+		this.sortType = sortType;
 	}
 
 	public SearchExportSettings getExportSettings() {
@@ -198,6 +256,14 @@ public class SearchSettings {
 			}
 		}
 		return false;
+	}
+	
+	public SearchStat getStat() {
+		return stat;
+	}
+	
+	public void setStat(SearchStat stat) {
+		this.stat = stat;
 	}
 
 	public String getRegionLang() {
@@ -241,7 +307,8 @@ public class SearchSettings {
 		}
 		json.put("radiusLevel", radiusLevel);
 		json.put("totalLimit", totalLimit);
-		json.put("lang", lang);
+		json.put("lang", mapLang);
+		json.put("appLang", appLang);
 		json.put("transliterateIfMissing", transliterateIfMissing);
 		json.put("emptyQueryAllowed", emptyQueryAllowed);
 		json.put("sortByName", sortByName);
@@ -266,8 +333,12 @@ public class SearchSettings {
 		s.transliterateIfMissing = json.optBoolean("transliterateIfMissing", false);
 		s.emptyQueryAllowed = json.optBoolean("emptyQueryAllowed", false);
 		s.sortByName = json.optBoolean("sortByName", false);
+
 		if (json.has("lang")) {
-			s.lang = json.getString("lang");
+			s.mapLang = json.getString("lang");
+		}
+		if (json.has("appLang")) {
+			s.appLang = json.getString("appLang");
 		}
 		if (json.has("regionLang")) {
 			s.regionLang = json.getString("regionLang");
@@ -283,4 +354,6 @@ public class SearchSettings {
 		}
 		return s;
 	}
+
+
 }

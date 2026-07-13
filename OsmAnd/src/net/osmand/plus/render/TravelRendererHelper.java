@@ -25,7 +25,7 @@ import net.osmand.osm.PoiCategory;
 import net.osmand.osm.PoiType;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.poi.PoiUIFilter;
-import net.osmand.plus.render.RendererRegistry.IRendererLoadedEventListener;
+import net.osmand.plus.render.RendererRegistry.RendererEventListener;
 import net.osmand.plus.resources.ResourceManager;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.backend.preferences.CommonPreference;
@@ -39,6 +39,7 @@ import org.xmlpull.v1.XmlPullParserException;
 
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Locale;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -47,7 +48,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
-public class TravelRendererHelper implements IRendererLoadedEventListener {
+public class TravelRendererHelper implements RendererEventListener {
 
 	private static final Log log = PlatformUtil.getLog(TravelRendererHelper.class);
 	private static final String FILE_PREFERENCE_PREFIX = "travel_file_";
@@ -96,7 +97,7 @@ public class TravelRendererHelper implements IRendererLoadedEventListener {
 
 	private void addListeners() {
 		addShowTravelPrefListener();
-		rendererRegistry.addRendererLoadedEventListener(this);
+		rendererRegistry.addRendererEventListener(this);
 		fileVisibilityPropertiesListener = change -> {
 			for (OnFileVisibilityChangeListener listener : fileVisibilityListeners) {
 				listener.fileVisibilityChanged();
@@ -261,7 +262,7 @@ public class TravelRendererHelper implements IRendererLoadedEventListener {
 				for (String category : categories) {
 					CommonPreference<Boolean> prop = getRoutePointCategoryProperty(category);
 					if (prop.get()) {
-						selectedCategories.add(category.replace('_', ':').toLowerCase());
+						selectedCategories.add(category.replace('_', ':').toLowerCase(Locale.ROOT));
 					}
 				}
 				routeArticlePointsFilter.setFilterByName(TextUtils.join(" ", selectedCategories));
@@ -276,7 +277,7 @@ public class TravelRendererHelper implements IRendererLoadedEventListener {
 			PoiCategory routes = app.getPoiTypes().getRoutes();
 			for (PoiType subType : routes.getPoiTypes()) {
 				String subTypeKeyName = subType.getKeyName();
-				if (subTypeKeyName.startsWith(ROUTES_PREFIX)) {
+				if (subTypeKeyName.startsWith(ROUTES_PREFIX) || subTypeKeyName.contains(";" + ROUTES_PREFIX)) {
 					routeTrackFilters.add(app.getPoiFilters().getFilterById(PoiUIFilter.STD_PREFIX + subTypeKeyName));
 				}
 			}
@@ -382,7 +383,7 @@ public class TravelRendererHelper implements IRendererLoadedEventListener {
 	}
 
 	@Override
-	public void onRendererLoaded(String name, RenderingRulesStorage rules, InputStream source) {
+	public void onRendererLoaded(String name, RenderingRulesStorage rules) {
 		for (Map.Entry<String, CommonPreference<Boolean>> entry : routeTypesProps.entrySet()) {
 			boolean selected = entry.getValue().get();
 			String attrName = entry.getKey().replace(ROUTE_ACTIVITY_TYPE + "_", "");

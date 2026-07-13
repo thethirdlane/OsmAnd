@@ -19,6 +19,7 @@ import com.android.billingclient.api.BillingFlowParams.SubscriptionUpdateParams;
 import com.android.billingclient.api.BillingResult;
 import com.android.billingclient.api.ConsumeParams;
 import com.android.billingclient.api.ConsumeResponseListener;
+import com.android.billingclient.api.PendingPurchasesParams;
 import com.android.billingclient.api.ProductDetails;
 import com.android.billingclient.api.ProductDetailsResponseListener;
 import com.android.billingclient.api.Purchase;
@@ -28,6 +29,7 @@ import com.android.billingclient.api.QueryProductDetailsParams;
 import com.android.billingclient.api.QueryPurchasesParams;
 
 import net.osmand.PlatformUtil;
+import net.osmand.plus.OsmandApplication;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -84,6 +86,8 @@ public class BillingManager implements PurchasesUpdatedListener {
 		void onPurchasesUpdated(List<Purchase> purchases);
 
 		void onPurchaseCanceled();
+
+		void onError();
 	}
 
 	/**
@@ -107,7 +111,8 @@ public class BillingManager implements PurchasesUpdatedListener {
 		mSignatureBase64 = base64PublicKey;
 		mBillingUpdatesListener = updatesListener;
 		mBillingClient = BillingClient.newBuilder(mContext)
-				.enablePendingPurchases()
+				.enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
+				.enableAutoServiceReconnection()
 				.setListener(this)
 				.build();
 
@@ -139,6 +144,7 @@ public class BillingManager implements PurchasesUpdatedListener {
 			mBillingUpdatesListener.onPurchaseCanceled();
 		} else {
 			LOG.warn("onPurchasesUpdated() got unknown responseCode: " + responseCode);
+			mBillingUpdatesListener.onError();
 		}
 	}
 
@@ -160,6 +166,12 @@ public class BillingManager implements PurchasesUpdatedListener {
 					.getSubscriptionOfferDetails();
 			if (offerDetails != null) {
 				offerToken = offerDetails.get(selectedOfferIndex).getOfferToken();
+			} else {
+				List<ProductDetails.OneTimePurchaseOfferDetails> oneTimeOfferDetails =
+						productDetails.getOneTimePurchaseOfferDetailsList();
+				if (oneTimeOfferDetails != null && selectedOfferIndex < oneTimeOfferDetails.size()) {
+					offerToken = oneTimeOfferDetails.get(selectedOfferIndex).getOfferToken();
+				}
 			}
 			ArrayList<BillingFlowParams.ProductDetailsParams> productDetailsParamsList = new ArrayList<>();
 			BillingFlowParams.ProductDetailsParams.Builder productDetailsParams = BillingFlowParams.ProductDetailsParams.newBuilder()
@@ -241,7 +253,7 @@ public class BillingManager implements PurchasesUpdatedListener {
 		// Generating Consume Response listener
 		ConsumeResponseListener onConsumeListener = new ConsumeResponseListener() {
 			@Override
-			public void onConsumeResponse(BillingResult billingResult, String purchaseToken) {
+			public void onConsumeResponse(@NonNull BillingResult billingResult, @NonNull String purchaseToken) {
 				// If billing service was disconnected, we try to reconnect 1 time
 				// (feel free to introduce your retry policy here).
 				mBillingUpdatesListener.onConsumeFinished(purchaseToken, billingResult);
@@ -300,7 +312,7 @@ public class BillingManager implements PurchasesUpdatedListener {
 						.build();
 				mBillingClient.acknowledgePurchase(acknowledgePurchaseParams, new AcknowledgePurchaseResponseListener() {
 					@Override
-					public void onAcknowledgePurchaseResponse(BillingResult billingResult) {
+					public void onAcknowledgePurchaseResponse(@NonNull BillingResult billingResult) {
 						if (billingResult.getResponseCode() != BillingResponseCode.OK) {
 							LOG.info("Acknowledge a purchase: " + purchase + " failed (" + billingResult.getResponseCode() + "). " + billingResult.getDebugMessage());
 						}
@@ -324,14 +336,12 @@ public class BillingManager implements PurchasesUpdatedListener {
 	 * Handle a result from querying of purchases and report an updated list to the listener
 	 */
 	private void onQueryPurchasesFinished(BillingResult billingResult, @Nullable List<Purchase> purchases) {
-		// Have we been disposed of in the meantime? If so, or bad result code, then quit
+		// Have we been disposed of in the meantime or bad result code?
 		if (mBillingClient == null || billingResult.getResponseCode() != BillingResponseCode.OK) {
-			LOG.warn("Billing client was null or result code (" + billingResult.getResponseCode()
-					+ ") was bad - quitting");
-			return;
+			LOG.warn("Billing client was null or result code (" + billingResult.getResponseCode() + ") was bad");
+		} else {
+			LOG.debug("Query inventory was successful.");
 		}
-
-		LOG.debug("Query inventory was successful.");
 
 		// Update the UI and purchases inventory with new list of purchases
 		mPurchases.clear();
@@ -405,10 +415,10 @@ public class BillingManager implements PurchasesUpdatedListener {
 		});
 	}
 
-	public void startServiceConnection(Runnable executeOnSuccess) {
+	public void startServiceConnection(@Nullable Runnable executeOnSuccess) {
 		mBillingClient.startConnection(new BillingClientStateListener() {
 			@Override
-			public void onBillingSetupFinished(BillingResult billingResult) {
+			public void onBillingSetupFinished(@NonNull BillingResult billingResult) {
 
 				int billingResponseCode = billingResult.getResponseCode();
 				LOG.debug("Setup finished. Response code: " + billingResponseCode);
@@ -416,19 +426,25 @@ public class BillingManager implements PurchasesUpdatedListener {
 				mIsServiceConnected = billingResponseCode == BillingResponseCode.OK;
 				mBillingClientResponseCode = billingResponseCode;
 				mBillingClientResponseMessage = billingResult.getDebugMessage();
-				mBillingUpdatesListener.onBillingClientSetupFinished();
-
-				if (mIsServiceConnected) {
-					if (executeOnSuccess != null) {
-						executeOnSuccess.run();
+				OsmandApplication app = (OsmandApplication) getContext().getApplicationContext();
+				app.runInUIThread(() -> {
+					mBillingUpdatesListener.onBillingClientSetupFinished();
+					if (mIsServiceConnected) {
+						if (executeOnSuccess != null) {
+							executeOnSuccess.run();
+						}
 					}
-				}
+				});
+
 			}
 
 			@Override
 			public void onBillingServiceDisconnected() {
-				mIsServiceConnected = false;
-				mBillingUpdatesListener.onBillingClientSetupFinished();
+				OsmandApplication app = (OsmandApplication) getContext().getApplicationContext();
+				app.runInUIThread(() -> {
+					mIsServiceConnected = false;
+					mBillingUpdatesListener.onBillingClientSetupFinished();
+				});
 			}
 		});
 	}

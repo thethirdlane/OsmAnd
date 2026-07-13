@@ -18,6 +18,8 @@ import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.base.containers.Limits;
 import net.osmand.plus.base.dialog.BaseDialogController;
 import net.osmand.plus.base.dialog.DialogManager;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
+import net.osmand.plus.utils.InsetsUtils.InsetSide;
 import net.osmand.plus.views.layers.CoordinatesGridSettings;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.enums.EnumWithTitleId;
@@ -31,6 +33,7 @@ import net.osmand.plus.widgets.popup.PopUpMenuWidthMode;
 
 import java.text.NumberFormat;
 import java.util.ArrayList;
+import java.util.Set;
 import java.util.List;
 
 public class CoordinatesGridController extends BaseDialogController {
@@ -61,8 +64,11 @@ public class CoordinatesGridController extends BaseDialogController {
 		return getString(gridFormat.getTitleId());
 	}
 
-	public void onFormatSelectorClicked(@NonNull View anchorView, @ColorInt int color, boolean nightMode) {
-		showPopUpMenu(anchorView, GridFormat.values(), getGridFormat(), this::onSelectFormat, color, nightMode);
+	public void onCoordinateFormatSelected(@NonNull String formatId) {
+		GridFormat gridFormat = GridFormat.fromCoordinateFormatId(formatId);
+		if (gridFormat != null) {
+			onSelectFormat(gridFormat);
+		}
 	}
 
 	private void onSelectFormat(@NonNull GridFormat format) {
@@ -154,6 +160,16 @@ public class CoordinatesGridController extends BaseDialogController {
 		return gridSettings.getGridFormat(getSelectedAppMode());
 	}
 
+	@NonNull
+	public String getSelectedCoordinateFormatId() {
+		return getGridFormat().getCoordinateFormatId();
+	}
+
+	@NonNull
+	public List<String> getSupportedCoordinateFormatIds() {
+		return GridFormat.getSupportedCoordinateFormatIds();
+	}
+
 	public void setGridFormat(@NonNull GridFormat format) {
 		gridSettings.setGridFormat(getSelectedAppMode(), format);
 	}
@@ -183,7 +199,7 @@ public class CoordinatesGridController extends BaseDialogController {
 	}
 
 	public boolean isNightMode() {
-		return app.getDaynightHelper().isNightMode();
+		return app.getDaynightHelper().isNightMode(ThemeUsageContext.MAP);
 	}
 
 	@DrawableRes
@@ -203,6 +219,11 @@ public class CoordinatesGridController extends BaseDialogController {
 	public static CoordinatesGridController getExistedInstance(@NonNull OsmandApplication app) {
 		DialogManager dialogManager = app.getDialogManager();
 		return (CoordinatesGridController) dialogManager.findController(PROCESS_ID);
+	}
+
+	@Nullable
+	protected Set<InsetSide> getSideInsets() {
+		return null;
 	}
 
 	public static void showDialog(@NonNull FragmentActivity activity) {

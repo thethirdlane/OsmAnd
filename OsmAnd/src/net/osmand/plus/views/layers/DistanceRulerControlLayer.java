@@ -1,46 +1,36 @@
 package net.osmand.plus.views.layers;
 
 import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Canvas;
-import android.graphics.Paint;
+import android.graphics.*;
 import android.graphics.Paint.Style;
-import android.graphics.Path;
-import android.graphics.PathEffect;
-import android.graphics.PathMeasure;
 import android.graphics.PointF;
-import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Message;
 import android.util.Pair;
+import android.view.GestureDetector;
 import android.view.MotionEvent;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import net.osmand.Location;
 import net.osmand.StateChangedListener;
 import net.osmand.core.android.MapRendererView;
+import net.osmand.core.jni.*;
 import net.osmand.core.jni.MapMarker.PinIconHorisontalAlignment;
 import net.osmand.core.jni.MapMarker.PinIconVerticalAlignment;
-import net.osmand.core.jni.MapMarkerBuilder;
-import net.osmand.core.jni.MapMarkersCollection;
-import net.osmand.core.jni.PointI;
-import net.osmand.core.jni.QVectorPointI;
-import net.osmand.core.jni.SwigUtilities;
-import net.osmand.core.jni.VectorDouble;
-import net.osmand.core.jni.VectorLine;
-import net.osmand.core.jni.VectorLineBuilder;
-import net.osmand.core.jni.VectorLinesCollection;
 import net.osmand.data.LatLon;
 import net.osmand.data.RotatedTileBox;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
+import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.render.OsmandDashPathEffect;
 import net.osmand.plus.settings.enums.DistanceByTapTextSize;
 import net.osmand.plus.utils.NativeUtilities;
 import net.osmand.plus.utils.OsmAndFormatter;
+import net.osmand.plus.utils.UiUtilities;
 import net.osmand.plus.views.OsmandMapTileView;
 import net.osmand.plus.views.layers.base.OsmandMapLayer;
-import net.osmand.plus.views.layers.geometry.GeometryWay;
 import net.osmand.plus.views.layers.geometry.GeometryWayDrawer;
 import net.osmand.plus.views.layers.geometry.GeometryWayPathAlgorithms;
 import net.osmand.util.Algorithms;
@@ -49,14 +39,13 @@ import net.osmand.util.MapUtils;
 import java.util.ArrayList;
 import java.util.List;
 
-import androidx.annotation.NonNull;
-
 public class DistanceRulerControlLayer extends OsmandMapLayer {
 
 	private static final int VERTICAL_OFFSET = 15;
 	private static final long DRAW_TIME = 4000;
-	private static final long DELAY_BEFORE_DRAW = 200;
+	private static final long DELAY_BEFORE_DRAW = 50;
 	private static final int DISTANCE_TEXT_SIZE = 16;
+	private static final int LABEL_OFFSET = 20;
 
 	private OsmandApplication app;
 
@@ -92,11 +81,38 @@ public class DistanceRulerControlLayer extends OsmandMapLayer {
 	private LatLon cachedSecondTouchLatLon;
 	private boolean rotateText;
 	private VectorLinesCollection vectorLinesCollection;
+	private VectorLine rulerLine;
+	private MapMarker distanceMarker;
+	private boolean isShowTwoFingersDistance;
+	private boolean isShowOneFingersDistance;
+	@Nullable
+	private GestureDetector gestureDetector;
 
 	private StateChangedListener<DistanceByTapTextSize> textSizeListener;
 
 	public DistanceRulerControlLayer(@NonNull Context ctx) {
 		super(ctx);
+	}
+
+	@Override
+	public void setMapActivity(@Nullable MapActivity mapActivity) {
+		super.setMapActivity(mapActivity);
+		if (mapActivity != null) {
+			gestureDetector = new GestureDetector(mapActivity, new GestureDetector.SimpleOnGestureListener() {
+				@Override
+				public boolean onSingleTapConfirmed(@NonNull MotionEvent event) {
+					isShowTwoFingersDistance = false;
+					isShowOneFingersDistance = true;
+					touchPointLatLon = NativeUtilities.getLatLonFromElevatedPixel(getMapRenderer(), view.getRotatedTileBox(),
+							event.getX(), event.getY());
+
+					app.runInUIThread(() -> view.refreshMap());
+					return super.onSingleTapConfirmed(event);
+				}
+			});
+		} else {
+			gestureDetector = null;
+		}
 	}
 
 	@Override
@@ -128,8 +144,8 @@ public class DistanceRulerControlLayer extends OsmandMapLayer {
 	}
 
 	private void createBitmaps(@NonNull OsmandMapTileView view) {
-		centerIconDay = BitmapFactory.decodeResource(view.getResources(), R.drawable.map_ruler_center_day);
-		centerIconNight = BitmapFactory.decodeResource(view.getResources(), R.drawable.map_ruler_center_night);
+		centerIconDay = UiUtilities.decodeResource(view.getResources(), R.drawable.map_ruler_center_day);
+		centerIconNight = UiUtilities.decodeResource(view.getResources(), R.drawable.map_ruler_center_night);
 	}
 
 	@Override
@@ -147,14 +163,23 @@ public class DistanceRulerControlLayer extends OsmandMapLayer {
 	}
 
 	@Override
+	public void onDoubleFingerTap() {
+		super.onDoubleFingerTap();
+		if (rulerModeOn()) {
+			isShowTwoFingersDistance = true;
+		}
+	}
+
+	@Override
 	public boolean onTouchEvent(@NonNull MotionEvent event, @NonNull RotatedTileBox tileBox) {
-		if (rulerModeOn() && !showTwoFingersDistance) {
+		if (rulerModeOn()) {
+			if (gestureDetector != null) {
+				gestureDetector.onTouchEvent(event);
+			}
 			if (event.getAction() == MotionEvent.ACTION_DOWN) {
 				touched = true;
 				touchOutside = false;
 				touchPoint.set(event.getX(), event.getY());
-				touchPointLatLon = NativeUtilities.getLatLonFromElevatedPixel(getMapRenderer(), tileBox,
-						event.getX(), event.getY());
 				singleTouchPointChanged = true;
 				touchStartTime = System.currentTimeMillis();
 				wasPinchZoomOrRotation = false;
@@ -167,6 +192,7 @@ public class DistanceRulerControlLayer extends OsmandMapLayer {
 				}
 			} else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
 				touched = false;
+				isShowOneFingersDistance = false;
 				touchEndTime = System.currentTimeMillis();
 				wasDoubleTapZoom = view.isAfterDoubleTap();
 				refreshMapDelayed();
@@ -203,10 +229,11 @@ public class DistanceRulerControlLayer extends OsmandMapLayer {
 
 			boolean showTwoFingersDistance =
 					currentTime - view.getMultiTouchStartTime() > DELAY_BEFORE_DRAW &&
-					(view.isMultiTouch() || currentTime - cacheMultiTouchEndTime < DRAW_TIME);
+							(view.isMultiTouch() || currentTime - cacheMultiTouchEndTime < DRAW_TIME);
 
+			isShowTwoFingersDistance = isShowTwoFingersDistance && showTwoFingersDistance;
 			boolean showDistBetweenFingerAndLocation = !wasPinchZoomOrRotation &&
-					!showTwoFingersDistance &&
+					!isShowTwoFingersDistance &&
 					!view.isMultiTouch() &&
 					!wasDoubleTapZoom &&
 					!touchOutside &&
@@ -215,19 +242,20 @@ public class DistanceRulerControlLayer extends OsmandMapLayer {
 					(touched || currentTime - touchEndTime < DRAW_TIME);
 
 			Location currentLoc = app.getLocationProvider().getLastKnownLocation();
+			isShowOneFingersDistance = isShowOneFingersDistance && showDistBetweenFingerAndLocation;
 
 			if (hasMapRenderer) {
-				drawDistanceRulerOpenGl(mapRenderer, canvas, tb, nightMode, paintUpdated, showTwoFingersDistance, showDistBetweenFingerAndLocation);
+				drawDistanceRulerOpenGl(mapRenderer, canvas, tb, nightMode, paintUpdated, isShowTwoFingersDistance, isShowOneFingersDistance);
 			} else {
-				if (showDistBetweenFingerAndLocation && currentLoc != null) {
+				if (isShowOneFingersDistance && currentLoc != null) {
 					drawDistBetweenFingerAndLocation(canvas, tb, currentLoc, nightMode);
-				} else if (showTwoFingersDistance) {
+				} else if (isShowTwoFingersDistance) {
 					drawTwoFingersDistance(canvas, tb, view.getFirstTouchPointLatLon(),
 							view.getSecondTouchPointLatLon(), nightMode);
 				}
 			}
 
-			this.showTwoFingersDistance = showTwoFingersDistance;
+			this.showTwoFingersDistance = isShowTwoFingersDistance;
 			this.showDistBetweenFingerAndLocation = showDistBetweenFingerAndLocation;
 		} else {
 			if (hasMapRenderer) {
@@ -286,6 +314,25 @@ public class DistanceRulerControlLayer extends OsmandMapLayer {
 		}
 	}
 
+	private void drawTextOnCenterOfPathOpenGl(String text, boolean nightMode) {
+		TextRasterizer.Style style = MapTextLayer.getTextStyle(getContext(), nightMode,
+				getApplication().getOsmandMap().getMapDensity(), view.getDensity());
+
+		DistanceByTapTextSize textSize = app.getSettings().DISTANCE_BY_TAP_TEXT_SIZE.get();
+		float lineTextSize = app.getResources().getDimension(textSize.getTextSizeId());
+
+		style.setSize(lineTextSize);
+
+		MapMarkerBuilder markerBuilder = new MapMarkerBuilder();
+		markerBuilder.setIsHidden(false);
+		markerBuilder.setCaption(text);
+		markerBuilder.setBaseOrder(getBaseOrder() - 1);
+		markerBuilder.setCaptionStyle(style);
+		markerBuilder.setUpdateAfterCreated(true);
+		distanceMarker = markerBuilder.buildAndAddToCollection(mapMarkersCollection);
+		distanceMarker.setOffsetFromLine(LABEL_OFFSET);
+	}
+
 	private void drawFingerTouchIcon(Canvas canvas, float x, float y, boolean nightMode) {
 		if (nightMode) {
 			canvas.drawBitmap(centerIconNight, x - centerIconNight.getWidth() / 2f,
@@ -298,6 +345,9 @@ public class DistanceRulerControlLayer extends OsmandMapLayer {
 	}
 
 	private void drawDistBetweenFingerAndLocation(Canvas canvas, RotatedTileBox tb, Location currLoc, boolean night) {
+		if (touchPointLatLon == null) {
+			return;
+		}
 		PointF firstScreenPoint = NativeUtilities.getElevatedPixelFromLatLon(getMapRenderer(), tb, touchPointLatLon.getLatitude(), touchPointLatLon.getLongitude());
 		PointF secondScreenPoint = NativeUtilities.getElevatedPixelFromLatLon(getMapRenderer(), tb, currLoc.getLatitude(), currLoc.getLongitude());
 		float x = firstScreenPoint.x;
@@ -357,30 +407,50 @@ public class DistanceRulerControlLayer extends OsmandMapLayer {
 		double distance = Double.NaN;
 		if (showDistBetweenFingerAndLocation && myLocation != null) {
 			if (vectorLinesCollection == null) {
+				if (mapMarkersCollection == null) {
+					mapMarkersCollection = new MapMarkersCollection();
+				}
+
+				if (!mapRenderer.hasSymbolsProvider(mapMarkersCollection)) {
+					mapRenderer.addSymbolsProvider(mapMarkersCollection);
+				}
+
+				if (calculateTextPathOpenGl(mapRenderer, tileBox, touchPointLatLon, myLocation)) {
+					distance = MapUtils.getDistance(touchPointLatLon, myLocation);
+				}
+
+				if (!Double.isNaN(distance)) {
+					String formattedDistance = OsmAndFormatter.getFormattedDistance((float) distance, app);
+					drawTextOnCenterOfPathOpenGl(formattedDistance, nightMode);
+				}
+
 				drawLineBetweenLocationsOpenGl(mapRenderer, touchPointLatLon, myLocation);
 				drawFingerTouchIconsOpenGl(mapRenderer, touchPointLatLon, nightMode);
 			}
 
-			if (calculateTextPathOpenGl(mapRenderer, tileBox, touchPointLatLon, myLocation)) {
-				distance = MapUtils.getDistance(touchPointLatLon, myLocation);
-			}
 		} else if (showTwoFingersDistance) {
 			if (vectorLinesCollection == null) {
+				if (mapMarkersCollection == null) {
+					mapMarkersCollection = new MapMarkersCollection();
+				}
+
+				if (!mapRenderer.hasSymbolsProvider(mapMarkersCollection)) {
+					mapRenderer.addSymbolsProvider(mapMarkersCollection);
+				}
+
+				if (calculateTextPathOpenGl(mapRenderer, tileBox, cachedFirstTouchLatLon, cachedSecondTouchLatLon)) {
+					distance = MapUtils.getDistance(cachedFirstTouchLatLon, cachedSecondTouchLatLon);
+				}
+
+				if (!Double.isNaN(distance)) {
+					String formattedDistance = OsmAndFormatter.getFormattedDistance((float) distance, app);
+					drawTextOnCenterOfPathOpenGl(formattedDistance, nightMode);
+				}
+
 				drawLineBetweenLocationsOpenGl(mapRenderer, cachedFirstTouchLatLon, cachedSecondTouchLatLon);
 				drawFingerTouchIconsOpenGl(mapRenderer, cachedFirstTouchLatLon, nightMode);
 				drawFingerTouchIconsOpenGl(mapRenderer, cachedSecondTouchLatLon, nightMode);
 			}
-
-			if (calculateTextPathOpenGl(mapRenderer, tileBox, cachedFirstTouchLatLon, cachedSecondTouchLatLon)) {
-				distance = MapUtils.getDistance(cachedFirstTouchLatLon, cachedSecondTouchLatLon);
-			}
-		}
-
-		if (!Double.isNaN(distance)) {
-			String formattedDistance = OsmAndFormatter.getFormattedDistance((float) distance, app);
-			canvas.rotate(-tileBox.getRotate(), tileBox.getCenterPixelX(), tileBox.getCenterPixelY());
-			drawTextOnCenterOfPath(canvas, linePath, formattedDistance, rotateText);
-			canvas.rotate(tileBox.getRotate(), tileBox.getCenterPixelX(), tileBox.getCenterPixelY());
 		}
 	}
 
@@ -413,18 +483,17 @@ public class DistanceRulerControlLayer extends OsmandMapLayer {
 			vectorLineBuilder.setLineDash(lineDash);
 		}
 
+		// Marker should be created before as vectorLine.attachMarker() call recreates primitive
+		vectorLineBuilder.attachMarker(distanceMarker);
+
 		vectorLinesCollection = new VectorLinesCollection();
-		vectorLineBuilder.buildAndAddToCollection(vectorLinesCollection);
+		rulerLine = vectorLineBuilder.buildAndAddToCollection(vectorLinesCollection);
 		mapRenderer.addSymbolsProvider(vectorLinesCollection);
 	}
 
 	private void drawFingerTouchIconsOpenGl(@NonNull MapRendererView mapRenderer,
 	                                        @NonNull LatLon touchPoint,
 	                                        boolean night) {
-		if (mapMarkersCollection == null) {
-			mapMarkersCollection = new MapMarkersCollection();
-		}
-
 		int x31 = MapUtils.get31TileNumberX(touchPoint.getLongitude());
 		int y31 = MapUtils.get31TileNumberY(touchPoint.getLatitude());
 
@@ -437,13 +506,10 @@ public class DistanceRulerControlLayer extends OsmandMapLayer {
 				.setIsAccuracyCircleSupported(false)
 				.setPinIconHorisontalAlignment(PinIconHorisontalAlignment.CenterHorizontal)
 				.setPinIconVerticalAlignment(PinIconVerticalAlignment.CenterVertical)
-				.addOnMapSurfaceIcon(SwigUtilities.getOnSurfaceIconKey(1), NativeUtilities.createSkImageFromBitmap(icon));
+				.setPinIcon(NativeUtilities.createSkImageFromBitmap(icon))
+				.setUpdateAfterCreated(true);
 
 		builder.buildAndAddToCollection(mapMarkersCollection);
-
-		if (!mapRenderer.hasSymbolsProvider(mapMarkersCollection)) {
-			mapRenderer.addSymbolsProvider(mapMarkersCollection);
-		}
 	}
 
 	private boolean calculateTextPathOpenGl(@NonNull MapRendererView mapRenderer,
@@ -456,6 +522,22 @@ public class DistanceRulerControlLayer extends OsmandMapLayer {
 		if (line != null) {
 			recalculatePath(tileBox, line.first, line.second);
 			rotateText = line.first.x >= line.second.x;
+			return true;
+		}
+
+		PointF startPixel = NativeUtilities.getElevatedPixelFromLatLon(mapRenderer, tileBox, startLatLon);
+		PointF endPixel = NativeUtilities.getElevatedPixelFromLatLon(mapRenderer, tileBox, endLatLon);
+
+		int width = tileBox.getPixWidth();
+		int height = tileBox.getPixHeight();
+		boolean startVisible = startPixel.x >= 0 && startPixel.x <= width &&
+				startPixel.y >= 0 && startPixel.y <= height;
+		boolean endVisible = endPixel.x >= 0 && endPixel.x <= width &&
+				endPixel.y >= 0 && endPixel.y <= height;
+
+		if (startVisible || endVisible) {
+			recalculatePath(tileBox, startPixel, endPixel);
+			rotateText = startPixel.x >= endPixel.x;
 			return true;
 		}
 

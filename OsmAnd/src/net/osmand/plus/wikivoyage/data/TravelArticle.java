@@ -23,7 +23,7 @@ import net.osmand.binary.BinaryMapIndexReader;
 import net.osmand.data.Amenity;
 import net.osmand.osm.PoiCategory;
 import net.osmand.plus.OsmandApplication;
-import net.osmand.plus.card.color.palette.main.data.DefaultColors;
+import net.osmand.plus.card.color.palette.solid.data.DefaultColors;
 import net.osmand.util.Algorithms;
 import net.osmand.util.MapUtils;
 import net.osmand.wiki.WikivoyageOSMTags;
@@ -326,6 +326,8 @@ public class TravelArticle {
 		@Nullable String routeId;
 		@Nullable String routeSource;
 
+		@Nullable String wikidata;
+
 		public static final Creator<TravelArticleIdentifier> CREATOR = new Creator<TravelArticleIdentifier>() {
 			@Override
 			public TravelArticleIdentifier createFromParcel(Parcel in) {
@@ -343,12 +345,17 @@ public class TravelArticle {
 		}
 
 		private TravelArticleIdentifier(@NonNull TravelArticle article) {
-			file = article.file;
-			lat = article.lat;
-			lon = article.lon;
-			title = article.title;
-			routeId = article.routeId;
-			routeSource = article.routeSource;
+			this(article.file, article.lat, article.lon, article.title, article.routeId, article.routeSource);
+		}
+
+		public TravelArticleIdentifier(@Nullable File file, double lat, double lon,
+				@Nullable String title, @Nullable String routeId, @Nullable String routeSource) {
+			this.file = file;
+			this.lat = lat;
+			this.lon = lon;
+			this.title = title;
+			this.routeId = routeId;
+			this.routeSource = routeSource;
 		}
 
 		@Override

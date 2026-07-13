@@ -1,5 +1,8 @@
 package net.osmand.plus.settings.backend.backup.exporttype;
 
+import static net.osmand.plus.backup.BackupUtils.AUTO_BACKUP_TYPE_PREFIX;
+import static net.osmand.plus.backup.BackupUtils.BACKUP_TYPE_PREFIX;
+import static net.osmand.plus.backup.BackupUtils.VERSION_HISTORY_PREFIX;
 import static net.osmand.plus.settings.backend.backup.exporttype.AbstractMapExportType.OFFLINE_MAPS_EXPORT_TYPE_KEY;
 import static net.osmand.util.CollectionUtils.addAllIfNotContains;
 import static net.osmand.util.CollectionUtils.addIfNotContains;
@@ -37,7 +40,9 @@ public enum ExportType {
 	POI_TYPES(new PoiTypesExportType()),
 	AVOID_ROADS(new AvoidRoadsExportType()),
 	FAVORITES(new FavoritesExportType()),
+	ATTACHED_MEDIA(new AttachedMediaExportType()),
 	TRACKS(new TracksExportType()),
+	GPX_DIR(new GpxDirExportType()),
 	OSM_NOTES(new OsmNotesExportType()),
 	OSM_EDITS(new OsmEditsExportType()),
 	MULTIMEDIA_NOTES(new MultimediaNotesExportType()),
@@ -100,6 +105,16 @@ public enum ExportType {
 		return instance.isMap();
 	}
 
+	@NonNull
+	public ExportCategory getRelatedExportCategory() {
+		return instance.getRelatedExportCategory();
+	}
+
+	@NonNull
+	public ExportType getAdditionalExportType() {
+		return instance.getAdditionalExportType();
+	}
+
 	public boolean isRelatedToCategory(@NonNull ExportCategory exportCategory) {
 		return instance.isRelatedToCategory(exportCategory);
 	}
@@ -108,9 +123,31 @@ public enum ExportType {
 		return instance.isAvailableInFreeVersion();
 	}
 
-	public boolean isEnabled() {
+	public boolean isHidden() {
+		return this == GPX_DIR;
+	}
+
+	public boolean isAvailable() {
 		Class<? extends OsmandPlugin> clazz = instance.getRelatedPluginClass();
 		return clazz == null || PluginsHelper.isActive(clazz);
+	}
+
+	@NonNull
+	public String getBackupTypePrefId() {
+		String key = this == GPX_DIR ? TRACKS.name() : name();
+		return BACKUP_TYPE_PREFIX + key;
+	}
+
+	@NonNull
+	public String getVersionHistoryTypePrefId() {
+		String key = this == GPX_DIR ? TRACKS.name() : name();
+		return VERSION_HISTORY_PREFIX + key;
+	}
+
+	@NonNull
+	public String getAutoBackupTypePrefId() {
+		String key = this == GPX_DIR ? TRACKS.name() : name();
+		return AUTO_BACKUP_TYPE_PREFIX + key;
 	}
 
 	@Nullable
@@ -160,14 +197,30 @@ public enum ExportType {
 	}
 
 	@NonNull
-	public static List<ExportType> enabledValuesOf(@NonNull ExportCategory exportCategory) {
-		return filterElementsWithCondition(enabledValues(),
+	public static List<ExportType> availableValuesOf(@NonNull ExportCategory exportCategory) {
+		return filterElementsWithCondition(availableValues(),
 				exportType -> exportType.isRelatedToCategory(exportCategory));
 	}
 
 	@NonNull
-	public static List<ExportType> enabledValues() {
-		return filterElementsWithCondition(valuesList(), ExportType::isEnabled);
+	public static List<ExportType> availableValues() {
+		return filterElementsWithCondition(valuesList(), ExportType::isAvailable);
+	}
+
+	@NonNull
+	public static List<ExportType> visibleValues() {
+		return filterElementsWithCondition(availableValues(), type -> !type.isHidden());
+	}
+
+	@NonNull
+	public static List<ExportType> getEnabledExportTypes(@NonNull OsmandApplication app, boolean autoSync) {
+		List<ExportType> list = new ArrayList<>();
+		for (ExportType type : ExportType.availableValues()) {
+			if (app.getBackupHelper().getBackupTypePref(type, autoSync).get()) {
+				list.add(type);
+			}
+		}
+		return list;
 	}
 
 	@NonNull

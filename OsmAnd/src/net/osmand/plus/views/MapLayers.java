@@ -10,6 +10,7 @@ import android.widget.ListView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
+import androidx.core.view.WindowInsetsCompat;
 
 import net.osmand.CallbackWithObject;
 import net.osmand.IndexConstants;
@@ -33,6 +34,7 @@ import net.osmand.plus.search.ShowQuickSearchMode;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.backend.preferences.CommonPreference;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.plus.utils.ColorUtilities;
 import net.osmand.plus.utils.UiUtilities;
 import net.osmand.plus.views.layers.*;
@@ -46,6 +48,8 @@ import net.osmand.plus.widgets.ctxmenu.ViewCreator;
 import net.osmand.plus.widgets.ctxmenu.callback.ItemClickListener;
 import net.osmand.plus.widgets.ctxmenu.callback.OnDataChangeUiAdapter;
 import net.osmand.plus.widgets.ctxmenu.data.ContextMenuItem;
+import net.osmand.shared.palette.data.PaletteChangeEvent;
+import net.osmand.shared.palette.data.PaletteRepositoryListener;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -70,8 +74,6 @@ public class MapLayers {
 	private MapTileLayer mapTileLayer;
 	private MapVectorLayer mapVectorLayer;
 	private GPXLayer gpxLayer;
-	private TravelSelectionLayer travelSelectionLayer;
-	private NetworkRouteSelectionLayer routeSelectionLayer;
 	private RouteLayer routeLayer;
 	private PreviewRouteLineLayer previewRouteLineLayer;
 	private POIMapLayer poiMapLayer;
@@ -96,6 +98,7 @@ public class MapLayers {
 	private StateChangedListener<Integer> transparencyListener;
 	private StateChangedListener<Integer> overlayTransparencyListener;
 	private StateChangedListener<Boolean> enable3DMapsListener;
+	private PaletteRepositoryListener paletteRepositoryListener;
 
 	public MapLayers(@NonNull OsmandApplication app) {
 		this.app = app;
@@ -135,12 +138,6 @@ public class MapLayers {
 		gpxLayer.setPointsOrder(0.9f);
 		mapView.addLayer(gpxLayer, 0.9f, -5.0f);
 
-		travelSelectionLayer = new TravelSelectionLayer(app);
-		mapView.addLayer(travelSelectionLayer, 0.95f);
-
-		routeSelectionLayer = new NetworkRouteSelectionLayer(app);
-		mapView.addLayer(routeSelectionLayer, 0.99f);
-
 		// route layer, 6-th in the order
 		routeLayer = new RouteLayer(app);
 		mapView.addLayer(routeLayer, 1.0f, -2.0f);
@@ -169,9 +166,6 @@ public class MapLayers {
 		// 7. point navigation layer
 		navigationLayer = new PointNavigationLayer(app);
 		mapView.addLayer(navigationLayer, 7);
-		// 7.2 select location layer
-		selectLocationLayer = new SelectLocationLayer(app);
-		mapView.addLayer(selectLocationLayer, 7.2f);
 		// 7.3 map markers layer
 		mapMarkersLayer = new MapMarkersLayer(app);
 		mapView.addLayer(mapMarkersLayer, 7.3f);
@@ -192,6 +186,9 @@ public class MapLayers {
 		mapInfoLayer = new MapInfoLayer(app, routeLayer);
 		mapView.addLayer(mapInfoLayer, 9);
 
+		// 10. select location layer
+		selectLocationLayer = new SelectLocationLayer(app);
+		mapView.addLayer(selectLocationLayer, 10f);
 		// 11. route info layer
 		mapControlsLayer = new MapControlsLayer(app);
 		mapView.addLayer(mapControlsLayer, 11);
@@ -225,6 +222,12 @@ public class MapLayers {
 		});
 		app.getSettings().ENABLE_3D_MAPS.addListener(enable3DMapsListener);
 
+		paletteRepositoryListener = event -> {
+			gpxLayer.onPaletteChanged(event);
+			mapView.refreshMap();
+		};
+		app.getPaletteRepository().addListener(paletteRepositoryListener);
+
 		createAdditionalLayers(null);
 	}
 
@@ -255,6 +258,13 @@ public class MapLayers {
 		return false;
 	}
 
+	public void setWindowInsets(@NonNull WindowInsetsCompat windowInsets) {
+		OsmandMapTileView mapView = app.getOsmandMap().getMapView();
+		for (OsmandMapLayer layer : mapView.getLayers()) {
+			layer.setWindowInsets(windowInsets);
+		}
+	}
+
 	public void updateLayers(@Nullable MapActivity mapActivity) {
 		OsmandSettings settings = app.getSettings();
 		OsmandMapTileView mapView = app.getOsmandMap().getMapView();
@@ -265,13 +275,16 @@ public class MapLayers {
 	public void updateMapSource(@NonNull OsmandMapTileView mapView, CommonPreference<String> settingsToWarnAboutMap) {
 		OsmandSettings settings = app.getSettings();
 		boolean useOpenGLRender = app.useOpenGlRenderer();
+		boolean rasterMapsEnabled = PluginsHelper.isEnabled(OsmandRasterMapsPlugin.class);
 
 		// update transparency
 		int mapTransparency = 255;
-		if (settings.MAP_UNDERLAY.get() != null) {
-			mapTransparency = settings.MAP_TRANSPARENCY.get();
-		} else if (useOpenGLRender && settings.MAP_OVERLAY.get() != null) {
-			mapTransparency = 255 - settings.MAP_OVERLAY_TRANSPARENCY.get();
+		if (rasterMapsEnabled) {
+			if (settings.MAP_UNDERLAY.get() != null) {
+				mapTransparency = settings.MAP_TRANSPARENCY.get();
+			} else if (useOpenGLRender && settings.MAP_OVERLAY.get() != null) {
+				mapTransparency = 255 - settings.MAP_OVERLAY_TRANSPARENCY.get();
+			}
 		}
 		mapTileLayer.setAlpha(mapTransparency);
 		mapVectorLayer.setAlpha(mapTransparency);
@@ -514,7 +527,7 @@ public class MapLayers {
 			@Nullable CallbackWithObject<String> callback,
 			@NonNull String layerKey
 	) {
-		OsmandApplication app = mapActivity.getMyApplication();
+		OsmandApplication app = mapActivity.getApp();
 		OsmandSettings settings = app.getSettings();
 		switch (layerKey) {
 			case LAYER_OSM_VECTOR:
@@ -587,7 +600,7 @@ public class MapLayers {
 	}
 
 	private boolean isNightMode() {
-		return app.getDaynightHelper().isNightModeForMapControls();
+		return app.getDaynightHelper().isNightMode(ThemeUsageContext.OVER_MAP);
 	}
 
 	public RouteLayer getRouteLayer() {
@@ -616,14 +629,6 @@ public class MapLayers {
 
 	public GPXLayer getGpxLayer() {
 		return gpxLayer;
-	}
-
-	public NetworkRouteSelectionLayer getRouteSelectionLayer() {
-		return routeSelectionLayer;
-	}
-
-	public TravelSelectionLayer getTravelSelectionLayer() {
-		return travelSelectionLayer;
 	}
 
 	public ContextMenuLayer getContextMenuLayer() {

@@ -9,7 +9,9 @@ import androidx.annotation.Nullable;
 import net.osmand.IndexConstants;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
+import net.osmand.plus.backup.BackupUtils;
 import net.osmand.plus.download.SrtmDownloadItem;
+import net.osmand.plus.helpers.ColorsPaletteUtils;
 import net.osmand.plus.helpers.FileNameTranslationHelper;
 import net.osmand.plus.plugins.audionotes.Recording;
 import net.osmand.plus.settings.backend.backup.FileSettingsItemReader;
@@ -53,7 +55,8 @@ public class FileSettingsItem extends StreamSettingsItem {
 		MULTIMEDIA_NOTES("multimedia_notes", IndexConstants.AV_INDEX_DIR, R.drawable.ic_action_photo_dark),
 		NAUTICAL_DEPTH("nautical_depth", IndexConstants.NAUTICAL_INDEX_DIR, R.drawable.ic_action_nautical_depth),
 		FAVORITES_BACKUP("favorites_backup", IndexConstants.BACKUP_INDEX_DIR, R.drawable.ic_action_folder_favorites),
-		COLOR_PALETTE("colors_palette", IndexConstants.COLOR_PALETTE_DIR, R.drawable.ic_action_file_color_palette);
+		COLOR_PALETTE("colors_palette", IndexConstants.COLOR_PALETTE_DIR, R.drawable.ic_action_file_color_palette),
+		ATTACHED_MEDIA("attached_media", IndexConstants.AV_INDEX_DIR, R.drawable.ic_action_photo_dark);
 
 		private final String subtypeName;
 		private final String subtypeFolder;
@@ -102,10 +105,7 @@ public class FileSettingsItem extends StreamSettingsItem {
 
 		@NonNull
 		public static FileSubtype getSubtypeByFileName(@NonNull String fileName) {
-			String name = fileName;
-			if (fileName.startsWith(File.separator)) {
-				name = fileName.substring(1);
-			}
+			String name = BackupUtils.removeLeadingSlash(fileName);
 			for (FileSubtype subtype : values()) {
 				switch (subtype) {
 					case UNKNOWN:
@@ -177,7 +177,7 @@ public class FileSettingsItem extends StreamSettingsItem {
 	private long size;
 
 	public FileSettingsItem(@NonNull OsmandApplication app, @NonNull File file) throws IllegalArgumentException {
-		super(app, file.getPath().replace(app.getAppPath(null).getPath(), ""));
+		super(app, FileUtils.getRelativeAppPath(app, file.getPath()));
 		this.file = file;
 		this.appPath = app.getAppPath(null);
 		String fileName = getFileName();
@@ -230,6 +230,8 @@ public class FileSettingsItem extends StreamSettingsItem {
 			} else {
 				return Recording.getNameForMultimediaFile(app, file.getName(), getLastModifiedTime());
 			}
+		} else if (subtype == FileSubtype.COLOR_PALETTE) {
+			return ColorsPaletteUtils.getPaletteName(app, file);
 		}
 		return super.getPublicName(ctx);
 	}
@@ -297,6 +299,9 @@ public class FileSettingsItem extends StreamSettingsItem {
 			} else if (subtype != null && subtype != FileSubtype.UNKNOWN) {
 				name = Algorithms.getFileWithoutDirs(fileName);
 			}
+		}
+		if (subtype == FileSubtype.ATTACHED_MEDIA) {
+			shouldReplace = true;
 		}
 	}
 
@@ -385,8 +390,15 @@ public class FileSettingsItem extends StreamSettingsItem {
 	}
 
 	@Override
+	public void apply() {
+		if (subtype == FileSubtype.COLOR_PALETTE) {
+			String paletteId = file.getName().replace(".txt", "");
+			app.getPaletteRepository().invalidatePalette(paletteId);
+		}
+	}
+
+	@Override
 	public void delete() {
-		super.delete();
 		Algorithms.removeAllFiles(file);
 	}
 

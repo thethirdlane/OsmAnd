@@ -18,17 +18,19 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
-import net.osmand.plus.base.BaseOsmAndFragment;
+import net.osmand.plus.base.BaseFullScreenFragment;
 import net.osmand.plus.helpers.AndroidUiHelper;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTargetsCollection;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public class ConfigureMenuRootFragment extends BaseOsmAndFragment {
+public class ConfigureMenuRootFragment extends BaseFullScreenFragment {
 
 	public static final String TAG = ConfigureMenuRootFragment.class.getName();
 
@@ -46,13 +48,20 @@ public class ConfigureMenuRootFragment extends BaseOsmAndFragment {
 	@Override
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
 		updateNightMode();
-		View view = themedInflater.inflate(R.layout.fragment_ui_customization, container, false);
+		View view = inflate(R.layout.fragment_ui_customization, container, false);
 		AndroidUtils.addStatusBarPadding21v(requireActivity(), view);
 
 		setupToolbar(view);
 		setupRecyclerView(view);
 
 		return view;
+	}
+
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.add(InsetTarget.createScrollable(R.id.list).build());
+		return collection;
 	}
 
 	private void setupToolbar(@NonNull View view) {

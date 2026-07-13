@@ -24,6 +24,7 @@ import androidx.fragment.app.FragmentManager;
 import net.osmand.PlatformUtil;
 import net.osmand.plus.R;
 import net.osmand.plus.Version;
+import net.osmand.plus.chooseplan.button.OneTimePaymentButton;
 import net.osmand.plus.chooseplan.button.PriceButton;
 import net.osmand.plus.helpers.AndroidUiHelper;
 import net.osmand.plus.inapp.InAppPurchaseUtils;
@@ -33,6 +34,10 @@ import net.osmand.plus.routepreparationmenu.cards.BaseCard.CardListener;
 import net.osmand.plus.settings.purchase.PurchasesFragment;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTarget.Type;
+import net.osmand.plus.utils.InsetTargetsCollection;
+import net.osmand.plus.utils.InsetsUtils;
 import net.osmand.plus.utils.UiUtilities;
 import net.osmand.util.Algorithms;
 
@@ -81,12 +86,23 @@ public class ChoosePlanFragment extends BasePurchaseDialogFragment implements Ca
 		super.onCreateView(inflater, container, savedInstanceState);
 		listContainer = mainView.findViewById(R.id.list_container);
 
+		if (InsetsUtils.isEdgeToEdgeSupported()){
+			mainView.setFitsSystemWindows(false);
+		}
+
 		setupToolbar();
 		createFeaturesList();
 		setupLaterButton();
 		createTroubleshootingCard();
 
 		return mainView;
+	}
+
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.replace(InsetTarget.createCollapsingAppBar(R.id.appbar));
+		return collection;
 	}
 
 	@Override
@@ -114,7 +130,7 @@ public class ChoosePlanFragment extends BasePurchaseDialogFragment implements Ca
 	}
 
 	private View createFeatureItemView(@NonNull OsmAndFeature feature) {
-		View view = themedInflater.inflate(R.layout.purchase_dialog_list_item, listContainer, false);
+		View view = inflate(R.layout.purchase_dialog_list_item, listContainer, false);
 		view.setTag(feature);
 		view.setOnClickListener(v -> selectFeature(feature));
 		bindFeatureItem(view, feature, false);
@@ -241,7 +257,7 @@ public class ChoosePlanFragment extends BasePurchaseDialogFragment implements Ca
 				Version.isInAppPurchaseSupported());
 
 		priceButtons = MapsPlusPlanFragment.collectPriceButtons(app, purchaseHelper, nightMode);
-		price = priceButtons.size() == 0 ? null : Collections.min(priceButtons).getPrice();
+		price = getMapsPlusContinuePrice(priceButtons);
 
 		boolean fullVersion = !Version.isFreeVersion(app);
 		boolean subscribedToMaps = InAppPurchaseUtils.isMapsPlusAvailable(app, false);
@@ -275,6 +291,16 @@ public class ChoosePlanFragment extends BasePurchaseDialogFragment implements Ca
 		if (mapsPlusPurchased) {
 			updatePurchasedButton(mapsPlusView, fullVersion);
 		}
+	}
+
+	@Nullable
+	private CharSequence getMapsPlusContinuePrice(@NonNull List<PriceButton<?>> priceButtons) {
+		for (PriceButton<?> button : priceButtons) {
+			if (button instanceof OneTimePaymentButton) {
+				return button.getPrice();
+			}
+		}
+		return priceButtons.isEmpty() ? null : Collections.min(priceButtons).getPrice();
 	}
 
 	private void updateContinueButton(@NonNull View view, int iconId, String plan,

@@ -17,8 +17,12 @@ public abstract class PointEditor {
 	protected boolean isNew;
 
 	public PointEditor(@NonNull MapActivity mapActivity) {
-		this.app = mapActivity.getMyApplication();
+		this.app = mapActivity.getApp();
 		this.mapActivity = mapActivity;
+	}
+
+	public PointEditor(@NonNull OsmandApplication app) {
+		this.app = app;
 	}
 
 	public void setMapActivity(@Nullable MapActivity mapActivity) {

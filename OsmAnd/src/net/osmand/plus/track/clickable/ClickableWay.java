@@ -1,5 +1,7 @@
 package net.osmand.plus.track.clickable;
 
+import static net.osmand.shared.gpx.GpxUtilities.ACTIVITY_TYPE;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
@@ -9,6 +11,8 @@ import net.osmand.plus.mapcontextmenu.controllers.SelectedGpxMenuController.Sele
 import net.osmand.shared.gpx.GpxFile;
 import net.osmand.shared.gpx.primitives.WptPt;
 import net.osmand.util.Algorithms;
+
+import java.util.Map;
 
 public class ClickableWay {
     private final long osmId;
@@ -59,13 +63,43 @@ public class ClickableWay {
         if (!Algorithms.isEmpty(name)) {
             return name;
         } else {
-            String altName = gpxFile.getExtensionsToRead().get("ref");
+            String altName = findSuitableName(gpxFile.getExtensionsToRead());
             return altName != null ? altName : Long.toString(osmId);
         }
     }
 
+    @Nullable
+    private String findSuitableName(@NonNull Map<String, String> tags) {
+        String ref = tags.get("ref");
+        if (ref != null) {
+            return ref;
+        }
+        String underscoreName = null;
+        for (Map.Entry<String, String> entry : tags.entrySet()) {
+            String key = entry.getKey();
+            String value = entry.getValue();
+            if (key.endsWith(":name")) {
+                return value;
+            }
+            if (underscoreName == null && key.endsWith("_name") && !key.endsWith("stub_name")) {
+                underscoreName = value;
+            }
+        }
+        return underscoreName;
+    }
+
+    @Nullable
+    public String getActivityType() {
+        return gpxFile.getMetadata().getExtensionsToRead().get(ACTIVITY_TYPE);
+    }
+
+    @NonNull
+    public Map<String, String> getGpxTags() {
+        return gpxFile.getExtensionsToRead();
+    }
+
     @Override
     public String toString() {
-        return getWayName();
+        return getWayName() + " (" + getOsmId() + ")";
     }
 }

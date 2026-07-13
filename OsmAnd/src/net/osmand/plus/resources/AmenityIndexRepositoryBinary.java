@@ -23,6 +23,7 @@ import net.osmand.osm.PoiCategory;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.poi.PoiFiltersHelper;
 import net.osmand.plus.resources.ResourceManager.BinaryMapReaderResourceType;
+import net.osmand.search.core.AmenityIndexRepository;
 import net.osmand.util.MapUtils;
 
 import org.apache.commons.logging.Log;
@@ -35,6 +36,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
 
 public class AmenityIndexRepositoryBinary implements AmenityIndexRepository {
 
@@ -142,12 +144,13 @@ public class AmenityIndexRepositoryBinary implements AmenityIndexRepository {
 			if (reader != null) {
 				poiSubTypes.addAll(reader.searchPoiSubTypesByPrefix(query));
 			}
-		} catch (IOException e) {
+		} catch (Exception e) {
 			log.error("Error searching poiSubTypes", e);
 		}
 		return poiSubTypes;
 	}
 
+	@Override
 	public synchronized List<Amenity> searchAmenitiesByName(int x, int y, int l, int t, int r, int b, String query, ResultMatcher<Amenity> resulMatcher) {
 		long now = System.currentTimeMillis();
 		List<Amenity> amenities = Collections.emptyList();
@@ -166,7 +169,7 @@ public class AmenityIndexRepositoryBinary implements AmenityIndexRepository {
 							query, System.currentTimeMillis() - now, amenities.size(), nm, index.getFile().getName())); //$NON-NLS-1$
 				}
 			}
-		} catch (IOException e) {
+		} catch (Exception e) {
 			log.error("Error searching amenities", e); //$NON-NLS-1$
 		}
 		return amenities;
@@ -174,17 +177,20 @@ public class AmenityIndexRepositoryBinary implements AmenityIndexRepository {
 
 	@Override
 	public synchronized List<Amenity> searchAmenities(int stop, int sleft, int sbottom, int sright, int zoom,
-	                                                  SearchPoiTypeFilter filter, SearchPoiAdditionalFilter additionalFilter, ResultMatcher<Amenity> matcher) {
+													  SearchPoiTypeFilter filter, SearchPoiAdditionalFilter additionalFilter,
+													  ResultMatcher<Amenity> matcher, PriorityQueue<Amenity> priorityQueue,
+													  int priorityQueueLimit) {
 		long now = System.currentTimeMillis();
 		SearchRequest<Amenity> req = BinaryMapIndexReader.buildSearchPoiRequest(sleft, sright, stop, sbottom, zoom,
 				filter, additionalFilter, matcher);
+		req.setPriorityQueue(priorityQueue, priorityQueueLimit);
 		List<Amenity> result = null;
 		try {
 			BinaryMapIndexReader reader = getOpenReader();
 			if (reader != null) {
 				result = reader.searchPoi(req);
 			}
-		} catch (IOException e) {
+		} catch (Exception e) {
 			log.error("Error searching amenities", e); //$NON-NLS-1$
 		}
 		if (log.isDebugEnabled() && result != null) {
@@ -205,7 +211,7 @@ public class AmenityIndexRepositoryBinary implements AmenityIndexRepository {
 			if (reader != null) {
 				result = reader.searchPoi(req);
 			}
-		} catch (IOException e) {
+		} catch (Exception e) {
 			log.error("Error searching amenities", e); //$NON-NLS-1$
 			return result;
 		}
@@ -234,7 +240,7 @@ public class AmenityIndexRepositoryBinary implements AmenityIndexRepository {
 		if (reader != null) {
 			try {
 				reader.searchMapIndex(searchRequest);
-			} catch (IOException e) {
+			} catch (Exception e) {
 				log.error(e.getMessage(), e);
 			}
 		} else {
@@ -248,7 +254,7 @@ public class AmenityIndexRepositoryBinary implements AmenityIndexRepository {
 		if (reader != null) {
 			try {
 				reader.searchPoi(searchRequest);
-			} catch (IOException e) {
+			} catch (Exception e) {
 				log.error(e.getMessage(), e);
             }
         } else {
@@ -263,7 +269,7 @@ public class AmenityIndexRepositoryBinary implements AmenityIndexRepository {
 		if (reader != null) {
 			try {
 				return reader.searchPoiByName(searchRequest);
-			} catch (IOException e) {
+			} catch (Exception e) {
 				log.error(e.getMessage(), e);
 			}
 		} else {

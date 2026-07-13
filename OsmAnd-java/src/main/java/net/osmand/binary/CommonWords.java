@@ -1,1282 +1,5767 @@
 package net.osmand.binary;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import net.osmand.PlatformUtil;
+import net.osmand.map.OsmandRegions;
+import net.osmand.map.WorldRegion;
+import net.osmand.util.SearchAlgorithms;
+import net.osmand.util.UnicodeDiacritics;
+
+import java.io.IOException;
+import java.util.*;
+import java.util.Map.Entry;
 
 public class CommonWords {
-	private static Map<String, Integer> commonWordsDictionary = new LinkedHashMap<>();
-	private static Map<String, Integer> frequentlyUsedWordsDictionary = new LinkedHashMap<>();
+	protected Map<String, Integer> commonWordsDictionary = new LinkedHashMap<>(); 
+	protected Map<String, Integer> frequentlyUsedWordsDictionary = new LinkedHashMap<>();
+	private Set<String> regionNames = new HashSet<>();
 	
 	// for ex: 100 bridge, ленина 30, but not potenitally name of street (31st road)
 	private static String NUMBER_WITH_LESS_THAN_2_LETTERS = "NUMBER_WITH_LESS_THAN_2_LETTERS";
+	private static CommonWords DEFAULT_INSTANCE;
+	private static CommonWords DEFAULT_POI_INSTANCE;
+	private static CommonWords DEFAULT_ADDR_INSTANCE;
 	
-	private static void addCommon(String string) {
+	private void addCommon(String string) {
+		String string2 = SearchAlgorithms.alignChars(string);
 		commonWordsDictionary.put(string, commonWordsDictionary.size());
+		if (!string.equals(string2)) {
+			commonWordsDictionary.put(string2, commonWordsDictionary.size());
+		}
 	}
-	private static void addFrequentlyUsed(String string) {
+	private void addFrequent(String string) {
+		String aligned = SearchAlgorithms.alignChars(string);
+		if (isCommon(string) || frequentlyUsedWordsDictionary.containsKey(string)) {
+			return;
+		}
 		frequentlyUsedWordsDictionary.put(string, frequentlyUsedWordsDictionary.size());
+		if (!string.equals(aligned)) {
+			frequentlyUsedWordsDictionary.put(aligned, frequentlyUsedWordsDictionary.size());
+		}
 	}
-	public static int getCommon(String name) {
-		Integer i = commonWordsDictionary.get(name);
-		return i == null ? -1 : i.intValue();
+	
+	private void addFrequentAbbrevation(String string) {
+		addFrequent(string);
+	}
+	
+	private boolean isNumber2Letters(String name) {
+		return SearchAlgorithms.isNumber2Letters(name);
 	}
 
-	public static int getFrequentlyUsed(String name) {
+	public boolean isCommon(String name) {
+		return commonWordsDictionary.containsKey(name) || isNumber2Letters(name); 
+	}
+	
+	public int getCommon(String name) {
+		if (isNumber2Letters(name)) {
+			name = NUMBER_WITH_LESS_THAN_2_LETTERS;
+		}
+		Integer i = commonWordsDictionary.get(name);
+		if (i != null) {
+			return i.intValue();
+		}
+		if (regionNames.contains(name)) {
+			return commonWordsDictionary.size();
+		}
+		return -1;
+	}
+	
+	public int getFrequentlyUsed(String name) {
 		Integer i = frequentlyUsedWordsDictionary.get(name);
 		return i == null ? -1 : i.intValue();
 	}
 
-	public static int getCommonSearch(String name) {
-		if (Character.isDigit(name.charAt(0)) && letters(name) < 2) {
+	public int getCommonSearch(String name) {
+		if (SearchAlgorithms.isNumber2Letters(name)) {
 			name = NUMBER_WITH_LESS_THAN_2_LETTERS;
 		}
 		Integer i = commonWordsDictionary.get(name);
 		// higher means better for search
-		if (i == null) {
-			int fq = getFrequentlyUsed(name);
-			if (fq != -1) {
-				return commonWordsDictionary.size() + fq;
-			}
-			return -1;
+		if (i != null) {
+			return i.intValue();
 		}
-		return i.intValue();
+		if (regionNames.contains(name)) {
+			return commonWordsDictionary.size();
+		}
+		int fq = getFrequentlyUsed(name);
+		if (fq != -1) {
+			return commonWordsDictionary.size() + fq + 1;
+		}
+		return -1;
 	}
 
-	public static int getCommonGeocoding(String name) {
+	public int getCommonGeocoding(String name) {
 		Integer i = commonWordsDictionary.get(name);
-		return i == null ? -1 : i.intValue();
+		if (i != null) {
+			return i.intValue();
+		}
+		if (name.length() > 2 && regionNames.contains(name)) {
+			return commonWordsDictionary.size(); // length > 2 is for NC 42 ("NC" and "42" exist in regionNames)
+		}
+		return -1;
 	}
 	
-	private static int letters(String s) {
-		int count = 0;
-		for (int i = 0; i < s.length(); i++) {
-			if (!Character.isDigit(s.charAt(i))) {
-				count++;
+	
+	private void addAbbrevationsToCommon() {
+		Map<String, String> abbreviations = Abbreviations.getAbbreviations();
+		Iterator<Entry<String, String>> it = abbreviations.entrySet().iterator();
+		while (it.hasNext()) {
+			Entry<String, String> e = it.next();
+			Integer indx = commonWordsDictionary.get(e.getValue().toLowerCase());
+			if (indx != null) {
+				commonWordsDictionary.put(e.getKey().toLowerCase(), indx);
 			}
 		}
-		return count;
 	}
 	
-	static {
-		addFrequentlyUsed("santa");
-		addFrequentlyUsed("west");
-		addFrequentlyUsed("east");
-		addFrequentlyUsed("north");
-		addFrequentlyUsed("northeast");
-		addFrequentlyUsed("northwest");
-		addFrequentlyUsed("southwest");
-		addFrequentlyUsed("san");
-		addFrequentlyUsed("southeast");
-		addFrequentlyUsed("old");
-		addFrequentlyUsed("main");
-		addFrequentlyUsed("ridge");
-		addFrequentlyUsed("josé");
-		addFrequentlyUsed("view");
-		addFrequentlyUsed("range");
-		addFrequentlyUsed("pine");
-		addFrequentlyUsed("church");
-		addFrequentlyUsed("mill");
-		addFrequentlyUsed("green");
-		addFrequentlyUsed("point");
-		addFrequentlyUsed("cove");
-		addFrequentlyUsed("gardens");
-		addFrequentlyUsed("francisco");
-		addFrequentlyUsed("mountain");
-		addFrequentlyUsed("jean");
-		addFrequentlyUsed("joão");
-		addFrequentlyUsed("meadow");
-		addFrequentlyUsed("farm");
-		addFrequentlyUsed("juan");
-		addFrequentlyUsed("bay");
-		addFrequentlyUsed("run");
-		addFrequentlyUsed("national");
-		addFrequentlyUsed("cedar");
-		addFrequentlyUsed("hollow");
-		addFrequentlyUsed("new");
-		addFrequentlyUsed("high");
-		addFrequentlyUsed("maple");
-		addFrequentlyUsed("antonio");
-		addFrequentlyUsed("walk");
-		addFrequentlyUsed("maria");
-		addFrequentlyUsed("spring");
-		addFrequentlyUsed("pedro");
-		addFrequentlyUsed("vista");
-		addFrequentlyUsed("grand");
-		addFrequentlyUsed("giuseppe");
-		addFrequentlyUsed("antônio");
-		addFrequentlyUsed("saint");
-		addFrequentlyUsed("development");
-		addFrequentlyUsed("washington");
-		addFrequentlyUsed("john");
-		addFrequentlyUsed("white");
-		addFrequentlyUsed("silva");
-		addFrequentlyUsed("willow");
-		addFrequentlyUsed("school");
-		addFrequentlyUsed("giovanni");
-		addFrequentlyUsed("canyon");
-		addFrequentlyUsed("general");
-		addFrequentlyUsed("charles");
-		addFrequentlyUsed("king");
-		addFrequentlyUsed("moulin");
-		addFrequentlyUsed("monte");
-		addFrequentlyUsed("wood");
-		addFrequentlyUsed("glen");
-		addFrequentlyUsed("rock");
-		addFrequentlyUsed("elm");
-		addFrequentlyUsed("center");
-		addFrequentlyUsed("mount");
-		addFrequentlyUsed("tree");
-		addFrequentlyUsed("red");
-		addFrequentlyUsed("central");
-		addFrequentlyUsed("norte");
-		addFrequentlyUsed("delle");
-		addFrequentlyUsed("église");
-		addFrequentlyUsed("carlos");
-		addFrequentlyUsed("springs");
-		addFrequentlyUsed("doutor");
-		addFrequentlyUsed("grande");
-		addFrequentlyUsed("martin");
-		addFrequentlyUsed("station");
-		addFrequentlyUsed("statale");
-		addFrequentlyUsed("alte");
-		addFrequentlyUsed("paul");
-		addFrequentlyUsed("hills");
-		addFrequentlyUsed("beach");
-		addFrequentlyUsed("brook");
-		addFrequentlyUsed("walnut");
-		addFrequentlyUsed("gate");
-		addFrequentlyUsed("oaks");
-		addFrequentlyUsed("cross");
-		addFrequentlyUsed("pierre");
-		addFrequentlyUsed("rural");
-		addFrequentlyUsed("service");
-		addFrequentlyUsed("manuel");
-		addFrequentlyUsed("country");
-		addFrequentlyUsed("blue");
-		addFrequentlyUsed("miguel");
-		addFrequentlyUsed("branch");
-		addFrequentlyUsed("cherry");
-		addFrequentlyUsed("don");
-		addFrequentlyUsed("lincoln");
-		addFrequentlyUsed("orchard");
-		addFrequentlyUsed("little");
-		addFrequentlyUsed("memorial");
-		addFrequentlyUsed("clos");
-		addFrequentlyUsed("club");
-		addFrequentlyUsed("bois");
-		addFrequentlyUsed("james");
-		addFrequentlyUsed("ranch");
-		addFrequentlyUsed("louis");
-		addFrequentlyUsed("sunset");
-		addFrequentlyUsed("pond");
-		addFrequentlyUsed("george");
-		addFrequentlyUsed("général");
-		addFrequentlyUsed("costa");
-		addFrequentlyUsed("santos");
-		addFrequentlyUsed("victoria");
-		addFrequentlyUsed("albert");
-		addFrequentlyUsed("manor");
-		addFrequentlyUsed("hall");
-		addFrequentlyUsed("cemetery");
-		addFrequentlyUsed("rose");
-		addFrequentlyUsed("luis");
-		addFrequentlyUsed("fox");
-		addFrequentlyUsed("doctor");
-		addFrequentlyUsed("long");
-		addFrequentlyUsed("alameda");
-		addFrequentlyUsed("smith");
-		addFrequentlyUsed("padre");
-		addFrequentlyUsed("woods");
-		addFrequentlyUsed("villa");
-		addFrequentlyUsed("lotissement");
-		addFrequentlyUsed("indian");
-		addFrequentlyUsed("pleasant");
-		addFrequentlyUsed("jackson");
-		addFrequentlyUsed("water");
-		addFrequentlyUsed("wilson");
-		addFrequentlyUsed("hickory");
-		addFrequentlyUsed("deer");
-		addFrequentlyUsed("birch");
-		addFrequentlyUsed("chestnut");
-		addFrequentlyUsed("eagle");
-		addFrequentlyUsed("laurel");
-		addFrequentlyUsed("heights");
-		addFrequentlyUsed("jana");
-		addFrequentlyUsed("shore");
-		addFrequentlyUsed("highland");
-		addFrequentlyUsed("roma");
-		addFrequentlyUsed("oliveira");
-		addFrequentlyUsed("garden");
-		addFrequentlyUsed("château");
-		addFrequentlyUsed("provincial");
-		addFrequentlyUsed("thomas");
-		addFrequentlyUsed("camp");
-		addFrequentlyUsed("largo");
-		addFrequentlyUsed("access");
-		addFrequentlyUsed("georges");
-		addFrequentlyUsed("college");
-		addFrequentlyUsed("chapel");
-		addFrequentlyUsed("house");
-		addFrequentlyUsed("rosa");
-		addFrequentlyUsed("johnson");
-		addFrequentlyUsed("upper");
-		addFrequentlyUsed("union");
-		addFrequentlyUsed("crest");
-		addFrequentlyUsed("gare");
-		addFrequentlyUsed("market");
-		addFrequentlyUsed("ленина");
-		addFrequentlyUsed("jefferson");
-		addFrequentlyUsed("stone");
-		addFrequentlyUsed("franklin");
-		addFrequentlyUsed("résidence");
-		addFrequentlyUsed("francesco");
-		addFrequentlyUsed("railroad");
-		addFrequentlyUsed("black");
-		addFrequentlyUsed("fontaine");
-		addFrequentlyUsed("silver");
-		addFrequentlyUsed("lower");
-		addFrequentlyUsed("mile");
-		addFrequentlyUsed("henri");
-		addFrequentlyUsed("big");
-		addFrequentlyUsed("brown");
-		addFrequentlyUsed("kennedy");
-		addFrequentlyUsed("pereira");
-		addFrequentlyUsed("airport");
-		addFrequentlyUsed("spruce");
-		addFrequentlyUsed("woodland");
-		addFrequentlyUsed("robert");
-		addFrequentlyUsed("victor");
-		addFrequentlyUsed("manoel");
-		addFrequentlyUsed("meadows");
-		addFrequentlyUsed("vicente");
-		addFrequentlyUsed("ash");
-		addFrequentlyUsed("rise");
-		addFrequentlyUsed("pike");
-		addFrequentlyUsed("luigi");
-		addFrequentlyUsed("sant");
-		addFrequentlyUsed("santo");
-		addFrequentlyUsed("western");
-		addFrequentlyUsed("poplar");
-		addFrequentlyUsed("советская");
-		addFrequentlyUsed("croix");
-		addFrequentlyUsed("real");
-		addFrequentlyUsed("vittorio");
-		addFrequentlyUsed("mews");
-		addFrequentlyUsed("taylor");
-		addFrequentlyUsed("davis");
-		addFrequentlyUsed("jose");
-		addFrequentlyUsed("frontage");
-		addFrequentlyUsed("gaulle");
-		addFrequentlyUsed("bank");
-		addFrequentlyUsed("ferry");
-		addFrequentlyUsed("nord");
-		addFrequentlyUsed("holly");
-		addFrequentlyUsed("castle");
-		addFrequentlyUsed("sierra");
-		addFrequentlyUsed("acceso");
-		addFrequentlyUsed("royal");
-		addFrequentlyUsed("praça");
-		addFrequentlyUsed("williams");
-		addFrequentlyUsed("souza");
-		addFrequentlyUsed("madison");
-		addFrequentlyUsed("joseph");
-		addFrequentlyUsed("riverside");
-		addFrequentlyUsed("adams");
-		addFrequentlyUsed("nacional");
-		addFrequentlyUsed("oude");
-		addFrequentlyUsed("tee");
-		addFrequentlyUsed("port");
-		addFrequentlyUsed("private");
-		addFrequentlyUsed("mayo");
-		addFrequentlyUsed("carlo");
-		addFrequentlyUsed("york");
-		addFrequentlyUsed("ferreira");
-		addFrequentlyUsed("giacomo");
-		addFrequentlyUsed("parade");
-		addFrequentlyUsed("field");
-		addFrequentlyUsed("professor");
-		addFrequentlyUsed("jones");
-		addFrequentlyUsed("maría");
-		addFrequentlyUsed("lakeview");
-		addFrequentlyUsed("great");
-		addFrequentlyUsed("alves");
-		addFrequentlyUsed("miller");
-		addFrequentlyUsed("william");
-		addFrequentlyUsed("henry");
-		addFrequentlyUsed("coronel");
-		addFrequentlyUsed("industrial");
-		addFrequentlyUsed("maréchal");
-		addFrequentlyUsed("acres");
-		addFrequentlyUsed("joaquim");
-		addFrequentlyUsed("landing");
-		addFrequentlyUsed("summit");
-		addFrequentlyUsed("burgemeester");
-		addFrequentlyUsed("magnolia");
-		addFrequentlyUsed("trace");
-		addFrequentlyUsed("presidente");
-		addFrequentlyUsed("falls");
-		addFrequentlyUsed("jules");
-		addFrequentlyUsed("docteur");
-		addFrequentlyUsed("pacific");
-		addFrequentlyUsed("auzoa");
-		addFrequentlyUsed("prairie");
-		addFrequentlyUsed("luiz");
-		addFrequentlyUsed("diagonal");
-		addFrequentlyUsed("cypress");
-		addFrequentlyUsed("mar");
-		addFrequentlyUsed("harbor");
-		addFrequentlyUsed("shady");
-		addFrequentlyUsed("clark");
-		addFrequentlyUsed("fort");
-		addFrequentlyUsed("bluff");
-		addFrequentlyUsed("grant");
-		addFrequentlyUsed("fork");
-		addFrequentlyUsed("fire");
-		addFrequentlyUsed("petit");
-		addFrequentlyUsed("sycamore");
-		addFrequentlyUsed("nelson");
-		addFrequentlyUsed("queen");
-		addFrequentlyUsed("city");
-		addFrequentlyUsed("vico");
-		addFrequentlyUsed("józefa");
-		addFrequentlyUsed("pietro");
-		addFrequentlyUsed("bear");
-		addFrequentlyUsed("lima");
-		addFrequentlyUsed("центральная");
-		addFrequentlyUsed("pablo");
-		addFrequentlyUsed("golden");
-		addFrequentlyUsed("mary");
-		addFrequentlyUsed("hillside");
-		addFrequentlyUsed("haven");
-		addFrequentlyUsed("alberto");
-		addFrequentlyUsed("lorong");
-		addFrequentlyUsed("elizabeth");
-		addFrequentlyUsed("kings");
-		addFrequentlyUsed("dogwood");
-		addFrequentlyUsed("scott");
-		addFrequentlyUsed("beech");
-		addFrequentlyUsed("lange");
-		addFrequentlyUsed("andré");
-		addFrequentlyUsed("verde");
-		addFrequentlyUsed("front");
-		addFrequentlyUsed("obere");
-		addFrequentlyUsed("hidden");
-		addFrequentlyUsed("centre");
-		addFrequentlyUsed("hamilton");
-		addFrequentlyUsed("arthur");
-		addFrequentlyUsed("parc");
-		addFrequentlyUsed("quail");
-		addFrequentlyUsed("julio");
-		addFrequentlyUsed("jan");
-		addFrequentlyUsed("bell");
-		addFrequentlyUsed("sandy");
-		addFrequentlyUsed("back");
-		addFrequentlyUsed("sud");
-		addFrequentlyUsed("paulo");
-		addFrequentlyUsed("lago");
-		addFrequentlyUsed("locust");
-		addFrequentlyUsed("martín");
-		addFrequentlyUsed("gabriel");
-		addFrequentlyUsed("chase");
-		addFrequentlyUsed("palm");
-		addFrequentlyUsed("liberty");
-		addFrequentlyUsed("mairie");
-		addFrequentlyUsed("jorge");
-		addFrequentlyUsed("castro");
-		addFrequentlyUsed("fernando");
-		addFrequentlyUsed("alter");
-		addFrequentlyUsed("salvador");
-		addFrequentlyUsed("hillcrest");
-		addFrequentlyUsed("cité");
-		addFrequentlyUsed("rodrigues");
-		addFrequentlyUsed("prospect");
-		addFrequentlyUsed("golf");
-		addFrequentlyUsed("dom");
-		addFrequentlyUsed("jacques");
-		addFrequentlyUsed("berliner");
-		addFrequentlyUsed("santiago");
-		addFrequentlyUsed("transversal");
-		addFrequentlyUsed("садовая");
-		addFrequentlyUsed("guglielmo");
-		addFrequentlyUsed("pointe");
-		addFrequentlyUsed("circuit");
-		addFrequentlyUsed("rang");
-		addFrequentlyUsed("françois");
-		addFrequentlyUsed("lewis");
-		addFrequentlyUsed("railway");
-		addFrequentlyUsed("allen");
-		addFrequentlyUsed("grange");
-		addFrequentlyUsed("ronda");
-		addFrequentlyUsed("link");
-		addFrequentlyUsed("harrison");
-		addFrequentlyUsed("tower");
-		addFrequentlyUsed("garibaldi");
-		addFrequentlyUsed("novembre");
-		addFrequentlyUsed("heritage");
-		addFrequentlyUsed("anderson");
-		addFrequentlyUsed("evergreen");
-		addFrequentlyUsed("ribeiro");
-		addFrequentlyUsed("ford");
-		addFrequentlyUsed("linden");
-		addFrequentlyUsed("short");
-		addFrequentlyUsed("walker");
-		addFrequentlyUsed("marie");
-		addFrequentlyUsed("twin");
-		addFrequentlyUsed("untere");
-		addFrequentlyUsed("university");
-		addFrequentlyUsed("douglas");
-		addFrequentlyUsed("marconi");
-		addFrequentlyUsed("martins");
-		addFrequentlyUsed("windsor");
-		addFrequentlyUsed("мира");
-		addFrequentlyUsed("david");
-		addFrequentlyUsed("middle");
-		addFrequentlyUsed("fairview");
-		addFrequentlyUsed("stanisława");
-		addFrequentlyUsed("timber");
-		addFrequentlyUsed("thompson");
-		addFrequentlyUsed("generała");
-		addFrequentlyUsed("virginia");
-		addFrequentlyUsed("broad");
-		addFrequentlyUsed("pasteur");
-		addFrequentlyUsed("promenade");
-		addFrequentlyUsed("hugo");
-		addFrequentlyUsed("montée");
-		addFrequentlyUsed("gomes");
-		addFrequentlyUsed("warren");
-		addFrequentlyUsed("luther");
-		addFrequentlyUsed("columbia");
-		addFrequentlyUsed("lakes");
-		addFrequentlyUsed("campo");
-		addFrequentlyUsed("puerto");
-		addFrequentlyUsed("république");
-		addFrequentlyUsed("enrico");
-		addFrequentlyUsed("champ");
-		addFrequentlyUsed("lawrence");
-		addFrequentlyUsed("monroe");
-		addFrequentlyUsed("alessandro");
-		addFrequentlyUsed("władysława");
-		addFrequentlyUsed("pod");
-		addFrequentlyUsed("campbell");
-		addFrequentlyUsed("pinto");
-		addFrequentlyUsed("школьная");
-		addFrequentlyUsed("estates");
-		addFrequentlyUsed("howard");
-		addFrequentlyUsed("orange");
-		addFrequentlyUsed("croft");
-		addFrequentlyUsed("star");
-		addFrequentlyUsed("est");
-		addFrequentlyUsed("triq");
-		addFrequentlyUsed("beaver");
-		addFrequentlyUsed("principale");
-		addFrequentlyUsed("paz");
-		addFrequentlyUsed("sol");
-		addFrequentlyUsed("vieux");
-		addFrequentlyUsed("southern");
-		addFrequentlyUsed("greenway");
-		addFrequentlyUsed("rocky");
-		addFrequentlyUsed("roosevelt");
-		addFrequentlyUsed("mai");
-		addFrequentlyUsed("aspen");
-		addFrequentlyUsed("russell");
-		addFrequentlyUsed("pines");
-		addFrequentlyUsed("concession");
-		addFrequentlyUsed("wellington");
-		addFrequentlyUsed("barrio");
-		addFrequentlyUsed("neue");
-		addFrequentlyUsed("post");
-		addFrequentlyUsed("vale");
-		addFrequentlyUsed("молодёжная");
-		addFrequentlyUsed("октябрьская");
-		addFrequentlyUsed("london");
-		addFrequentlyUsed("four");
-		addFrequentlyUsed("machado");
-		addFrequentlyUsed("parque");
-		addFrequentlyUsed("augusto");
-		addFrequentlyUsed("carvalho");
-		addFrequentlyUsed("markt");
-		addFrequentlyUsed("division");
-		addFrequentlyUsed("marina");
-		addFrequentlyUsed("almeida");
-		addFrequentlyUsed("horse");
-		addFrequentlyUsed("berg");
-		addFrequentlyUsed("mitchell");
-		addFrequentlyUsed("pearl");
-		addFrequentlyUsed("governador");
-		addFrequentlyUsed("side");
-		addFrequentlyUsed("robin");
-		addFrequentlyUsed("iii");
-		addFrequentlyUsed("vignes");
-		addFrequentlyUsed("dale");
-		addFrequentlyUsed("oriente");
-		addFrequentlyUsed("coast");
-		addFrequentlyUsed("baker");
-		addFrequentlyUsed("ann");
-		addFrequentlyUsed("europa");
-		addFrequentlyUsed("maurice");
-		addFrequentlyUsed("plac");
-		addFrequentlyUsed("prince");
-		addFrequentlyUsed("jardins");
-		addFrequentlyUsed("ocean");
-		addFrequentlyUsed("harris");
-		addFrequentlyUsed("oxford");
-		addFrequentlyUsed("kirchweg");
-		addFrequentlyUsed("sunrise");
-		addFrequentlyUsed("moore");
-		addFrequentlyUsed("apple");
-		addFrequentlyUsed("birkenweg");
-		addFrequentlyUsed("flores");
-		addFrequentlyUsed("marcel");
-		addFrequentlyUsed("morgan");
-		addFrequentlyUsed("ana");
-		addFrequentlyUsed("cesare");
-		addFrequentlyUsed("comunale");
-		addFrequentlyUsed("mário");
-		addFrequentlyUsed("olive");
-		addFrequentlyUsed("rené");
-		addFrequentlyUsed("vine");
-		addFrequentlyUsed("rafael");
-		addFrequentlyUsed("champs");
-		addFrequentlyUsed("nova");
-		addFrequentlyUsed("brasil");
-		addFrequentlyUsed("privada");
-		addFrequentlyUsed("barbosa");
-		addFrequentlyUsed("mare");
-		addFrequentlyUsed("dias");
-		addFrequentlyUsed("leclerc");
-		addFrequentlyUsed("daniel");
-		addFrequentlyUsed("dante");
-		addFrequentlyUsed("parker");
-		addFrequentlyUsed("francis");
-		addFrequentlyUsed("prés");
-		addFrequentlyUsed("knoll");
-		addFrequentlyUsed("torre");
-		addFrequentlyUsed("contrada");
-		addFrequentlyUsed("località");
-		addFrequentlyUsed("mesa");
-		addFrequentlyUsed("stade");
-		addFrequentlyUsed("hampton");
-		addFrequentlyUsed("alfredo");
-		addFrequentlyUsed("peak");
-		addFrequentlyUsed("ross");
-		addFrequentlyUsed("лесная");
-		addFrequentlyUsed("ivy");
-		addFrequentlyUsed("filho");
-		addFrequentlyUsed("mills");
-		addFrequentlyUsed("major");
-		addFrequentlyUsed("fratelli");
-		addFrequentlyUsed("garcía");
-		addFrequentlyUsed("wild");
-		addFrequentlyUsed("gordon");
-		addFrequentlyUsed("diego");
-		addFrequentlyUsed("cerro");
-		addFrequentlyUsed("cambridge");
-		addFrequentlyUsed("alta");
-		addFrequentlyUsed("home");
-		addFrequentlyUsed("ramón");
-		addFrequentlyUsed("raymond");
-		addFrequentlyUsed("juniper");
-		addFrequentlyUsed("redwood");
-		addFrequentlyUsed("crystal");
-		addFrequentlyUsed("mulberry");
-		addFrequentlyUsed("новая");
-		addFrequentlyUsed("poniente");
-		addFrequentlyUsed("alten");
-		addFrequentlyUsed("гагарина");
-		addFrequentlyUsed("bellevue");
-		addFrequentlyUsed("veterans");
-		addFrequentlyUsed("hope");
-		addFrequentlyUsed("jaurès");
-		addFrequentlyUsed("summer");
-		addFrequentlyUsed("bahnhof");
-		addFrequentlyUsed("r-c");
-		addFrequentlyUsed("oakwood");
-		addFrequentlyUsed("richmond");
-		addFrequentlyUsed("paris");
-		addFrequentlyUsed("lorenzo");
-		addFrequentlyUsed("hof");
-		addFrequentlyUsed("mariano");
-		addFrequentlyUsed("navajo");
-		addFrequentlyUsed("комсомольская");
-		addFrequentlyUsed("kleine");
-		addFrequentlyUsed("lodge");
-		addFrequentlyUsed("torres");
-		addFrequentlyUsed("leśna");
-		addFrequentlyUsed("cardinal");
-		addFrequentlyUsed("marsh");
-		addFrequentlyUsed("fern");
-		addFrequentlyUsed("campos");
-		addFrequentlyUsed("nationale");
-		addFrequentlyUsed("berry");
-		addFrequentlyUsed("commerce");
-		addFrequentlyUsed("ignacio");
-		addFrequentlyUsed("acesso");
-		addFrequentlyUsed("madrid");
-		addFrequentlyUsed("mission");
-		addFrequentlyUsed("gang");
-		addFrequentlyUsed("oeste");
-		addFrequentlyUsed("cherokee");
-		addFrequentlyUsed("paolo");
-		addFrequentlyUsed("stewart");
-		addFrequentlyUsed("cliff");
-		addFrequentlyUsed("eduardo");
-		addFrequentlyUsed("marshall");
-		addFrequentlyUsed("dam");
-		addFrequentlyUsed("pioneer");
-		addFrequentlyUsed("alfred");
-		addFrequentlyUsed("greenwood");
-		addFrequentlyUsed("robinson");
-		addFrequentlyUsed("acacias");
-		addFrequentlyUsed("lópez");
-		addFrequentlyUsed("tadeusza");
-		addFrequentlyUsed("leonardo");
-		addFrequentlyUsed("hilltop");
-		addFrequentlyUsed("diamond");
-		addFrequentlyUsed("quarry");
-		addFrequentlyUsed("het");
-		addFrequentlyUsed("temple");
-		addFrequentlyUsed("scenic");
-		addFrequentlyUsed("alexander");
-		addFrequentlyUsed("победы");
-		addFrequentlyUsed("osiedle");
-		addFrequentlyUsed("écoles");
-		addFrequentlyUsed("cleveland");
-		addFrequentlyUsed("lynn");
-		addFrequentlyUsed("top");
-		addFrequentlyUsed("mont");
-		addFrequentlyUsed("polna");
-		addFrequentlyUsed("leaf");
-		addFrequentlyUsed("vieira");
-		addFrequentlyUsed("cottonwood");
-		addFrequentlyUsed("perry");
-		addFrequentlyUsed("morris");
-		addFrequentlyUsed("oberer");
-		addFrequentlyUsed("domingo");
-		addFrequentlyUsed("hawthorne");
-		addFrequentlyUsed("autumn");
-		addFrequentlyUsed("alto");
-		addFrequentlyUsed("chapelle");
-		addFrequentlyUsed("kelly");
-		addFrequentlyUsed("sherwood");
-		addFrequentlyUsed("garcia");
-		addFrequentlyUsed("bruce");
-		addFrequentlyUsed("cour");
-		addFrequentlyUsed("petite");
-		addFrequentlyUsed("gap");
-		addFrequentlyUsed("sea");
-		addFrequentlyUsed("émile");
-		addFrequentlyUsed("murray");
-		addFrequentlyUsed("tangenziale");
-		addFrequentlyUsed("mühlenweg");
-		addFrequentlyUsed("gonçalves");
-		addFrequentlyUsed("eastern");
-		addFrequentlyUsed("belle");
-		addFrequentlyUsed("northern");
-		addFrequentlyUsed("xxiii");
-		addFrequentlyUsed("vicinale");
-		addFrequentlyUsed("hemlock");
-		addFrequentlyUsed("hunter");
-		addFrequentlyUsed("лет");
-		addFrequentlyUsed("roberts");
-		addFrequentlyUsed("heather");
-		addFrequentlyUsed("bernardo");
-		addFrequentlyUsed("verte");
-		addFrequentlyUsed("arbor");
-		addFrequentlyUsed("puits");
-		addFrequentlyUsed("mine");
-		addFrequentlyUsed("stefana");
-		addFrequentlyUsed("güterweg");
-		addFrequentlyUsed("newton");
-		addFrequentlyUsed("кирова");
-		addFrequentlyUsed("riverview");
-		addFrequentlyUsed("clay");
-		addFrequentlyUsed("sint");
-		addFrequentlyUsed("aldo");
-		addFrequentlyUsed("tilleuls");
-		addFrequentlyUsed("claude");
-		addFrequentlyUsed("kossuth");
-		addFrequentlyUsed("edward");
-		addFrequentlyUsed("communale");
-		addFrequentlyUsed("fuente");
-		addFrequentlyUsed("cooper");
-		addFrequentlyUsed("trails");
-		addFrequentlyUsed("nieuwe");
-		addFrequentlyUsed("sebastião");
-		addFrequentlyUsed("roberto");
-		addFrequentlyUsed("overlook");
-		addFrequentlyUsed("первомайская");
-		addFrequentlyUsed("roger");
-		addFrequentlyUsed("turner");
-		addFrequentlyUsed("france");
-		addFrequentlyUsed("mario");
-		addFrequentlyUsed("iv");
-		addFrequentlyUsed("sugar");
-		addFrequentlyUsed("hudson");
-		addFrequentlyUsed("lopes");
-		addFrequentlyUsed("evans");
-		addFrequentlyUsed("cottage");
-		addFrequentlyUsed("raya");
-		addFrequentlyUsed("branco");
-		addFrequentlyUsed("vernon");
-		addFrequentlyUsed("traverse");
-		addFrequentlyUsed("emerald");
-		addFrequentlyUsed("dove");
-		addFrequentlyUsed("felipe");
-		addFrequentlyUsed("wildwood");
-		addFrequentlyUsed("moro");
-		addFrequentlyUsed("marechal");
-		addFrequentlyUsed("köz");
-		addFrequentlyUsed("marion");
-		addFrequentlyUsed("marco");
-		addFrequentlyUsed("léon");
-		addFrequentlyUsed("mt");
-		addFrequentlyUsed("veneto");
-		addFrequentlyUsed("mazzini");
-		addFrequentlyUsed("plum");
-		addFrequentlyUsed("boundary");
-		addFrequentlyUsed("barros");
-		addFrequentlyUsed("tour");
-		addFrequentlyUsed("andrews");
-		addFrequentlyUsed("wiesenweg");
-		addFrequentlyUsed("maggio");
-		addFrequentlyUsed("ricardo");
-		addFrequentlyUsed("pennsylvania");
-		addFrequentlyUsed("myrtle");
-		addFrequentlyUsed("matteotti");
-		addFrequentlyUsed("hinter");
-		addFrequentlyUsed("линия");
-		addFrequentlyUsed("ouest");
-		addFrequentlyUsed("maja");
-		addFrequentlyUsed("kent");
-		addFrequentlyUsed("stanley");
-		addFrequentlyUsed("jacob");
-		addFrequentlyUsed("principal");
-		addFrequentlyUsed("rogers");
-		addFrequentlyUsed("homestead");
-		addFrequentlyUsed("collins");
-		addFrequentlyUsed("richard");
-		addFrequentlyUsed("crown");
-		addFrequentlyUsed("moss");
-		addFrequentlyUsed("moreno");
-		addFrequentlyUsed("garfield");
-		addFrequentlyUsed("belmont");
-		addFrequentlyUsed("rolling");
-		addFrequentlyUsed("sportplatz");
-		addFrequentlyUsed("côte");
-		addFrequentlyUsed("hospital");
-		addFrequentlyUsed("sun");
-		addFrequentlyUsed("горького");
-		addFrequentlyUsed("flat");
-		addFrequentlyUsed("colonial");
-		addFrequentlyUsed("ramos");
-		addFrequentlyUsed("lilas");
-		addFrequentlyUsed("mason");
-		addFrequentlyUsed("forge");
-		addFrequentlyUsed("shadow");
-		addFrequentlyUsed("gold");
-		addFrequentlyUsed("rocha");
-		addFrequentlyUsed("linda");
-		addFrequentlyUsed("young");
-		addFrequentlyUsed("estate");
-		addFrequentlyUsed("martiri");
-		addFrequentlyUsed("verdi");
-		addFrequentlyUsed("augusta");
-		addFrequentlyUsed("neuburger");
+	private void addRegionNames() {
+		OsmandRegions osmandRegions = null;
+		try {
+			osmandRegions = PlatformUtil.getOsmandRegions();
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+		if (osmandRegions != null) {
+			Set<String> names = new HashSet<>();
+			parseRegionNames(osmandRegions.getWorldRegion(), names);
+			for (String name : names) {
+				addFrequent(name);
+//				regionNames.add(name);
+				if (name.contains(".")) {
+					addFrequent(name.replace(".", ""));
+//					regionNames.add(name.replace(".", ""));
+				}
+			}
+		}
+	}
 
+	private static void parseRegionNames(WorldRegion region, Set<String> result) {
+		List<WorldRegion> subregions = region.getSubregions();
+		for (WorldRegion s : subregions) {
+			String t = s.getRegionSearchText();
+			if (t != null) {
+				String[] ns = t.split(" ");
+				for (String n : ns) {
+					if (n.contains(";")) {
+						String[] ot = n.split(";");
+						for (String o : ot) {
+							if (o.length() > 1) {
+								result.add(o.toLowerCase());
+							}
+						}
+					} else {
+						if (n.length() > 1) {
+							result.add(n.toLowerCase());
+						}
+					}
+				}
+			}
+			parseRegionNames(s, result);
+		}
+	}
+	
 
-
-		addCommon("la");
-		addCommon("via");
-		addCommon("rua");
-		addCommon("de");
-		addCommon("du");
-		addCommon("des");
-		addCommon("del");
-		addCommon("am");
-		addCommon("da");
-		addCommon("a");
-		addCommon("der");
-		addCommon("do");
-		addCommon("los");
-		addCommon("di");
-		addCommon("im");
-		addCommon("el");
-		addCommon("e");
-		addCommon("an");
-		addCommon("g.");
-		addCommon("rd");
-		addCommon("dos");
-		addCommon("dei");
-		addCommon("b");
-		addCommon("st");
-		addCommon("the");
-		addCommon("las");
-		addCommon("f");
-		addCommon("u");
-		addCommon("jl.");
-		addCommon("j");
-		addCommon("sk");
-		addCommon("w");
-		addCommon("a.");
-		addCommon("of");
-		addCommon("k");
-		addCommon("r");
-		addCommon("h");
-		addCommon("mc");
-		addCommon("sw");
-		addCommon("g");
-		addCommon("v");
-		addCommon("m");
-		addCommon("c.");
-		addCommon("r.");
-		addCommon("ct");
-		addCommon("e.");
-		addCommon("dr.");
-		addCommon("j.");
-		addCommon("in");
-		addCommon("al");
-		addCommon("út");
-		addCommon("per");
-		addCommon("ne");
-		addCommon("p");
-		addCommon("et");
-		addCommon("s.");
-		addCommon("f.");
-		addCommon("t");
-		addCommon("fe");
-		addCommon("à");
-		addCommon("i");
-		addCommon("c");
-		addCommon("le");
-		addCommon("s");
-		addCommon("av.");
-		addCommon("den");
-		addCommon("dr");
-		addCommon("y");
-		addCommon("un");
-		addCommon("nw");
-
-
-
-		addCommon("van");
-		addCommon("road");
-		addCommon("street");
-		addCommon("sector");
-		addCommon("drive");
-		addCommon("avenue");
-		addCommon("rue");
-		addCommon("lane");
-		addCommon("улица");
-		addCommon("спуск");
-		addCommon("straße");
-		addCommon("chemin");
-		addCommon("way");
-
-		addCommon("court");
-		addCommon("calle");
-
-		addCommon("place");
-
-		addCommon("avenida");
-		addCommon("boulevard");
-		addCommon("county");
-		addCommon("route");
-		addCommon("trail");
-		addCommon("circle");
-		addCommon("close");
-		addCommon("highway");
-
-		addCommon("strada");
-		addCommon("impasse");
-		addCommon("utca");
-		addCommon("creek");
-		addCommon("carrer");
-		addCommon("вулиця");
-		addCommon("allée");
-		addCommon("weg");
-		addCommon("площадь");
-		addCommon("тупик");
-
-		addCommon("terrace");
-		addCommon("jalan");
-
-		addCommon("parkway");
-		addCommon("переулок");
-
-		addCommon("carretera");
-		addCommon("valley");
-
-		addCommon("camino");
-		addCommon("viale");
-		addCommon("loop");
+	public static CommonWords getInstance() {
+		if (DEFAULT_INSTANCE == null) {
+			CommonWords cw = new CommonWords();
+			cw.addCommon(NUMBER_WITH_LESS_THAN_2_LETTERS);
+			cw.addCalculatedAddrCommonWords();
+			cw.addCalculatedPoiCommonWords();
+			cw.addAbbrevationsToCommon(); // common words
+			cw.addManualAbbrevationsToFrequent();
+			cw.addRegionNames(); // to be deleted
+			cw.addCalculatedAddrFrequentWords();
+			cw.addCalculatedPoiFrequentWords();
+			
+			DEFAULT_INSTANCE = cw;
+		}
+		return DEFAULT_INSTANCE;
+	}
+	
+	public static CommonWords getPoiInstance() {
+		if (DEFAULT_POI_INSTANCE == null) {
+			CommonWords cw = new CommonWords();
+			cw.addCommon(NUMBER_WITH_LESS_THAN_2_LETTERS);
+			cw.addCalculatedPoiCommonWords();
+			cw.addAbbrevationsToCommon(); // common words
+			cw.addManualAbbrevationsToFrequent();
+			cw.addCalculatedPoiFrequentWords();
+			DEFAULT_POI_INSTANCE = cw;
+		}
+		return DEFAULT_POI_INSTANCE;
+	}
+	
+	public static CommonWords getAddrInstance() {
+		if (DEFAULT_ADDR_INSTANCE == null) {
+			CommonWords cw = new CommonWords();
+			cw.addCommon(NUMBER_WITH_LESS_THAN_2_LETTERS);
+			cw.addCalculatedAddrCommonWords();
+			cw.addAbbrevationsToCommon(); // common words
+			cw.addManualAbbrevationsToFrequent();
+			cw.addCalculatedAddrFrequentWords();
+			DEFAULT_ADDR_INSTANCE = cw;
+		}
+		return DEFAULT_ADDR_INSTANCE;
+	}
 		
-		addCommon(NUMBER_WITH_LESS_THAN_2_LETTERS);
+	private void addManualAbbrevationsToFrequent() {
+		// manually maintained - could be "mc" or "mc." 
+		// some of them present in OSM some not
+		addFrequentAbbrevation("mc");
+		addFrequentAbbrevation("ct");
+		addFrequentAbbrevation("дер");
+		addFrequentAbbrevation("пос");
+		// present already in stats
+		addFrequentAbbrevation("e");
+		addFrequentAbbrevation("g");
+		addFrequentAbbrevation("b");
+		addFrequentAbbrevation("f");
+		addFrequentAbbrevation("jl");
+		addFrequentAbbrevation("sk");
+		addFrequentAbbrevation("w");
+		addFrequentAbbrevation("a");
+		addFrequentAbbrevation("k");
+		addFrequentAbbrevation("r");
+		addFrequentAbbrevation("h");
+		addFrequentAbbrevation("m");
+		addFrequentAbbrevation("c");
+		addFrequentAbbrevation("r");
+		addFrequentAbbrevation("e");
+		addFrequentAbbrevation("dr");
+		addFrequentAbbrevation("j");
+		addFrequentAbbrevation("s");
+		addFrequentAbbrevation("f");
+		addFrequentAbbrevation("fe");
+		addFrequentAbbrevation("c");
+		addFrequentAbbrevation("av");
+		addFrequentAbbrevation("un");
+		addFrequentAbbrevation("str");
+		addFrequentAbbrevation("ул");
+		addFrequentAbbrevation("to");
+		addFrequentAbbrevation("m");
+	}
 
-		addCommon("bridge");
-		addCommon("embankment");
-		addCommon("township");
-		addCommon("town");
-		addCommon("village");
-		addCommon("piazza");
-		addCommon("della");
+	
+	// Calculated using index_words_dashboard.html sorted by Top in Country!
+	private void addCalculatedAddrCommonWords() {
+//		addCommon("NUMBLD"); // 1. 637,978,200 (indx 0.0%),  Us (300,323,393), Us_california (25,232,791)
+//		addCommon("OTHERBLD"); // 2. 50,063,791 (indx 0.0%),  Taiwan (33,832,521), Taiwan_asia (33,832,521)
+		addCommon("rua"); // 1. 3,414,836 (indx 30.9%),  Brazil (2,849,882), Brazil_sao-paulo (677,719)
+		addCommon("road"); // 2. 3,656,031 (indx 28.8%),  Us (2,400,027), Gb_england (267,493)
+		addCommon("street"); // 3. 2,945,341 (indx 29.7%),  Us (1,546,649), Egypt_africa (178,100)
+		addCommon("drive"); // 4. 1,720,819 (indx 22.9%),  Us (1,515,360), Us_texas (166,307)
+		addCommon("de"); // 5. 3,144,157 (indx 21.6%),  France (1,343,401), France_auvergne-rhone-alpes (205,601)
+		addCommon("via"); // 6. 1,376,489 (indx 17.2%),  Italy (1,308,679), Italy_lombardia (241,752)
+		addCommon("rue"); // 7. 1,765,852 (indx 19.4%),  France (1,298,071), France_new-aquitaine (152,554)
+		addCommon("lane"); // 8. 1,354,795 (indx 21.3%),  Us (1,042,631), Gb_england (127,345)
+		addCommon("calle"); // 9. 2,183,329 (indx 32.9%),  Mexico (927,563), Spain_andalusia (168,169)
+		addCommon("avenue"); // 10. 1,267,091 (indx 27.6%),  Us (849,036), Us_california (92,965)
+		addCommon("court"); // 11. 939,716 (indx 19.2%),  Us (779,717), Us_california (110,534)
+		addCommon("улица"); // 12. 1,063,825 (indx 12.6%),  Russia (737,869), Kazakhstan_asia (55,042)
+		addCommon("la"); // 13. 1,142,956 (indx 23.4%),  France (722,208), France_auvergne-rhone-alpes (100,369)
+		addCommon("des"); // 14. 825,132 (indx 9.5%),  France (714,637), France_auvergne-rhone-alpes (125,770)
+		addCommon("du"); // 15. 795,874 (indx 30.7%),  France (687,243), France_auvergne-rhone-alpes (113,818)
+		addCommon("ulitsa"); // 16. 764,021 (indx 6.7%),  Russia (685,662), Russia_moskovskaya-oblast (46,956)
+		addCommon("chemin"); // 17. 687,297 (indx 15.4%),  France (592,242), France_auvergne-rhone-alpes (133,764)
+		addCommon("sokak"); // 18. 477,548 (indx 46.2%),  Turkey (469,279), Turkey_marmara (193,784)
+		addCommon("north"); // 19. 439,084 (indx 47.6%),  Us (397,286), Us_illinois (38,118)
+		addCommon("lù"); // 20. 394,008 (indx 54.0%),  China (394,008), China_jiangsu (57,527)
+		addCommon("south"); // 21. 428,901 (indx 48.6%),  Us (392,112), Us_utah (58,572)
+		addCommon("east"); // 22. 433,167 (indx 46.9%),  Us (390,130), Us_utah (35,790)
+		addCommon("west"); // 23. 432,822 (indx 47.4%),  Us (384,177), Us_utah (47,801)
+		addCommon("route"); // 24. 471,010 (indx 23.6%),  France (361,708), France_auvergne-rhone-alpes (76,400)
+		addCommon("jalan"); // 25. 497,527 (indx 11.5%),  Indonesia (342,227), Malaysia_asia (151,956)
+		addCommon("impasse"); // 26. 384,098 (indx 15.9%),  France (341,460), France_auvergne-rhone-alpes (67,814)
+		addCommon("straße"); // 27. 366,439 (indx 4.6%),  Germany (329,052), Germany_bayern (57,526)
+		addCommon("strasse"); // 28. 352,376 (indx 4.6%),  Germany (324,943), Germany_bayern (57,304)
+		addCommon("way"); // 29. 404,387 (indx 18.0%),  Us (289,310), Us_california (62,497)
+		addCommon("lu"); // 30. 288,134 (indx 40.8%),  Taiwan (270,881), Taiwan_asia (270,881)
+		addCommon("circle"); // 31. 270,256 (indx 25.5%),  Us (263,133), Us_california (23,898)
+		addCommon("вулиця"); // 32. 288,722 (indx 6.9%),  Ukraine (261,392), Ukraine_kyiv (24,201)
+		addCommon("place"); // 33. 527,165 (indx 21.9%),  Us (257,226), Us_california (33,073)
+		addCommon("avenida"); // 34. 524,480 (indx 35.9%),  Brazil (229,886), Brazil_sao-paulo (62,513)
+		addCommon("strada"); // 35. 399,076 (indx 10.5%),  Romania (227,862), Romania_europe (227,862)
+		addCommon("trail"); // 36. 263,328 (indx 26.4%),  Us (225,641), Us_texas (19,296)
+		addCommon("da"); // 37. 506,922 (indx 37.7%),  Brazil (220,348), Portugal_europe (188,341)
+		addCommon("cityasstreetcommon"); // 38. 870,883 (indx 0.0%),  Poland (218,145), Germany_bayern (35,713)
+		addCommon("utca"); // 39. 218,781 (indx 22.9%),  Hungary (208,790), Hungary_europe (208,790)
+		addCommon("travessa"); // 40. 296,640 (indx 35.2%),  Brazil (203,054), Portugal_europe (87,449)
+		addCommon("close"); // 41. 254,181 (indx 17.0%),  Gb (197,962), Gb_england (188,600)
+		addCommon("privada"); // 42. 195,860 (indx 28.2%),  Mexico (195,099), Mexico_mexico (29,169)
+		addCommon("carrer"); // 43. 194,185 (indx 14.9%),  Spain (189,575), Spain_catalunya (101,982)
+		addCommon("county"); // 44. 193,586 (indx 84.3%),  Us (187,456), Us_texas (44,598)
+		addCommon("شارع"); // 45. 333,748 (indx 25.3%),  Egypt (181,105), Egypt_africa (181,105)
+		addCommon("am"); // 46. 187,785 (indx 11.0%),  Germany (174,009), Germany_nordrhein-westfalen (29,436)
+		addCommon("do"); // 47. 362,448 (indx 29.0%),  Portugal (171,487), Portugal_europe (171,487)
+		addCommon("highway"); // 48. 201,158 (indx 66.9%),  Us (150,397), Us_missouri (11,053)
+		addCommon("del"); // 49. 341,460 (indx 21.9%),  Spain (147,669), Spain_catalunya (34,309)
+		addCommon("g."); // 50. 130,940 (indx 100.0%),  Lithuania (129,462), Lithuania_europe (129,462)
+		addCommon("josé"); // 51. 195,940 (indx 35.5%),  Brazil (127,659), Brazil_sao-paulo (35,092)
+		addCommon("al"); // 52. 299,279 (indx 3.7%),  Egypt (126,519), Egypt_africa (126,519)
+		addCommon("jose"); // 53. 198,595 (indx 36.5%),  Brazil (124,845), Brazil_sao-paulo (34,083)
+		addCommon("allée"); // 54. 131,891 (indx 12.7%),  France (123,128), France_new-aquitaine (21,026)
+		addCommon("allee"); // 55. 137,548 (indx 12.8%),  France (122,440), France_new-aquitaine (21,044)
+		addCommon("vulitsia"); // 56. 123,212 (indx 3.3%),  Ukraine (122,271), Ukraine_kyiv (11,456)
+		addCommon("northeast"); // 57. 129,698 (indx 26.4%),  Us (122,114), Us_washington (27,133)
+		addCommon("creek"); // 58. 133,673 (indx 39.8%),  Us (121,262), Us_texas (12,173)
+		addCommon("weg"); // 59. 135,485 (indx 4.5%),  Germany (121,197), Germany_nordrhein-westfalen (19,908)
+		addCommon("co"); // 60. 123,127 (indx 95.8%),  Us (120,437), Us_texas (38,324)
+		addCommon("sokağı"); // 61. 120,437 (indx 4.9%),  Turkey (120,237), Turkey_marmara (101,653)
+		addCommon("jie"); // 62. 136,032 (indx 64.5%),  Taiwan (119,564), Taiwan_asia (119,564)
+		addCommon("sokagi"); // 63. 119,198 (indx 5.2%),  Turkey (119,155), Turkey_marmara (101,823)
+		addCommon("le"); // 64. 146,901 (indx 24.9%),  France (118,702), France_brittany (23,043)
+		addCommon("northwest"); // 65. 124,468 (indx 28.0%),  Us (113,038), Us_florida (22,760)
+		addCommon("hill"); // 66. 155,242 (indx 42.4%),  Us (111,570), Gb_england (24,008)
+		addCommon("southwest"); // 67. 120,322 (indx 25.2%),  Us (111,038), Us_florida (29,481)
+		addCommon("southeast"); // 68. 118,677 (indx 26.8%),  Us (108,591), Us_washington (23,380)
+		addCommon("caddesi"); // 69. 107,201 (indx 8.2%),  Turkey (106,125), Turkey_marmara (46,710)
+		addCommon("cun"); // 70. 109,878 (indx 90.9%),  China (104,357), China_guangdong (17,467)
+		addCommon("gang"); // 71. 115,246 (indx 16.9%),  Indonesia (104,032), Indonesia_jakarta-raya (18,800)
+		addCommon("ridge"); // 72. 111,233 (indx 51.5%),  Us (103,288), Us_north-carolina (8,323)
+		addCommon("jiē"); // 73. 102,606 (indx 100.0%),  China (102,606), China_guangdong (17,188)
+		addCommon("dos"); // 74. 162,210 (indx 16.2%),  Brazil (100,805), Portugal_europe (48,051)
+		addCommon("state"); // 75. 102,229 (indx 92.9%),  Us (100,385), Us_north-carolina (16,567)
+		addCommon("переулок"); // 76. 143,353 (indx 10.3%),  Russia (97,580), Russia_rostovskaya (8,641)
+		addCommon("pierieulok"); // 77. 100,165 (indx 1.4%),  Russia (93,751), Russia_rostovskaya (8,203)
+		addCommon("saint"); // 78. 144,035 (indx 32.1%),  France (92,766), France_auvergne-rhone-alpes (12,231)
+		addCommon("les"); // 79. 112,058 (indx 7.4%),  France (91,876), France_auvergne-rhone-alpes (15,855)
+		addCommon("silva"); // 80. 100,291 (indx 37.1%),  Brazil (88,838), Brazil_sao-paulo (22,273)
+		addCommon("duan"); // 81. 87,777 (indx 29.4%),  Taiwan (86,250), Taiwan_asia (86,250)
+		addCommon("boulevard"); // 82. 149,978 (indx 24.3%),  Us (85,874), Us_florida (12,850)
+		addCommon("di"); // 83. 106,449 (indx 15.7%),  Italy (84,036), Italy_toscana (11,879)
+		addCommon("ulica"); // 84. 178,824 (indx 6.1%),  Ukraine (83,003), Croatia_europe (39,902)
+		addCommon("joão"); // 85. 93,152 (indx 42.7%),  Brazil (81,477), Brazil_sao-paulo (21,114)
+		addCommon("lake"); // 86. 92,405 (indx 48.9%),  Us (80,454), Us_florida (7,313)
+		addCommon("joao"); // 87. 89,469 (indx 43.6%),  Brazil (77,632), Brazil_sao-paulo (20,272)
+		addCommon("old"); // 88. 101,920 (indx 48.7%),  Us (77,098), Gb_england (8,154)
+		addCommon("antonio"); // 89. 144,377 (indx 36.8%),  Brazil (76,674), Brazil_sao-paulo (24,615)
+		addCommon("oak"); // 90. 81,361 (indx 80.2%),  Us (74,988), Us_texas (9,928)
+		addCommon("straed"); // 91. 74,964 (indx 10.6%),  France (74,775), France_brittany (55,708)
+		addCommon("estrada"); // 92. 104,036 (indx 24.3%),  Brazil (71,500), Brazil_sao-paulo (19,944)
+		addCommon("dà"); // 93. 69,659 (indx 55.4%),  China (69,659), China_guangdong (10,082)
+		addCommon("đường"); // 94. 70,158 (indx 55.7%),  Vietnam (69,497), Vietnam_asia (69,497)
+		addCommon("ro"); // 95. 69,476 (indx 100.0%),  South-korea (68,878), South-korea_asia (68,878)
+		addCommon("park"); // 96. 134,098 (indx 48.9%),  Us (68,842), Gb_england (21,700)
+		addCommon("terrace"); // 97. 105,922 (indx 28.1%),  Us (68,586), Us_florida (16,346)
+		addCommon("antônio"); // 98. 67,668 (indx 41.3%),  Brazil (67,588), Brazil_sao-paulo (21,553)
+		addCommon("carrera"); // 99. 73,813 (indx 95.0%),  Colombia (67,513), Colombia_southamerica (67,513)
+		addCommon("maria"); // 100. 122,684 (indx 29.4%),  Brazil (66,880), Brazil_sao-paulo (17,559)
+		addCommon("camino"); // 101. 135,683 (indx 22.9%),  Spain (65,970), Spain_galicia (14,210)
+		addCommon("duong"); // 102. 66,104 (indx 74.7%),  Vietnam (65,944), Vietnam_asia (65,944)
+		addCommon("dào"); // 103. 65,614 (indx 39.7%),  China (65,614), China_guangdong (8,823)
+		addCommon("das"); // 104. 122,698 (indx 7.8%),  Brazil (65,611), Portugal_europe (48,494)
+		addCommon("são"); // 105. 83,711 (indx 72.0%),  Brazil (65,028), Portugal_europe (17,728)
+		addCommon("ar"); // 106. 71,429 (indx 12.7%),  France (64,759), France_brittany (50,003)
+		addCommon("e"); // 107. 104,363 (indx 42.6%),  Brazil (64,667), Brazil_goias (9,181)
+		addCommon("der"); // 108. 71,440 (indx 11.7%),  Germany (62,800), Germany_nordrhein-westfalen (12,351)
+		addCommon("sao"); // 109. 81,308 (indx 73.4%),  Brazil (62,191), Portugal_europe (17,363)
+		addCommon("san"); // 110. 325,849 (indx 47.6%),  Mexico (61,454), Taiwan_asia (30,424)
+		addCommon("francisco"); // 111. 123,571 (indx 40.6%),  Brazil (61,195), Brazil_sao-paulo (15,358)
+		addCommon("forest"); // 112. 68,759 (indx 83.3%),  Us (60,656), Us_oregon (14,887)
+		addCommon("piazza"); // 113. 61,853 (indx 34.6%),  Italy (60,197), Italy_lombardia (10,749)
+		addCommon("hẻm"); // 114. 56,995 (indx 54.3%),  Vietnam (56,995), Vietnam_asia (56,995)
+		addCommon("hem"); // 115. 56,697 (indx 77.3%),  Vietnam (56,665), Vietnam_asia (56,665)
+		addCommon("вуліца"); // 116. 70,454 (indx 12.8%),  Belarus (56,225), Belarus_minsk (15,634)
+		addCommon("della"); // 117. 57,110 (indx 30.1%),  Italy (55,912), Italy_toscana (8,444)
+		addCommon("vulitsa"); // 118. 55,901 (indx 8.7%),  Belarus (55,690), Belarus_minsk (15,412)
+		addCommon("parks"); // 119. 53,707 (indx 65.4%),  Us (53,355), Us_texas (5,312)
+		addCommon("a"); // 120. 220,766 (indx 27.5%),  Spain (53,081), Spain_galicia (21,066)
+		addCommon("im"); // 121. 62,858 (indx 5.8%),  Germany (52,890), Germany_baden-wuerttemberg (12,545)
+		addCommon("view"); // 122. 79,137 (indx 66.5%),  Us (52,310), Gb_england (13,833)
+		addCommon("zhong"); // 123. 60,145 (indx 45.0%),  Taiwan (52,176), Taiwan_asia (52,176)
+		addCommon("cerrada"); // 124. 52,302 (indx 27.5%),  Mexico (52,175), Mexico_mexico (17,633)
+		addCommon("pasaje"); // 125. 107,925 (indx 33.7%),  Chile (52,142), Peru_southamerica (21,578)
+		addCommon("doutor"); // 126. 72,924 (indx 25.7%),  Brazil (51,700), Portugal_europe (19,754)
+		addCommon("loop"); // 127. 58,691 (indx 30.5%),  Us (51,691), Us_texas (4,662)
+		addCommon("gil"); // 128. 55,375 (indx 100.0%),  South-korea (50,904), South-korea_asia (50,904)
+		addCommon("valley"); // 129. 62,586 (indx 60.2%),  Us (50,519), Us_california (5,189)
+		addCommon("شهید"); // 130. 50,781 (indx 1.1%),  Iran (50,444), Iran_esfahan (5,386)
+		addCommon("santos"); // 131. 60,134 (indx 33.5%),  Brazil (49,714), Brazil_sao-paulo (12,905)
+		addCommon("cove"); // 132. 53,489 (indx 31.0%),  Us (49,602), Us_tennessee (7,971)
+		addCommon("pedro"); // 133. 86,969 (indx 45.3%),  Brazil (49,274), Brazil_sao-paulo (10,985)
+		addCommon("pine"); // 134. 53,847 (indx 80.7%),  Us (49,139), Us_florida (3,551)
+		addCommon("oliveira"); // 135. 54,022 (indx 37.4%),  Brazil (49,096), Brazil_sao-paulo (15,132)
+		addCommon("xī"); // 136. 48,069 (indx 60.3%),  China (48,069), China_guangdong (5,909)
+		addCommon("dōng"); // 137. 47,935 (indx 63.6%),  China (47,935), China_guangdong (6,932)
+		addCommon("jean"); // 138. 57,896 (indx 20.5%),  France (47,650), France_new-aquitaine (6,283)
+		addCommon("er"); // 139. 62,533 (indx 50.1%),  Taiwan (45,307), Taiwan_asia (45,307)
+		addCommon("river"); // 140. 62,658 (indx 60.2%),  Us (44,733), Gb_england (3,478)
+		addCommon("point"); // 141. 65,248 (indx 34.8%),  Us (44,268), Us_florida (3,808)
+		addCommon("nán"); // 142. 43,854 (indx 62.3%),  China (43,854), China_guangdong (6,114)
+		addCommon("shhyd"); // 143. 44,167 (indx 1.2%),  Iran (43,808), Iran_mazandaran (3,954)
+		addCommon("manoel"); // 144. 42,742 (indx 44.4%),  Brazil (42,659), Brazil_sao-paulo (8,689)
+		addCommon("souza"); // 145. 42,505 (indx 35.4%),  Brazil (42,398), Brazil_sao-paulo (9,886)
+		addCommon("alameda"); // 146. 49,451 (indx 32.1%),  Brazil (42,393), Brazil_sao-paulo (14,313)
+		addCommon("провулок"); // 147. 46,543 (indx 3.4%),  Ukraine (42,324), Ukraine_kharkiv (4,350)
+		addCommon("lorong"); // 148. 47,220 (indx 22.4%),  Malaysia (42,093), Malaysia_asia (42,093)
+		addCommon("plaza"); // 149. 60,474 (indx 39.1%),  Spain (41,881), Spain_castilla-leon (10,370)
+		addCommon("soi"); // 150. 41,971 (indx 100.0%),  Thailand (41,707), Thailand_asia (41,707)
+		addCommon("xiàn"); // 151. 41,372 (indx 39.9%),  China (41,372), China_jiangsu (5,610)
+		addCommon("dei"); // 152. 43,520 (indx 3.1%),  Italy (41,063), Italy_lombardia (6,017)
+		addCommon("pereira"); // 153. 46,500 (indx 39.1%),  Brazil (39,968), Brazil_sao-paulo (9,748)
+		addCommon("run"); // 154. 41,335 (indx 42.6%),  Us (39,966), Us_pennsylvania (5,145)
+		addCommon("the"); // 155. 68,091 (indx 47.0%),  Gb (39,562), Gb_england (35,217)
+		addCommon("moulin"); // 156. 42,571 (indx 57.7%),  France (39,348), France_new-aquitaine (5,945)
+		addCommon("carretera"); // 157. 92,192 (indx 12.9%),  Spain (38,996), Carribean-archipelago-all_centralamerica (11,016)
+		addCommon("an"); // 158. 130,740 (indx 23.6%),  Germany (38,746), Ireland_europe (25,716)
+		addCommon("کوچه"); // 159. 39,047 (indx 16.9%),  Iran (38,642), Iran_fars (6,973)
+		addCommon("iela"); // 160. 38,822 (indx 2.4%),  Latvia (38,534), Latvia_europe (38,534)
+		addCommon("giuseppe"); // 161. 39,037 (indx 52.6%),  Italy (38,476), Italy_lombardia (8,303)
+		addCommon("yolu"); // 162. 43,666 (indx 2.0%),  Turkey (38,015), Turkey_marmara (11,285)
+		addCommon("giovanni"); // 163. 38,263 (indx 34.4%),  Italy (37,791), Italy_lombardia (8,567)
+		addCommon("gardens"); // 164. 46,356 (indx 19.8%),  Gb (37,734), Gb_england (29,850)
+		addCommon("vicolo"); // 165. 38,929 (indx 14.4%),  Italy (37,730), Italy_lombardia (8,823)
+		addCommon("qiáo"); // 166. 37,729 (indx 48.2%),  China (37,729), China_guangdong (6,523)
+		addCommon("viale"); // 167. 38,064 (indx 27.8%),  Italy (37,402), Italy_emilia-romagna (6,097)
+		addCommon("santa"); // 168. 141,626 (indx 39.6%),  Brazil (37,137), Portugal_europe (7,569)
+		addCommon("mu"); // 169. 45,235 (indx 83.3%),  Japan (37,134), Japan_chubu (13,219)
+		addCommon("mountain"); // 170. 42,150 (indx 55.5%),  Us (36,998), Us_california (3,641)
+		addCommon("bĕi"); // 171. 36,985 (indx 61.0%),  China (36,985), China_guangdong (4,391)
+		addCommon("hollow"); // 172. 38,005 (indx 36.7%),  Us (36,828), Us_pennsylvania (3,796)
+		addCommon("mill"); // 173. 48,148 (indx 57.0%),  Us (35,785), Gb_england (7,962)
+		addCommon("xiàng"); // 174. 35,619 (indx 100.0%),  China (35,619), China_guangdong (7,481)
+		addCommon("ding"); // 175. 42,695 (indx 83.9%),  Japan (35,616), Japan_chubu (12,971)
+		addCommon("alves"); // 176. 38,509 (indx 44.7%),  Brazil (35,580), Brazil_sao-paulo (8,472)
+		addCommon("main"); // 177. 61,666 (indx 78.8%),  Us (35,442), India_karnataka (4,521)
+		addCommon("bois"); // 178. 42,317 (indx 36.4%),  France (35,149), France_new-aquitaine (4,984)
+		addCommon("снт"); // 179. 35,380 (indx 2.0%),  Russia (35,069), Russia_moskovskaya-oblast (16,237)
+		addCommon("khwchh"); // 180. 35,318 (indx 16.2%),  Iran (34,973), Iran_fars (5,494)
+		addCommon("snt"); // 181. 35,169 (indx 0.9%),  Russia (34,856), Russia_moskovskaya-oblast (16,208)
+		addCommon("los"); // 182. 169,144 (indx 8.6%),  Mexico (34,682), Peru_southamerica (17,552)
+		addCommon("crescent"); // 183. 114,817 (indx 19.9%),  Gb (34,617), Gb_england (24,953)
+		addCommon("luiz"); // 184. 34,489 (indx 37.2%),  Brazil (34,431), Brazil_sao-paulo (10,055)
+		addCommon("gōsen"); // 185. 34,429 (indx 100.0%),  Japan (34,429), Japan_kinki (28,805)
+		addCommon("cll"); // 186. 76,033 (indx 36.7%),  Carribean-archipelago-all (34,326), Carribean-archipelago-all_centralamerica (34,326)
+		addCommon("jia"); // 187. 40,826 (indx 81.8%),  China (34,172), Taiwan_asia (5,759)
+		addCommon("ferreira"); // 188. 40,053 (indx 41.8%),  Brazil (33,880), Brazil_sao-paulo (8,918)
+		addCommon("حاره"); // 189. 33,986 (indx 12.1%),  Egypt (33,318), Egypt_africa (33,318)
+		addCommon("alley"); // 190. 83,324 (indx 19.7%),  Egypt (32,997), Egypt_africa (32,997)
+		addCommon("vico"); // 191. 32,595 (indx 17.9%),  Italy (32,581), Italy_sardegna (7,126)
+		addCommon("hent"); // 192. 32,458 (indx 11.3%),  France (32,370), France_brittany (26,016)
+		addCommon("hé"); // 193. 32,158 (indx 62.1%),  China (32,123), China_jiangsu (3,962)
+		addCommon("xīn"); // 194. 31,593 (indx 72.2%),  China (31,593), China_guangdong (6,741)
+		addCommon("grove"); // 195. 75,908 (indx 48.1%),  Gb (31,368), Gb_england (27,520)
+		addCommon("farm"); // 196. 42,831 (indx 46.6%),  Us (31,238), Gb_england (7,856)
+		addCommon("meadow"); // 197. 39,564 (indx 73.4%),  Us (31,158), Gb_england (6,301)
+		addCommon("costa"); // 198. 49,852 (indx 44.6%),  Brazil (30,929), Brazil_sao-paulo (6,681)
+		addCommon("rio"); // 199. 92,354 (indx 36.2%),  Brazil (30,858), Brazil_sao-paulo (4,916)
+		addCommon("jirón"); // 200. 30,736 (indx 29.7%),  Peru (30,720), Peru_southamerica (30,720)
+		addCommon("carlos"); // 201. 53,794 (indx 35.6%),  Brazil (30,637), Brazil_sao-paulo (9,468)
+		addCommon("delle"); // 202. 31,010 (indx 7.7%),  Italy (30,487), Italy_lombardia (3,975)
+		addCommon("jiron"); // 203. 30,307 (indx 31.7%),  Peru (30,291), Peru_southamerica (30,291)
+		addCommon("shān"); // 204. 30,183 (indx 49.9%),  China (30,183), China_shandong (3,977)
+		addCommon("проезд"); // 205. 38,401 (indx 21.3%),  Russia (30,011), Russia_moskovskaya-oblast (5,585)
+		addCommon("à"); // 206. 34,494 (indx 3.6%),  France (29,811), France_centre-loire-valley (5,227)
+		addCommon("church"); // 207. 49,506 (indx 74.6%),  Us (29,694), Gb_england (12,431)
+		addCommon("xing"); // 208. 35,165 (indx 56.8%),  Taiwan (29,589), Taiwan_asia (29,589)
+		addCommon("sen"); // 209. 31,879 (indx 6.4%),  Japan (29,545), Japan_chubu (7,579)
+		addCommon("el"); // 210. 155,669 (indx 14.6%),  Spain (29,541), Venezuela_southamerica (6,851)
+		addCommon("pont"); // 211. 38,494 (indx 29.6%),  France (29,405), France_brittany (5,080)
+		addCommon("paulo"); // 212. 31,732 (indx 60.2%),  Brazil (29,375), Brazil_sao-paulo (7,447)
+		addCommon("praça"); // 213. 33,601 (indx 30.5%),  Brazil (29,022), Brazil_sao-paulo (8,016)
+		addCommon("cedar"); // 214. 32,834 (indx 93.4%),  Us (28,995), Us_texas (2,539)
+		addCommon("rúa"); // 215. 29,002 (indx 19.4%),  Spain (28,972), Spain_galicia (28,630)
+		addCommon("rodrigues"); // 216. 32,071 (indx 41.8%),  Brazil (28,851), Brazil_sao-paulo (9,514)
+		addCommon("spring"); // 217. 32,666 (indx 78.1%),  Us (28,561), Us_texas (2,499)
+		addCommon("pierre"); // 218. 32,980 (indx 25.3%),  France (28,277), France_new-aquitaine (3,533)
+		addCommon("lotissement"); // 219. 29,920 (indx 17.4%),  France (28,221), France_auvergne-rhone-alpes (7,036)
+		addCommon("proiezd"); // 220. 29,895 (indx 10.9%),  Russia (28,122), Russia_moskovskaya-oblast (4,956)
+		addCommon("us"); // 221. 28,113 (indx 97.7%),  Us (28,058), Us_texas (3,266)
+		addCommon("clos"); // 222. 34,293 (indx 28.6%),  France (27,922), France_auvergne-rhone-alpes (4,820)
+		addCommon("zum"); // 223. 28,814 (indx 7.7%),  Germany (27,904), Germany_nordrhein-westfalen (5,692)
+		addCommon("las"); // 224. 113,359 (indx 9.1%),  Mexico (27,855), Peru_southamerica (8,870)
+		addCommon("ngo"); // 225. 27,572 (indx 74.7%),  Vietnam (27,526), Vietnam_asia (27,526)
+		addCommon("2nd"); // 226. 44,131 (indx 72.2%),  Us (27,294), Taiwan_asia (2,314)
+		addCommon("i"); // 227. 95,401 (indx 22.9%),  Indonesia (27,269), Indonesia_jakarta-raya (6,934)
+		addCommon("joaquim"); // 228. 33,309 (indx 48.1%),  Brazil (27,241), Brazil_sao-paulo (7,592)
+		addCommon("praca"); // 229. 31,487 (indx 32.3%),  Brazil (27,039), Brazil_sao-paulo (7,532)
+		addCommon("largo"); // 230. 43,906 (indx 39.5%),  Portugal (26,800), Portugal_europe (26,800)
+		addCommon("l'eglise"); // 231. 28,883 (indx 95.1%),  France (26,794), France_great-east (3,490)
+		addCommon("maple"); // 232. 30,757 (indx 93.3%),  Us (26,774), Us_pennsylvania (2,112)
+		addCommon("l'église"); // 233. 28,100 (indx 95.5%),  France (26,650), France_great-east (3,488)
+		addCommon("beco"); // 234. 48,681 (indx 100.0%),  Brazil (26,440), Portugal_europe (19,446)
+		addCommon("rodovia"); // 235. 26,299 (indx 12.6%),  Brazil (26,282), Brazil_sao-paulo (5,753)
+		addCommon("andador"); // 236. 26,419 (indx 100.0%),  Mexico (26,245), Mexico_veracruz (3,265)
+		addCommon("ii"); // 237. 69,335 (indx 20.3%),  Indonesia (26,107), Indonesia_jakarta-raya (6,520)
+		addCommon("ngõ"); // 238. 25,987 (indx 48.7%),  Vietnam (25,987), Vietnam_asia (25,987)
+		addCommon("provinciale"); // 239. 26,330 (indx 19.1%),  Italy (25,910), Italy_sicilia (2,923)
+		addCommon("benito"); // 240. 28,765 (indx 85.5%),  Mexico (25,805), Mexico_veracruz (4,511)
+		addCommon("parkway"); // 241. 27,964 (indx 35.0%),  Us (25,715), Us_texas (2,641)
+		addCommon("shan"); // 242. 44,698 (indx 63.6%),  Taiwan (25,636), Taiwan_asia (25,636)
+		addCommon("green"); // 243. 51,193 (indx 60.8%),  Us (25,613), Gb_england (16,682)
+		addCommon("3rd"); // 244. 36,410 (indx 79.5%),  Us (24,995), Us_minnesota (1,690)
+		addCommon("vista"); // 245. 47,896 (indx 65.1%),  Us (24,962), Us_california (7,479)
+		addCommon("fu"); // 246. 31,337 (indx 58.1%),  Taiwan (24,954), Taiwan_asia (24,954)
+		addCommon("camí"); // 247. 25,946 (indx 12.1%),  Spain (24,921), Spain_catalunya (12,712)
+		addCommon("springs"); // 248. 26,086 (indx 41.4%),  Us (24,846), Us_texas (3,113)
+		addCommon("lima"); // 249. 28,926 (indx 100.0%),  Brazil (24,798), Brazil_sao-paulo (5,726)
+		addCommon("xin"); // 250. 38,967 (indx 67.3%),  Taiwan (24,763), Taiwan_asia (24,763)
+		addCommon("caminho"); // 251. 43,288 (indx 39.8%),  Portugal (24,758), Portugal_europe (24,758)
+		addCommon("santo"); // 252. 50,461 (indx 100.0%),  Brazil (24,643), Portugal_europe (11,665)
+		addCommon("1st"); // 253. 43,963 (indx 66.4%),  Us (24,507), Georgia_asia (2,960)
+		addCommon("rock"); // 254. 27,473 (indx 62.3%),  Us (24,344), Us_texas (2,111)
+		addCommon("ban"); // 255. 31,779 (indx 33.6%),  Thailand (23,890), Thailand_asia (23,890)
+		addCommon("cami"); // 256. 28,725 (indx 15.6%),  Spain (23,775), Spain_catalunya (12,599)
+		addCommon("ruelle"); // 257. 36,728 (indx 22.4%),  France (23,640), France_great-east (4,754)
+		addCommon("gomes"); // 258. 27,593 (indx 43.5%),  Brazil (23,449), Brazil_sao-paulo (5,175)
+		addCommon("rural"); // 259. 26,078 (indx 100.0%),  France (23,387), France_centre-loire-valley (8,383)
+		addCommon("tee"); // 260. 23,993 (indx 2.5%),  Estonia (23,331), Estonia_europe (23,331)
+		addCommon("red"); // 261. 27,181 (indx 64.3%),  Us (23,269), Us_texas (2,104)
+		addCommon("phố"); // 262. 23,359 (indx 52.4%),  Vietnam (23,251), Vietnam_asia (23,251)
+		addCommon("white"); // 263. 27,144 (indx 70.4%),  Us (23,187), Us_texas (1,765)
+		addCommon("nan"); // 264. 38,906 (indx 61.0%),  Taiwan (23,053), Taiwan_asia (23,053)
+		addCommon("glen"); // 265. 28,199 (indx 52.3%),  Us (22,876), Us_california (3,250)
+		addCommon("hills"); // 266. 26,311 (indx 43.3%),  Us (22,864), Us_texas (2,050)
+		addCommon("voie"); // 267. 27,840 (indx 13.8%),  France (22,746), France_pays-de-la-loire (3,283)
+		addCommon("croix"); // 268. 24,845 (indx 47.7%),  France (22,742), France_auvergne-rhone-alpes (4,276)
+		addCommon("um"); // 269. 24,720 (indx 100.0%),  Brazil (22,549), Brazil_sao-paulo (3,838)
+		addCommon("filho"); // 270. 22,544 (indx 100.0%),  Brazil (22,523), Brazil_sao-paulo (6,919)
+		addCommon("padre"); // 271. 43,835 (indx 25.4%),  Brazil (22,465), Portugal_europe (9,108)
+		addCommon("dong"); // 272. 52,414 (indx 65.0%),  Taiwan (22,279), Taiwan_asia (22,279)
+		addCommon("yuán"); // 273. 22,269 (indx 59.0%),  China (22,269), China_guangdong (3,406)
+		addCommon("raya"); // 274. 23,491 (indx 9.5%),  Indonesia (22,163), Indonesia_jawa-barat (4,754)
+		addCommon("центральная"); // 275. 28,143 (indx 98.0%),  Russia (22,093), Russia_moskovskaya-oblast (1,751)
+		addCommon("xīng"); // 276. 22,071 (indx 78.4%),  China (22,071), China_guangdong (3,779)
+		addCommon("4th"); // 277. 29,768 (indx 100.0%),  Us (22,051), Us_minnesota (1,506)
+		addCommon("professor"); // 278. 28,844 (indx 22.7%),  Brazil (21,958), Brazil_sao-paulo (7,577)
+		addCommon("zhōng"); // 279. 21,941 (indx 65.0%),  China (21,941), China_guangdong (3,390)
+		addCommon("ซอย"); // 280. 22,021 (indx 100.0%),  Thailand (21,861), Thailand_asia (21,861)
+		addCommon("vinte"); // 281. 21,865 (indx 100.0%),  Brazil (21,850), Brazil_sao-paulo (3,198)
+		addCommon("oaks"); // 282. 23,198 (indx 45.4%),  Us (21,843), Us_texas (4,154)
+		addCommon("ribeiro"); // 283. 27,435 (indx 42.1%),  Brazil (21,825), Brazil_sao-paulo (5,766)
+		addCommon("canyon"); // 284. 22,082 (indx 50.1%),  Us (21,743), Us_california (6,607)
+		addCommon("عبد"); // 285. 25,799 (indx 10.0%),  Egypt (21,688), Egypt_africa (21,688)
+		addCommon("auf"); // 286. 22,511 (indx 9.9%),  Germany (21,657), Germany_nordrhein-westfalen (7,159)
+		addCommon("خیابان"); // 287. 22,203 (indx 100.0%),  Iran (21,625), Iran_fars (2,945)
+		addCommon("dois"); // 288. 21,698 (indx 100.0%),  Brazil (21,615), Brazil_sao-paulo (3,536)
+		addCommon("tsientral'naia"); // 289. 22,010 (indx 97.1%),  Russia (21,398), Russia_moskovskaya-oblast (1,731)
+		addCommon("abd"); // 290. 29,131 (indx 100.0%),  Egypt (21,368), Egypt_africa (21,368)
+		addCommon("chateau"); // 291. 23,670 (indx 78.4%),  France (21,308), France_auvergne-rhone-alpes (3,077)
+		addCommon("alte"); // 292. 25,056 (indx 30.6%),  Germany (21,248), Germany_sachsen (3,034)
+		addCommon("grand"); // 293. 37,873 (indx 55.7%),  France (21,241), France_auvergne-rhone-alpes (3,654)
+		addCommon("pho"); // 294. 21,590 (indx 77.0%),  Vietnam (21,059), Vietnam_asia (21,059)
+		addCommon("château"); // 295. 22,606 (indx 78.2%),  France (21,051), France_auvergne-rhone-alpes (3,040)
+		addCommon("den"); // 296. 25,228 (indx 7.1%),  Germany (21,048), Germany_niedersachsen (4,131)
+		addCommon("willow"); // 297. 25,492 (indx 90.6%),  Us (20,982), Gb_england (2,392)
+		addCommon("walk"); // 298. 36,964 (indx 24.8%),  Gb (20,839), Gb_england (18,434)
+		addCommon("chéng"); // 299. 20,644 (indx 54.9%),  China (20,644), China_beijing (2,807)
+		addCommon("branch"); // 300. 23,539 (indx 39.9%),  Us (20,557), Us_kentucky (4,478)
+		addCommon("martins"); // 301. 24,364 (indx 100.0%),  Brazil (20,527), Brazil_sao-paulo (5,672)
+		addCommon("center"); // 302. 21,921 (indx 65.6%),  Us (20,471), Us_california (1,586)
+		addCommon("nguyen"); // 303. 20,448 (indx 100.0%),  Vietnam (20,369), Vietnam_asia (20,369)
+		addCommon("yī"); // 304. 20,319 (indx 54.8%),  China (20,319), China_guangdong (6,067)
+		addCommon("bay"); // 305. 32,642 (indx 45.1%),  Us (20,192), Us_florida (2,808)
+		addCommon("fontaine"); // 306. 21,741 (indx 69.4%),  France (20,186), France_new-aquitaine (2,606)
+		addCommon("bridge"); // 307. 68,230 (indx 25.0%),  Us (20,073), Gb_england (9,171)
+		addCommon("provulok"); // 308. 20,143 (indx 0.2%),  Ukraine (20,067), Ukraine_kharkiv (2,274)
+		addCommon("miguel"); // 309. 57,480 (indx 100.0%),  Mexico (20,059), Brazil_sao-paulo (3,907)
+		addCommon("brook"); // 310. 25,661 (indx 54.3%),  Us (19,871), Gb_england (3,904)
+		addCommon("zhuang"); // 311. 24,147 (indx 86.5%),  China (19,865), China_henan (5,743)
+		addCommon("carvalho"); // 312. 23,239 (indx 100.0%),  Brazil (19,802), Brazil_sao-paulo (5,228)
+		addCommon("sur"); // 313. 61,790 (indx 54.0%),  Mexico (19,775), Colombia_southamerica (10,989)
+		addCommon("norte"); // 314. 47,025 (indx 100.0%),  Mexico (19,744), Mexico_puebla (4,810)
+		addCommon("vila"); // 315. 26,965 (indx 42.8%),  Brazil (19,732), Portugal_europe (4,326)
+		addCommon("pond"); // 316. 21,427 (indx 50.2%),  Us (19,713), Us_new-york (2,080)
+		addCommon("gāo"); // 317. 19,701 (indx 46.0%),  China (19,701), China_zhejiang (1,617)
+		addCommon("blue"); // 318. 22,423 (indx 49.5%),  Us (19,653), Us_texas (1,826)
+		addCommon("petit"); // 319. 22,623 (indx 37.3%),  France (19,608), France_new-aquitaine (3,300)
+		addCommon("tree"); // 320. 27,006 (indx 55.8%),  Us (19,591), Gb_england (4,563)
+		addCommon("río"); // 321. 49,185 (indx 26.4%),  Mexico (19,577), Costa-rica_centralamerica (3,065)
+		addCommon("èr"); // 322. 19,465 (indx 100.0%),  China (19,465), China_guangdong (5,745)
+		addCommon("passage"); // 323. 26,299 (indx 100.0%),  France (19,447), France_auvergne-rhone-alpes (4,063)
+		addCommon("hua"); // 324. 25,878 (indx 55.0%),  Taiwan (19,386), Taiwan_asia (19,386)
+		addCommon("nguyễn"); // 325. 19,339 (indx 100.0%),  Vietnam (19,259), Vietnam_asia (19,259)
+		addCommon("zi"); // 326. 33,410 (indx 72.7%),  China (19,247), Taiwan_asia (8,530)
+		addCommon("5th"); // 327. 25,320 (indx 100.0%),  Us (19,180), Us_minnesota (1,285)
+		addCommon("iii"); // 328. 30,480 (indx 100.0%),  Indonesia (19,057), Indonesia_jakarta-raya (4,753)
+		addCommon("village"); // 329. 55,922 (indx 36.8%),  Us (19,014), Taiwan_asia (7,474)
+		addCommon("almeida"); // 330. 23,159 (indx 100.0%),  Brazil (18,997), Brazil_sao-paulo (6,566)
+		addCommon("امام"); // 331. 19,676 (indx 100.0%),  Iran (18,910), Iran_razavi-khorasan (3,052)
+		addCommon("ranch"); // 332. 19,129 (indx 41.0%),  Us (18,823), Us_texas (5,227)
+		addCommon("juan"); // 333. 69,623 (indx 29.1%),  Mexico (18,720), Spain_andalusia (4,163)
+		addCommon("batista"); // 334. 19,560 (indx 100.0%),  Brazil (18,597), Brazil_sao-paulo (5,279)
+		addCommon("monte"); // 335. 46,470 (indx 35.6%),  Italy (18,487), Portugal_europe (5,142)
+		addCommon("grande"); // 336. 43,550 (indx 58.9%),  France (18,389), France_bourgogne-franche-comte (2,338)
+		addCommon("morelos"); // 337. 18,259 (indx 100.0%),  Mexico (18,244), Mexico_veracruz (2,199)
+		addCommon("don"); // 338. 32,545 (indx 100.0%),  Italy (18,120), Italy_lombardia (5,950)
+		addCommon("francesco"); // 339. 18,267 (indx 14.1%),  Italy (18,093), Italy_lombardia (2,863)
+		addCommon("vieira"); // 340. 20,099 (indx 100.0%),  Brazil (18,064), Brazil_sao-paulo (4,655)
+		addCommon("country"); // 341. 19,369 (indx 85.5%),  Us (18,004), Us_texas (1,706)
+		addCommon("hidalgo"); // 342. 18,738 (indx 100.0%),  Mexico (17,979), Mexico_veracruz (2,333)
+		addCommon("dias"); // 343. 20,703 (indx 100.0%),  Brazil (17,919), Brazil_sao-paulo (5,071)
+		addCommon("lóng"); // 344. 17,907 (indx 61.9%),  China (17,907), China_guangdong (3,103)
+		addCommon("coronel"); // 345. 24,069 (indx 100.0%),  Brazil (17,888), Brazil_sao-paulo (3,569)
+		addCommon("juárez"); // 346. 18,051 (indx 100.0%),  Mexico (17,871), Mexico_veracruz (2,510)
+		addCommon("sk."); // 347. 17,859 (indx 100.0%),  Turkey (17,859), Turkey_aegean (7,690)
+		addCommon("expressway"); // 348. 29,149 (indx 13.9%),  China (17,858), China_guangdong (2,062)
+		addCommon("ting"); // 349. 19,842 (indx 86.4%),  Japan (17,840), Japan_chubu (9,031)
+		addCommon("van"); // 350. 50,845 (indx 27.0%),  Netherlands (17,834), Vietnam_asia (16,243)
+		addCommon("woods"); // 351. 19,482 (indx 45.3%),  Us (17,826), Us_north-carolina (1,394)
+		addCommon("track"); // 352. 29,068 (indx 100.0%),  Australia-oceania (17,733), Australia-oceania_victoria (10,747)
+		addCommon("jiāng"); // 353. 17,599 (indx 62.9%),  China (17,599), China_jiangsu (3,029)
+		addCommon("xi"); // 354. 42,040 (indx 66.0%),  Taiwan (17,590), Taiwan_asia (17,590)
+		addCommon("hú"); // 355. 17,537 (indx 100.0%),  China (17,537), China_jiangsu (2,354)
+		addCommon("min"); // 356. 20,894 (indx 100.0%),  Taiwan (17,504), Taiwan_asia (17,504)
+		addCommon("sentier"); // 357. 29,280 (indx 100.0%),  France (17,498), Belgium_wallonia (6,794)
+		addCommon("travesía"); // 358. 17,522 (indx 100.0%),  Spain (17,469), Spain_castilla-leon (6,120)
+		addCommon("parkways"); // 359. 17,469 (indx 100.0%),  Us (17,457), Us_texas (1,917)
+		addCommon("in"); // 360. 25,237 (indx 8.3%),  Germany (17,394), Germany_nordrhein-westfalen (4,462)
+		addCommon("path"); // 361. 30,770 (indx 22.4%),  Us (17,370), Gb_england (2,738)
+		addCommon("barbosa"); // 362. 19,040 (indx 100.0%),  Brazil (17,257), Brazil_sao-paulo (4,246)
+		addCommon("três"); // 363. 17,337 (indx 100.0%),  Brazil (17,251), Brazil_sao-paulo (3,049)
+		addCommon("ko'chasi"); // 364. 17,511 (indx 100.0%),  Uzbekistan (17,226), Uzbekistan_asia (17,226)
+		addCommon("walnut"); // 365. 18,368 (indx 100.0%),  Us (17,157), Us_pennsylvania (1,520)
+		addCommon("wood"); // 366. 24,632 (indx 59.2%),  Us (17,095), Gb_england (4,960)
+		addCommon("travesia"); // 367. 17,113 (indx 100.0%),  Spain (17,080), Spain_castilla-leon (6,079)
+		addCommon("vereador"); // 368. 17,076 (indx 100.0%),  Brazil (17,076), Brazil_sao-paulo (3,800)
+		addCommon("elm"); // 369. 20,781 (indx 100.0%),  Us (17,060), Gb_england (2,199)
+		addCommon("sant"); // 370. 24,201 (indx 25.8%),  Spain (16,994), Spain_catalunya (10,685)
+		addCommon("fox"); // 371. 18,684 (indx 100.0%),  Us (16,980), Us_north-carolina (1,098)
+		addCommon("juarez"); // 372. 17,807 (indx 100.0%),  Mexico (16,966), Mexico_veracruz (2,429)
+		addCommon("نهج"); // 373. 18,330 (indx 100.0%),  Tunisia (16,931), Tunisia_africa (16,931)
+		addCommon("new"); // 374. 32,167 (indx 58.2%),  Us (16,923), Gb_england (5,848)
+		addCommon("nova"); // 375. 35,015 (indx 100.0%),  Brazil (16,913), Portugal_europe (9,197)
+		addCommon("zur"); // 376. 18,436 (indx 11.6%),  Germany (16,871), Germany_nordrhein-westfalen (3,659)
+		addCommon("khybn"); // 377. 17,129 (indx 100.0%),  Iran (16,868), Iran_tehran (1,537)
+		addCommon("rosa"); // 378. 36,718 (indx 100.0%),  Brazil (16,839), Brazil_sao-paulo (4,315)
+		addCommon("o"); // 379. 37,433 (indx 31.5%),  Spain (16,827), Spain_galicia (16,097)
+		addCommon("von"); // 380. 19,453 (indx 1.2%),  Germany (16,801), Germany_nordrhein-westfalen (4,303)
+		addCommon("mount"); // 381. 28,490 (indx 34.1%),  Us (16,776), Gb_england (3,685)
+		addCommon("gōng"); // 382. 16,756 (indx 51.9%),  China (16,756), China_guangdong (2,242)
+		addCommon("paul"); // 383. 31,498 (indx 100.0%),  France (16,743), France_occitania (2,112)
+		addCommon("mm"); // 384. 19,137 (indx 100.0%),  Iran (16,650), Iran_razavi-khorasan (2,682)
+		addCommon("sān"); // 385. 16,539 (indx 100.0%),  China (16,539), China_guangdong (4,188)
+		addCommon("nhj"); // 386. 17,025 (indx 100.0%),  Tunisia (16,456), Tunisia_africa (16,456)
+		addCommon("he"); // 387. 29,902 (indx 70.4%),  Taiwan (16,415), Taiwan_asia (16,415)
+		addCommon("xiang"); // 388. 23,864 (indx 77.0%),  Taiwan (16,360), Taiwan_asia (16,360)
+		addCommon("6th"); // 389. 21,543 (indx 100.0%),  Us (16,294), Us_florida (1,166)
+		addCommon("high"); // 390. 26,868 (indx 81.9%),  Us (16,267), Gb_england (6,811)
+		addCommon("deer"); // 391. 16,985 (indx 100.0%),  Us (16,230), Us_texas (1,183)
+		addCommon("sù"); // 392. 16,150 (indx 47.1%),  China (16,150), China_shandong (1,324)
+		addCommon("kalea"); // 393. 16,251 (indx 100.0%),  Spain (16,143), Spain_basque-country (11,682)
+		addCommon("louis"); // 394. 23,442 (indx 100.0%),  France (16,065), France_brittany (2,157)
+		addCommon("محمد"); // 395. 27,917 (indx 14.9%),  Egypt (16,027), Egypt_africa (16,027)
+		addCommon("servidão"); // 396. 15,980 (indx 100.0%),  Brazil (15,980), Brazil_santa-catarina (14,737)
+		addCommon("località"); // 397. 16,045 (indx 100.0%),  Italy (15,973), Italy_emilia-romagna (3,929)
+		addCommon("callejón"); // 398. 30,044 (indx 100.0%),  Mexico (15,970), Ecuador_southamerica (2,655)
+		addCommon("jardim"); // 399. 17,605 (indx 100.0%),  Brazil (15,968), Brazil_sao-paulo (6,564)
+		addCommon("mayo"); // 400. 25,131 (indx 100.0%),  Mexico (15,942), Mexico_veracruz (2,464)
+		addCommon("küç."); // 401. 15,939 (indx 100.0%),  Azerbaijan (15,939), Azerbaijan_asia (15,939)
+		addCommon("localita"); // 402. 16,009 (indx 100.0%),  Italy (15,937), Italy_emilia-romagna (3,916)
+		addCommon("school"); // 403. 27,336 (indx 63.8%),  Us (15,928), Gb_england (4,044)
+		addCommon("út"); // 404. 16,742 (indx 22.1%),  Hungary (15,878), Hungary_europe (15,878)
+		addCommon("huán"); // 405. 15,867 (indx 100.0%),  China (15,867), China_guangdong (2,107)
+		addCommon("segunda"); // 406. 23,297 (indx 100.0%),  Mexico (15,812), Mexico_mexico (3,054)
+		addCommon("lopes"); // 407. 19,311 (indx 100.0%),  Brazil (15,768), Brazil_sao-paulo (4,725)
+		addCommon("luigi"); // 408. 15,807 (indx 100.0%),  Italy (15,713), Italy_lombardia (3,542)
+		addCommon("mohamed"); // 409. 19,883 (indx 100.0%),  Egypt (15,708), Egypt_africa (15,708)
+		addCommon("oriente"); // 410. 23,244 (indx 100.0%),  Mexico (15,703), Mexico_puebla (4,628)
+		addCommon("линия"); // 411. 17,379 (indx 100.0%),  Russia (15,683), Russia_leningradskaya (5,301)
+		addCommon("praceta"); // 412. 15,859 (indx 100.0%),  Portugal (15,682), Portugal_europe (15,682)
+		addCommon("nagar"); // 413. 16,907 (indx 100.0%),  India (15,658), India_tamil-nadu (5,057)
+		addCommon("kuc."); // 414. 15,657 (indx 100.0%),  Azerbaijan (15,657), Azerbaijan_asia (15,657)
+		addCommon("heights"); // 415. 22,320 (indx 31.2%),  Us (15,643), Us_california (1,045)
+		addCommon("yáng"); // 416. 15,630 (indx 60.9%),  China (15,630), China_jiangsu (2,474)
+		addCommon("little"); // 417. 21,725 (indx 53.7%),  Us (15,517), Gb_england (3,214)
+		addCommon("ignacio"); // 418. 20,077 (indx 100.0%),  Mexico (15,514), Mexico_veracruz (1,985)
+		addCommon("washington"); // 419. 17,643 (indx 100.0%),  Us (15,446), Us_illinois (1,176)
+		addCommon("jīn"); // 420. 15,400 (indx 63.6%),  China (15,400), China_guangdong (2,169)
+		addCommon("liniia"); // 421. 16,898 (indx 100.0%),  Russia (15,367), Russia_leningradskaya (5,278)
+		addCommon("bei"); // 422. 32,244 (indx 55.8%),  Taiwan (15,312), Taiwan_asia (15,312)
+		addCommon("vicente"); // 423. 37,745 (indx 100.0%),  Brazil (15,303), Brazil_sao-paulo (4,039)
+		addCommon("ut"); // 424. 15,786 (indx 24.3%),  Hungary (15,292), Hungary_europe (15,292)
+		addCommon("vittorio"); // 425. 15,288 (indx 100.0%),  Italy (15,288), Italy_lombardia (2,931)
+		addCommon("hickory"); // 426. 15,480 (indx 100.0%),  Us (15,266), Us_texas (1,072)
+		addCommon("sunset"); // 427. 16,945 (indx 100.0%),  Us (15,239), Us_california (1,173)
+		addCommon("senhora"); // 428. 26,043 (indx 47.6%),  Brazil (15,102), Portugal_europe (10,572)
+		addCommon("sete"); // 429. 15,420 (indx 100.0%),  Brazil (15,063), Brazil_sao-paulo (2,390)
+		addCommon("ri"); // 430. 20,627 (indx 13.4%),  South-korea (15,039), South-korea_asia (15,039)
+		addCommon("callejon"); // 431. 29,609 (indx 100.0%),  Mexico (15,035), Ecuador_southamerica (2,591)
+		addCommon("résidence"); // 432. 15,990 (indx 19.0%),  France (14,990), France_hauts-de-france (2,708)
+		addCommon("giacomo"); // 433. 15,470 (indx 100.0%),  Italy (14,968), Italy_lombardia (3,675)
+		addCommon("nossa"); // 434. 23,338 (indx 100.0%),  Brazil (14,895), Portugal_europe (8,141)
+		addCommon("quatro"); // 435. 14,892 (indx 100.0%),  Brazil (14,851), Brazil_sao-paulo (2,610)
+		addCommon("poniente"); // 436. 20,682 (indx 100.0%),  Mexico (14,848), Mexico_puebla (4,645)
+		addCommon("machado"); // 437. 17,909 (indx 100.0%),  Brazil (14,843), Brazil_sao-paulo (3,302)
+		addCommon("qiao"); // 438. 20,106 (indx 90.8%),  Taiwan (14,842), Taiwan_asia (14,842)
+		addCommon("residence"); // 439. 17,314 (indx 19.1%),  France (14,801), France_hauts-de-france (2,692)
+		addCommon("ping"); // 440. 21,914 (indx 100.0%),  Taiwan (14,678), Taiwan_asia (14,678)
+		addCommon("yuan"); // 441. 27,456 (indx 67.5%),  Taiwan (14,666), Taiwan_asia (14,666)
+		addCommon("aux"); // 442. 16,593 (indx 3.2%),  France (14,652), France_centre-loire-valley (2,535)
+		addCommon("primera"); // 443. 16,729 (indx 100.0%),  Mexico (14,644), Mexico_mexico (2,875)
+		addCommon("antónio"); // 444. 15,794 (indx 100.0%),  Portugal (14,638), Portugal_europe (14,638)
+		addCommon("crest"); // 445. 15,801 (indx 100.0%),  Us (14,616), Us_california (1,913)
+		addCommon("eagle"); // 446. 16,314 (indx 100.0%),  Us (14,571), Us_texas (1,111)
+		addCommon("champ"); // 447. 16,014 (indx 29.1%),  France (14,566), France_auvergne-rhone-alpes (2,958)
+		addCommon("acesso"); // 448. 15,545 (indx 100.0%),  Brazil (14,557), Brazil_rio-grande-do-sul (2,168)
+		addCommon("b"); // 449. 60,466 (indx 60.0%),  Brazil (14,544), Carribean-archipelago-all_centralamerica (3,226)
+		addCommon("soares"); // 450. 16,334 (indx 100.0%),  Brazil (14,527), Brazil_sao-paulo (3,629)
+		addCommon("kyō"); // 451. 14,502 (indx 100.0%),  Japan (14,502), Japan_kanto (5,769)
+		addCommon("cherry"); // 452. 17,690 (indx 100.0%),  Us (14,492), Gb_england (1,812)
+		addCommon("văn"); // 453. 14,436 (indx 100.0%),  Vietnam (14,387), Vietnam_asia (14,387)
+		addCommon("circuito"); // 454. 14,997 (indx 100.0%),  Mexico (14,339), Mexico_guanajuato (2,332)
+		addCommon("paseo"); // 455. 33,966 (indx 100.0%),  Mexico (14,299), Carribean-archipelago-all_centralamerica (1,832)
+		addCommon("iv"); // 456. 22,976 (indx 100.0%),  Indonesia (14,286), Indonesia_jakarta-raya (3,658)
+		addCommon("augusto"); // 457. 19,451 (indx 100.0%),  Brazil (14,228), Brazil_sao-paulo (4,332)
+		addCommon("sebastião"); // 458. 15,867 (indx 100.0%),  Brazil (14,215), Brazil_sao-paulo (3,845)
+		addCommon("wu"); // 459. 29,409 (indx 71.3%),  Taiwan (14,198), Taiwan_asia (14,198)
+		addCommon("benedito"); // 460. 14,184 (indx 100.0%),  Brazil (14,184), Brazil_sao-paulo (7,389)
+		addCommon("jorge"); // 461. 24,506 (indx 100.0%),  Brazil (14,115), Brazil_sao-paulo (3,607)
+		addCommon("dorfstraße"); // 462. 15,087 (indx 100.0%),  Germany (14,094), Germany_bayern (2,015)
+		addCommon("بلوار"); // 463. 14,336 (indx 100.0%),  Iran (14,083), Iran_fars (2,566)
+		addCommon("camiño"); // 464. 14,070 (indx 100.0%),  Spain (14,070), Spain_galicia (14,043)
+		addCommon("feng"); // 465. 18,647 (indx 59.8%),  Taiwan (14,052), Taiwan_asia (14,052)
+		addCommon("جاده"); // 466. 15,943 (indx 100.0%),  Iran (14,049), Iran_mazandaran (1,288)
+		addCommon("ān"); // 467. 14,049 (indx 100.0%),  China (14,049), China_guangdong (1,643)
+		addCommon("mews"); // 468. 18,503 (indx 100.0%),  Gb (14,029), Gb_england (12,718)
+		addCommon("7th"); // 469. 17,835 (indx 100.0%),  Us (14,020), Us_florida (1,147)
+		addCommon("township"); // 470. 23,548 (indx 100.0%),  Us (13,904), Canada_alberta (7,897)
+		addCommon("fernandes"); // 471. 16,022 (indx 100.0%),  Brazil (13,888), Brazil_sao-paulo (3,986)
+		addCommon("servidao"); // 472. 13,882 (indx 100.0%),  Brazil (13,882), Brazil_santa-catarina (12,735)
+		addCommon("cinco"); // 473. 15,577 (indx 100.0%),  Brazil (13,874), Brazil_sao-paulo (2,291)
+		addCommon("số"); // 474. 13,828 (indx 100.0%),  Vietnam (13,828), Vietnam_asia (13,828)
+		addCommon("sebastiao"); // 475. 15,502 (indx 100.0%),  Brazil (13,819), Brazil_sao-paulo (3,748)
+		addCommon("line"); // 476. 33,406 (indx 38.0%),  Us (13,795), Canada_ontario (3,817)
+		addCommon("1-chome"); // 477. 13,755 (indx 1.9%),  Japan (13,755), Japan_kinki (3,461)
+		addCommon("лесная"); // 478. 16,677 (indx 100.0%),  Russia (13,750), Russia_moskovskaya-oblast (1,583)
+		addCommon("haji"); // 479. 16,551 (indx 100.0%),  Indonesia (13,703), Indonesia_jakarta-raya (5,741)
+		addCommon("pietro"); // 480. 13,868 (indx 100.0%),  Italy (13,687), Italy_lombardia (2,414)
+		addCommon("садовая"); // 481. 21,151 (indx 100.0%),  Russia (13,664), Russia_moskovskaya-oblast (1,147)
+		addCommon("2-chome"); // 482. 13,659 (indx 1.8%),  Japan (13,659), Japan_kinki (3,447)
+		addCommon("shí"); // 483. 13,650 (indx 52.0%),  China (13,650), China_guangdong (3,373)
+		addCommon("beach"); // 484. 20,765 (indx 49.9%),  Us (13,642), Us_new-york (1,463)
+		addCommon("pleasant"); // 485. 15,741 (indx 100.0%),  Us (13,626), Us_pennsylvania (906)
+		addCommon("rocha"); // 486. 16,025 (indx 100.0%),  Brazil (13,605), Brazil_sao-paulo (2,739)
+		addCommon("rose"); // 487. 20,778 (indx 100.0%),  Us (13,581), Gb_england (1,438)
+		addCommon("hauptstraße"); // 488. 15,588 (indx 100.0%),  Germany (13,575), Germany_bayern (2,776)
+		addCommon("passagem"); // 489. 13,570 (indx 100.0%),  Brazil (13,529), Brazil_para (9,362)
+		addCommon("ابو"); // 490. 17,071 (indx 7.0%),  Egypt (13,498), Egypt_africa (13,498)
+		addCommon("smith"); // 491. 16,024 (indx 100.0%),  Us (13,495), Us_new-york (962)
+		addCommon("ქუჩა"); // 492. 13,511 (indx 100.0%),  Georgia (13,491), Georgia_asia (13,491)
+		addCommon("crossing"); // 493. 14,916 (indx 31.3%),  Us (13,487), Us_texas (1,869)
+		addCommon("viela"); // 494. 16,120 (indx 100.0%),  Brazil (13,486), Brazil_sao-paulo (10,671)
+		addCommon("li"); // 495. 29,648 (indx 79.7%),  Taiwan (13,475), Taiwan_asia (13,475)
+		addCommon("na"); // 496. 42,517 (indx 7.7%),  Czech-republic (13,472), Ireland_europe (12,185)
+		addCommon("campos"); // 497. 16,937 (indx 100.0%),  Brazil (13,463), Brazil_sao-paulo (5,125)
+		addCommon("gou"); // 498. 14,232 (indx 100.0%),  China (13,419), China_liaoning (5,227)
+		addCommon("so"); // 499. 17,909 (indx 100.0%),  Vietnam (13,418), Vietnam_asia (13,418)
+		addCommon("carlo"); // 500. 13,906 (indx 100.0%),  Italy (13,410), Italy_lombardia (3,682)
+		addCommon("indian"); // 501. 13,732 (indx 78.1%),  Us (13,381), Us_arizona (1,013)
+		addCommon("villa"); // 502. 46,458 (indx 100.0%),  Mexico (13,372), France_ile-de-france (2,377)
+		addCommon("dorfstrasse"); // 503. 15,643 (indx 100.0%),  Germany (13,353), Germany_bayern (2,004)
+		addCommon("lee"); // 504. 14,925 (indx 100.0%),  Us (13,336), Us_alabama (1,850)
+		addCommon("club"); // 505. 16,834 (indx 58.0%),  Us (13,310), Us_florida (1,176)
+		addCommon("stone"); // 506. 14,910 (indx 100.0%),  Us (13,297), Us_texas (1,382)
+		addCommon("cemetery"); // 507. 15,217 (indx 48.4%),  Us (13,278), Us_kentucky (3,582)
+		addCommon("pinto"); // 508. 18,532 (indx 100.0%),  Brazil (13,260), Brazil_sao-paulo (3,848)
+		addCommon("qu"); // 509. 15,457 (indx 88.0%),  China (13,220), China_jiangsu (1,983)
+		addCommon("میدان"); // 510. 13,340 (indx 100.0%),  Iran (13,153), Iran_esfahan (2,593)
+		addCommon("acres"); // 511. 14,286 (indx 45.3%),  Us (13,127), Us_north-carolina (1,373)
+		addCommon("jiā"); // 512. 13,091 (indx 42.9%),  China (13,091), China_jiangsu (1,916)
+		addCommon("c"); // 513. 45,880 (indx 67.0%),  Brazil (13,084), Carribean-archipelago-all_centralamerica (2,344)
+		addCommon("haut"); // 514. 14,301 (indx 100.0%),  France (13,010), France_auvergne-rhone-alpes (1,723)
+		addCommon("hauptstrasse"); // 515. 15,876 (indx 100.0%),  Germany (13,001), Germany_bayern (2,749)
+		addCommon("contrada"); // 516. 13,214 (indx 100.0%),  Italy (12,969), Italy_sicilia (2,047)
+		addCommon("fú"); // 517. 12,966 (indx 100.0%),  China (12,966), China_guangdong (1,908)
+		addCommon("huá"); // 518. 12,930 (indx 100.0%),  China (12,930), China_guangdong (2,756)
+		addCommon("guang"); // 519. 15,458 (indx 100.0%),  Taiwan (12,922), Taiwan_asia (12,922)
+		addCommon("para"); // 520. 15,009 (indx 100.0%),  Brazil (12,907), Brazil_bahia (2,792)
+		addCommon("sentiero"); // 521. 13,484 (indx 100.0%),  Italy (12,899), Italy_lombardia (3,094)
+		addCommon("traversa"); // 522. 13,001 (indx 100.0%),  Italy (12,843), Italy_campania (3,721)
+		addCommon("gonçalves"); // 523. 14,569 (indx 100.0%),  Brazil (12,810), Brazil_sao-paulo (3,280)
+		addCommon("john"); // 524. 22,379 (indx 100.0%),  Us (12,806), Gb_england (1,492)
+		addCommon("liesnaia"); // 525. 13,004 (indx 100.0%),  Russia (12,785), Russia_moskovskaya-oblast (1,572)
+		addCommon("dom"); // 526. 22,573 (indx 100.0%),  Brazil (12,780), Portugal_europe (9,092)
+		addCommon("laurel"); // 527. 16,716 (indx 100.0%),  Us (12,778), Us_pennsylvania (1,220)
+		addCommon("zheng"); // 528. 14,071 (indx 100.0%),  Taiwan (12,741), Taiwan_asia (12,741)
+		addCommon("cruz"); // 529. 39,203 (indx 100.0%),  Brazil (12,723), Portugal_europe (4,086)
+		addCommon("u"); // 530. 19,647 (indx 13.9%),  Czech-republic (12,707), Czech-republic_stredni-cechy (2,964)
+		addCommon("dem"); // 531. 13,034 (indx 8.4%),  Germany (12,696), Germany_nordrhein-westfalen (3,858)
+		addCommon("bend"); // 532. 13,701 (indx 100.0%),  Us (12,612), Us_texas (3,784)
+		addCommon("dall"); // 533. 12,588 (indx 100.0%),  France (12,588), France_brittany (9,104)
+		addCommon("jana"); // 534. 13,906 (indx 3.7%),  Poland (12,541), Poland_silesian (2,025)
+		addCommon("highland"); // 535. 13,325 (indx 100.0%),  Us (12,517), Us_texas (878)
+		addCommon("sadovaia"); // 536. 15,019 (indx 100.0%),  Russia (12,508), Russia_moskovskaya-oblast (1,123)
+		addCommon("estates"); // 537. 13,473 (indx 36.6%),  Us (12,499), Us_texas (1,236)
+		addCommon("domingos"); // 538. 15,013 (indx 100.0%),  Brazil (12,495), Brazil_sao-paulo (3,457)
+		addCommon("väg"); // 539. 12,984 (indx 100.0%),  Sweden (12,495), Sweden_skane (2,327)
+		addCommon("big"); // 540. 13,647 (indx 62.6%),  Us (12,462), Us_california (1,205)
+		addCommon("vag"); // 541. 12,565 (indx 100.0%),  Sweden (12,438), Sweden_skane (2,328)
+		addCommon("georges"); // 542. 15,630 (indx 100.0%),  France (12,401), France_new-aquitaine (1,555)
+		addCommon("новая"); // 543. 16,170 (indx 100.0%),  Russia (12,370), Russia_moskovskaya-oblast (752)
+		addCommon("rindō"); // 544. 12,355 (indx 100.0%),  Japan (12,355), Japan_hokkaido (3,690)
+		addCommon("island"); // 545. 17,190 (indx 53.1%),  Us (12,333), Us_florida (1,434)
+		addCommon("goncalves"); // 546. 14,128 (indx 100.0%),  Brazil (12,329), Brazil_sao-paulo (3,180)
+		addCommon("roma"); // 547. 14,378 (indx 100.0%),  Italy (12,324), Italy_lombardia (2,449)
+		addCommon("andrade"); // 548. 14,346 (indx 100.0%),  Brazil (12,304), Brazil_sao-paulo (3,192)
+		addCommon("chang"); // 549. 20,860 (indx 65.9%),  Taiwan (12,302), Taiwan_asia (12,302)
+		addCommon("orchard"); // 550. 19,011 (indx 100.0%),  Us (12,265), Gb_england (4,943)
+		addCommon("fonte"); // 551. 17,012 (indx 100.0%),  Portugal (12,257), Portugal_europe (12,257)
+		addCommon("landing"); // 552. 13,276 (indx 100.0%),  Us (12,249), Us_virginia (1,106)
+		addCommon("zapata"); // 553. 12,666 (indx 100.0%),  Mexico (12,226), Mexico_veracruz (1,822)
+		addCommon("prolongación"); // 554. 14,450 (indx 100.0%),  Mexico (12,210), Mexico_mexico (1,286)
+		addCommon("8th"); // 555. 15,387 (indx 100.0%),  Us (12,191), Us_florida (1,075)
+		addCommon("fēng"); // 556. 12,160 (indx 100.0%),  China (12,160), China_guangdong (1,742)
+		addCommon("au"); // 557. 17,811 (indx 26.3%),  France (12,158), France_centre-loire-valley (2,111)
+		addCommon("melo"); // 558. 13,564 (indx 100.0%),  Brazil (12,133), Brazil_minas-gerais (2,133)
+		addCommon("jdh"); // 559. 12,371 (indx 100.0%),  Iran (12,095), Iran_mazandaran (1,062)
+		addCommon("lincoln"); // 560. 13,807 (indx 100.0%),  Us (12,053), Us_illinois (1,089)
+		addCommon("maría"); // 561. 26,981 (indx 100.0%),  Mexico (12,050), Spain_andalusia (1,564)
+		addCommon("vieux"); // 562. 14,201 (indx 64.2%),  France (12,034), France_auvergne-rhone-alpes (1,987)
+		addCommon("y"); // 563. 45,459 (indx 18.2%),  Spain (12,033), Gb_wales (8,688)
+		addCommon("presidente"); // 564. 16,465 (indx 100.0%),  Brazil (12,021), Brazil_sao-paulo (1,887)
+		addCommon("petite"); // 565. 13,602 (indx 100.0%),  France (12,015), France_pays-de-la-loire (2,582)
+		addCommon("king"); // 566. 20,051 (indx 56.9%),  Us (12,012), Gb_england (1,779)
+		addCommon("castro"); // 567. 21,775 (indx 100.0%),  Brazil (11,989), Brazil_sao-paulo (3,021)
+		addCommon("conjunto"); // 568. 12,793 (indx 100.0%),  Brazil (11,989), Brazil_distrito-federal (9,855)
+		addCommon("cheng"); // 569. 17,616 (indx 62.4%),  Taiwan (11,940), Taiwan_asia (11,940)
+		addCommon("แยก"); // 570. 11,931 (indx 100.0%),  Thailand (11,931), Thailand_asia (11,931)
+		addCommon("birch"); // 571. 15,080 (indx 100.0%),  Us (11,890), Gb_england (1,585)
+		addCommon("charles"); // 572. 24,852 (indx 100.0%),  France (11,874), France_ile-de-france (1,349)
+		addCommon("silver"); // 573. 13,996 (indx 100.0%),  Us (11,865), Us_california (1,383)
+		addCommon("kolonia"); // 574. 11,973 (indx 100.0%),  Poland (11,861), Poland_lublin (2,816)
+		addCommon("camp"); // 575. 18,034 (indx 41.5%),  Us (11,847), Us_california (922)
+		addCommon("hăi"); // 576. 11,845 (indx 71.6%),  China (11,845), China_shandong (1,806)
+		addCommon("champs"); // 577. 13,344 (indx 100.0%),  France (11,832), France_new-aquitaine (1,708)
+		addCommon("square"); // 578. 40,131 (indx 22.6%),  France (11,821), Gb_england (7,359)
+		addCommon("bas"); // 579. 13,666 (indx 100.0%),  France (11,816), France_auvergne-rhone-alpes (1,695)
+		addCommon("shi"); // 580. 29,778 (indx 78.1%),  Taiwan (11,807), Taiwan_asia (11,807)
+		addCommon("araujo"); // 581. 12,749 (indx 100.0%),  Brazil (11,804), Brazil_sao-paulo (1,988)
+		addCommon("spur"); // 582. 13,113 (indx 100.0%),  Us (11,781), Us_california (2,495)
+		addCommon("dels"); // 583. 12,672 (indx 1.9%),  Spain (11,771), Spain_catalunya (6,910)
+		addCommon("mairie"); // 584. 11,817 (indx 95.6%),  France (11,719), France_occitania (1,675)
+		addCommon("teixeira"); // 585. 13,403 (indx 100.0%),  Brazil (11,715), Brazil_sao-paulo (2,671)
+		addCommon("fŭ"); // 586. 11,700 (indx 100.0%),  China (11,700), China_guangdong (1,533)
+		addCommon("gong"); // 587. 15,922 (indx 62.2%),  Taiwan (11,687), Taiwan_asia (11,687)
+		addCommon("comunale"); // 588. 11,680 (indx 100.0%),  Italy (11,680), Italy_puglia (3,282)
+		addCommon("cadde"); // 589. 11,663 (indx 100.0%),  Turkey (11,627), Turkey_central-anatolia (6,948)
+		addCommon("بن"); // 590. 38,103 (indx 100.0%),  Saudi-arabia (11,620), Saudi-arabia_asia (11,620)
+		addCommon("blok"); // 591. 12,497 (indx 100.0%),  Indonesia (11,566), Indonesia_banten (2,689)
+		addCommon("fork"); // 592. 11,530 (indx 44.4%),  Us (11,530), Us_kentucky (2,241)
+		addCommon("jacques"); // 593. 13,746 (indx 100.0%),  France (11,515), France_new-aquitaine (1,432)
+		addCommon("rond"); // 594. 13,619 (indx 100.0%),  France (11,478), France_occitania (1,849)
+		addCommon("seis"); // 595. 12,339 (indx 100.0%),  Brazil (11,474), Brazil_sao-paulo (1,884)
+		addCommon("quadra"); // 596. 11,602 (indx 100.0%),  Brazil (11,472), Brazil_distrito-federal (6,172)
+		addCommon("vignes"); // 597. 11,802 (indx 100.0%),  France (11,461), France_auvergne-rhone-alpes (1,919)
+		addCommon("plaça"); // 598. 12,624 (indx 27.1%),  Spain (11,402), Spain_catalunya (7,306)
+		addCommon("manuel"); // 599. 48,652 (indx 100.0%),  Mexico (11,396), Portugal_europe (10,339)
+		addCommon("avinguda"); // 600. 11,751 (indx 100.0%),  Spain (11,391), Spain_catalunya (5,988)
+		addCommon("ngách"); // 601. 11,314 (indx 100.0%),  Vietnam (11,314), Vietnam_asia (11,314)
+		addCommon("water"); // 602. 14,492 (indx 100.0%),  Us (11,285), Gb_england (1,318)
+		addCommon("emiliano"); // 603. 11,785 (indx 100.0%),  Mexico (11,264), Mexico_veracruz (1,745)
+		addCommon("jesus"); // 604. 21,458 (indx 100.0%),  Brazil (11,248), Brazil_sao-paulo (2,628)
+		addCommon("gare"); // 605. 12,713 (indx 100.0%),  France (11,242), France_auvergne-rhone-alpes (1,421)
+		addCommon("manor"); // 606. 18,727 (indx 100.0%),  Us (11,238), Gb_england (4,688)
+		addCommon("ngach"); // 607. 11,229 (indx 100.0%),  Vietnam (11,229), Vietnam_asia (11,229)
+		addCommon("real"); // 608. 24,774 (indx 100.0%),  Spain (11,212), Spain_castilla-leon (4,211)
+		addCommon("meadows"); // 609. 14,339 (indx 100.0%),  Us (11,212), Gb_england (1,579)
+		addCommon("wŭ"); // 610. 11,204 (indx 100.0%),  China (11,204), China_guangdong (1,734)
+		addCommon("moreira"); // 611. 12,978 (indx 100.0%),  Brazil (11,162), Brazil_sao-paulo (2,987)
+		addCommon("chestnut"); // 612. 13,799 (indx 100.0%),  Us (11,157), Gb_england (1,787)
+		addCommon("black"); // 613. 13,939 (indx 100.0%),  Us (11,137), Us_california (958)
+		addCommon("valle"); // 614. 28,317 (indx 100.0%),  Mexico (11,118), Mexico_jalisco (1,709)
+		addCommon("range"); // 615. 14,469 (indx 100.0%),  Canada (11,094), Canada_alberta (10,359)
+		addCommon("guerrero"); // 616. 12,224 (indx 100.0%),  Mexico (11,090), Mexico_veracruz (1,340)
+		addCommon("завулак"); // 617. 13,444 (indx 100.0%),  Belarus (11,071), Belarus_minsk (2,939)
+		addCommon("railroad"); // 618. 11,080 (indx 100.0%),  Us (11,070), Us_pennsylvania (836)
+		addCommon("degli"); // 619. 11,211 (indx 100.0%),  Italy (11,064), Italy_lombardia (1,374)
+		addCommon("placa"); // 620. 11,165 (indx 29.7%),  Spain (11,049), Spain_catalunya (7,231)
+		addCommon("píng"); // 621. 11,047 (indx 100.0%),  China (11,047), China_guangdong (1,663)
+		addCommon("viaduct"); // 622. 12,050 (indx 100.0%),  Us (11,042), Us_california (8,217)
+		addCommon("aleea"); // 623. 11,172 (indx 100.0%),  Romania (11,031), Romania_europe (11,031)
+		addCommon("sainte"); // 624. 14,817 (indx 13.0%),  France (11,013), Canada_quebec (2,028)
+		addCommon("geraldo"); // 625. 11,017 (indx 100.0%),  Brazil (11,001), Brazil_minas-gerais (3,957)
+		addCommon("bluff"); // 626. 11,453 (indx 100.0%),  Us (10,975), Us_texas (1,519)
+		addCommon("zavulak"); // 627. 11,010 (indx 100.0%),  Belarus (10,972), Belarus_minsk (2,914)
+		addCommon("vicinale"); // 628. 10,995 (indx 100.0%),  Italy (10,960), Italy_puglia (3,799)
+		addCommon("tun"); // 629. 13,036 (indx 100.0%),  China (10,950), China_heilongjiang (4,603)
+		addCommon("james"); // 630. 16,484 (indx 100.0%),  Us (10,923), Gb_england (1,603)
+		addCommon("henri"); // 631. 13,394 (indx 100.0%),  France (10,903), France_new-aquitaine (1,300)
+		addCommon("maio"); // 632. 16,467 (indx 100.0%),  Brazil (10,889), Portugal_europe (5,345)
+		addCommon("wen"); // 633. 12,736 (indx 100.0%),  Taiwan (10,879), Taiwan_asia (10,879)
+		addCommon("luis"); // 634. 47,712 (indx 100.0%),  Brazil (10,848), Portugal_europe (4,623)
+		addCommon("dao"); // 635. 21,070 (indx 82.0%),  Taiwan (10,833), Taiwan_asia (10,833)
+		addCommon("prolongacion"); // 636. 13,151 (indx 100.0%),  Mexico (10,801), Mexico_mexico (1,110)
+		addCommon("hidden"); // 637. 11,126 (indx 100.0%),  Us (10,796), Us_texas (1,122)
+		addCommon("hameau"); // 638. 11,377 (indx 100.0%),  France (10,792), France_normandy (2,227)
+		addCommon("professora"); // 639. 11,789 (indx 100.0%),  Brazil (10,755), Brazil_sao-paulo (2,848)
+		addCommon("ville"); // 640. 13,266 (indx 100.0%),  France (10,748), France_brittany (4,513)
+		addCommon("v"); // 641. 24,670 (indx 18.6%),  Indonesia (10,723), Indonesia_jakarta-raya (2,650)
+		addCommon("yong"); // 642. 12,970 (indx 100.0%),  Taiwan (10,717), Taiwan_asia (10,717)
+		addCommon("mario"); // 643. 18,154 (indx 100.0%),  Brazil (10,716), Brazil_sao-paulo (3,584)
+		addCommon("platz"); // 644. 13,141 (indx 7.2%),  Germany (10,705), Germany_nordrhein-westfalen (2,273)
+		addCommon("national"); // 645. 21,117 (indx 85.3%),  Us (10,673), Us_oregon (3,737)
+		addCommon("اباد"); // 646. 11,873 (indx 100.0%),  Iran (10,671), Iran_razavi-khorasan (1,262)
+		addCommon("ruta"); // 647. 28,220 (indx 100.0%),  Chile (10,645), Paraguay_southamerica (2,322)
+		addCommon("johnson"); // 648. 11,812 (indx 100.0%),  Us (10,595), Us_georgia (634)
+		addCommon("shore"); // 649. 12,024 (indx 100.0%),  Us (10,591), Us_new-york (1,178)
+		addCommon("long"); // 650. 40,523 (indx 70.9%),  Taiwan (10,567), Taiwan_asia (10,567)
+		addCommon("town"); // 651. 19,578 (indx 47.7%),  Us (10,566), Pakistan_asia (2,954)
+		addCommon("shady"); // 652. 10,841 (indx 100.0%),  Us (10,547), Us_texas (1,345)
+		addCommon("hóng"); // 653. 10,510 (indx 100.0%),  China (10,510), China_jiangsu (1,549)
+		addCommon("sì"); // 654. 10,506 (indx 100.0%),  China (10,506), China_guangdong (2,329)
+		addCommon("puits"); // 655. 10,872 (indx 100.0%),  France (10,498), France_new-aquitaine (2,330)
+		addCommon("branco"); // 656. 11,976 (indx 100.0%),  Brazil (10,483), Brazil_sao-paulo (2,038)
+		addCommon("pre"); // 657. 12,309 (indx 38.3%),  France (10,481), France_auvergne-rhone-alpes (2,919)
+		addCommon("spruce"); // 658. 11,562 (indx 100.0%),  Us (10,465), Us_pennsylvania (1,091)
+		addCommon("9th"); // 659. 13,126 (indx 100.0%),  Us (10,447), Us_florida (984)
+		addCommon("ch'y"); // 660. 10,474 (indx 100.0%),  Thailand (10,435), Thailand_asia (10,435)
+		addCommon("cunha"); // 661. 11,601 (indx 100.0%),  Brazil (10,423), Brazil_sao-paulo (2,522)
+		addCommon("dojazd"); // 662. 10,443 (indx 100.0%),  Poland (10,417), Poland_west-pomeranian (3,321)
+		addCommon("bn"); // 663. 16,733 (indx 100.0%),  Iran (10,412), Tunisia_africa (2,130)
+		addCommon("xiăo"); // 664. 10,409 (indx 42.4%),  China (10,409), China_beijing (3,708)
+		addCommon("et"); // 665. 11,863 (indx 5.6%),  France (10,400), France_new-aquitaine (1,252)
+		addCommon("yù"); // 666. 10,399 (indx 52.8%),  China (10,399), China_guangdong (1,283)
+		addCommon("fm"); // 667. 10,410 (indx 100.0%),  Us (10,387), Us_texas (10,387)
+		addCommon("pré"); // 668. 12,047 (indx 37.6%),  France (10,338), France_auvergne-rhone-alpes (2,906)
+		addCommon("rruga"); // 669. 11,426 (indx 100.0%),  Albania (10,317), Albania_europe (10,317)
+		addCommon("trace"); // 670. 21,098 (indx 100.0%),  Us (10,303), Carribean-archipelago-all_centralamerica (5,357)
+		addCommon("sheng"); // 671. 13,875 (indx 100.0%),  Taiwan (10,297), Taiwan_asia (10,297)
+		addCommon("tres"); // 672. 16,036 (indx 100.0%),  Brazil (10,283), Brazil_sao-paulo (1,972)
+		addCommon("hacienda"); // 673. 13,301 (indx 100.0%),  Mexico (10,261), Mexico_mexico (1,602)
+		addCommon("flores"); // 674. 24,174 (indx 100.0%),  Mexico (10,236), Portugal_europe (2,376)
+		addCommon("көшесі"); // 675. 10,274 (indx 100.0%),  Kazakhstan (10,235), Kazakhstan_asia (10,235)
+		addCommon("garden"); // 676. 19,044 (indx 61.3%),  Us (10,231), Pakistan_asia (2,941)
+		addCommon("qīng"); // 677. 10,216 (indx 100.0%),  China (10,216), China_jiangsu (1,308)
+		addCommon("ρι"); // 678. 10,842 (indx 100.0%),  South-korea (10,206), South-korea_asia (10,206)
+		addCommon("ren"); // 679. 11,657 (indx 100.0%),  Taiwan (10,203), Taiwan_asia (10,203)
+		addCommon("3-chome"); // 680. 10,167 (indx 100.0%),  Japan (10,167), Japan_kinki (2,600)
+		addCommon("marques"); // 681. 14,880 (indx 100.0%),  Brazil (10,158), Portugal_europe (2,916)
+		addCommon("mín"); // 682. 10,315 (indx 100.0%),  China (10,155), China_guangdong (1,397)
+		addCommon("alez"); // 683. 10,154 (indx 100.0%),  France (10,154), France_brittany (7,009)
+		addCommon("sınırı"); // 684. 10,195 (indx 100.0%),  Turkey (10,143), Turkey_central-anatolia (2,881)
+		addCommon("zhăng"); // 685. 10,142 (indx 100.0%),  China (10,142), China_jiangsu (1,213)
+		addCommon("bear"); // 686. 10,539 (indx 100.0%),  Us (10,136), Us_california (933)
+		addCommon("jardins"); // 687. 11,061 (indx 100.0%),  France (10,115), France_auvergne-rhone-alpes (1,596)
+		addCommon("raimundo"); // 688. 10,412 (indx 100.0%),  Brazil (10,107), Brazil_ceara (1,719)
+		addCommon("ramos"); // 689. 14,885 (indx 100.0%),  Brazil (10,099), Brazil_sao-paulo (2,723)
+		addCommon("بست"); // 690. 10,131 (indx 100.0%),  Iran (10,083), Iran_esfahan (1,238)
+		addCommon("holly"); // 691. 12,081 (indx 100.0%),  Us (10,060), Gb_england (1,553)
+		addCommon("oito"); // 692. 10,063 (indx 100.0%),  Brazil (10,037), Brazil_goias (1,648)
+		addCommon("she"); // 693. 12,670 (indx 86.6%),  China (10,004), Taiwan_asia (2,490)
+		addCommon("prairie"); // 694. 21,014 (indx 100.0%),  Us (10,002), Carribean-archipelago-all_centralamerica (4,199)
+		addCommon("blwr"); // 695. 10,142 (indx 100.0%),  Iran (9,982), Iran_fars (1,921)
+	}
+	
+	// Calculated using index_words_dashboard.html sorted by Top in Country!
+	private void addCalculatedPoiCommonWords() {
+		addCommon("de"); // 1. 3,760,700 (indx 10.0%),  France (1,140,508), France_auvergne-rhone-alpes (167,702)
+		addCommon("la"); // 2. 1,781,270 (indx 13.6%),  France (870,665), France_auvergne-rhone-alpes (112,278)
+		addCommon("creek"); // 3. 1,289,375 (indx 23.6%),  Us (805,624), Canada_british-columbia (176,529)
+		addCommon("le"); // 4. 568,479 (indx 15.5%),  France (486,394), France_auvergne-rhone-alpes (74,509)
+		addCommon("du"); // 5. 479,083 (indx 16.9%),  France (362,613), France_auvergne-rhone-alpes (59,734)
+		addCommon("les"); // 6. 400,343 (indx 6.2%),  France (347,291), France_auvergne-rhone-alpes (59,808)
+		addCommon("des"); // 7. 385,842 (indx 5.5%),  France (277,690), France_auvergne-rhone-alpes (46,878)
+		addCommon("saint"); // 8. 361,167 (indx 24.3%),  France (244,330), France_auvergne-rhone-alpes (36,016)
+		addCommon("church"); // 9. 356,869 (indx 25.0%),  Us (241,014), Gb_england (31,794)
+		addCommon("park"); // 10. 606,519 (indx 17.7%),  Us (237,228), Gb_england (55,523)
+		addCommon("di"); // 11. 277,455 (indx 9.0%),  Italy (236,913), Italy_lombardia (35,566)
+		addCommon("road"); // 12. 623,859 (indx 19.9%),  Us (228,759), Gb_england (110,805)
+		addCommon("del"); // 13. 487,575 (indx 11.8%),  Spain (224,826), Spain_catalunya (40,859)
+		addCommon("do"); // 14. 372,412 (indx 14.4%),  Brazil (224,026), Portugal_europe (79,496)
+		addCommon("lù"); // 15. 222,619 (indx 41.2%),  China (222,619), China_shanghai (52,404)
+		addCommon("river"); // 16. 570,317 (indx 22.6%),  Us (209,119), Canada_british-columbia (35,749)
+		addCommon("tongass"); // 17. 183,850 (indx 100.0%),  Us (183,504), Us_alaska (183,504)
+		addCommon("ruisseau"); // 18. 225,742 (indx 10.3%),  France (175,471), France_occitania (39,250)
+		addCommon("cemetery"); // 19. 197,290 (indx 22.6%),  Us (171,656), Us_georgia (15,829)
+		addCommon("street"); // 20. 300,364 (indx 23.8%),  Us (169,373), Gb_england (30,217)
+		addCommon("el"); // 21. 475,779 (indx 8.6%),  Spain (168,874), Spain_castilla-leon (40,601)
+		addCommon("cūn"); // 22. 167,282 (indx 47.2%),  China (167,282), China_guangdong (26,369)
+		addCommon("lake"); // 23. 259,015 (indx 20.9%),  Us (163,649), Canada_ontario (26,266)
+		addCommon("educativa"); // 24. 160,782 (indx 9.3%),  Peru (150,746), Peru_southamerica (150,746)
+		addCommon("yuán"); // 25. 148,495 (indx 35.3%),  China (148,495), China_guangdong (18,062)
+		addCommon("the"); // 26. 466,598 (indx 22.4%),  Us (148,176), Gb_england (111,910)
+		addCommon("da"); // 27. 332,696 (indx 20.1%),  Brazil (147,439), Portugal_europe (77,616)
+		addCommon("school"); // 28. 531,711 (indx 12.8%),  Us (144,301), Gb_england (38,143)
+		addCommon("of"); // 29. 402,511 (indx 18.1%),  Us (141,428), Gb_england (21,890)
+		addCommon("a"); // 30. 457,959 (indx 28.1%),  France (139,409), Spain_galicia (34,771)
+		addCommon("xiàn"); // 31. 138,432 (indx 28.0%),  China (138,432), China_shandong (16,546)
+		addCommon("gōng"); // 32. 138,431 (indx 23.7%),  China (138,431), China_shandong (19,476)
+		addCommon("straße"); // 33. 151,084 (indx 2.5%),  Germany (136,668), Germany_nordrhein-westfalen (27,074)
+		addCommon("strasse"); // 34. 147,822 (indx 2.6%),  Germany (134,472), Germany_nordrhein-westfalen (26,724)
+		addCommon("expressway"); // 35. 195,576 (indx 11.9%),  China (133,669), China_sichuan (13,480)
+		addCommon("branch"); // 36. 160,065 (indx 24.4%),  Us (129,457), Us_north-carolina (29,338)
+		addCommon("via"); // 37. 176,155 (indx 10.7%),  Italy (126,322), Italy_lombardia (27,211)
+		addCommon("center"); // 38. 238,152 (indx 10.4%),  Us (125,187), Us_california (14,254)
+		addCommon("gāo"); // 39. 124,294 (indx 45.2%),  China (124,294), China_henan (10,245)
+		addCommon("rio"); // 40. 295,622 (indx 17.1%),  Brazil (120,420), Brazil_espirito-santo (33,439)
+		addCommon("avenue"); // 41. 204,639 (indx 19.3%),  Us (119,362), Us_california (23,178)
+		addCommon("dà"); // 42. 118,927 (indx 39.8%),  China (118,927), China_zhejiang (12,594)
+		addCommon("xīn"); // 43. 117,293 (indx 41.9%),  China (117,293), China_jiangsu (16,011)
+		addCommon("jiā"); // 44. 115,173 (indx 37.6%),  China (115,173), China_zhejiang (19,418)
+		addCommon("trail"); // 45. 177,131 (indx 22.7%),  Us (114,839), Us_california (7,587)
+		addCommon("sù"); // 46. 113,909 (indx 45.1%),  China (113,909), China_henan (9,617)
+		addCommon("qū"); // 47. 112,940 (indx 35.2%),  China (112,940), China_shandong (15,904)
+		addCommon("am"); // 48. 136,018 (indx 4.8%),  Germany (112,696), Germany_nordrhein-westfalen (24,102)
+		addCommon("zhōng"); // 49. 107,211 (indx 32.0%),  China (107,211), China_jiangsu (12,273)
+		addCommon("north"); // 50. 185,547 (indx 36.6%),  Us (106,212), Australia-oceania_new-south-wales (16,414)
+		addCommon("corrego"); // 51. 104,419 (indx 24.2%),  Brazil (104,282), Brazil_espirito-santo (52,339)
+		addCommon("córrego"); // 52. 104,363 (indx 23.4%),  Brazil (104,242), Brazil_espirito-santo (52,459)
+		addCommon("national"); // 53. 223,733 (indx 48.3%),  Us (101,013), Us_alaska (45,080)
+		addCommon("shān"); // 54. 100,358 (indx 34.4%),  China (100,358), China_shandong (18,685)
+		addCommon("and"); // 55. 277,779 (indx 100.0%),  Us (100,234), Gb_england (30,997)
+		addCommon("forest"); // 56. 134,980 (indx 45.3%),  Us (99,918), Us_alaska (37,653)
+		addCommon("dōng"); // 57. 99,023 (indx 44.0%),  China (99,023), China_shandong (18,681)
+		addCommon("xī"); // 58. 98,380 (indx 43.9%),  China (98,380), China_zhejiang (11,801)
+		addCommon("hé"); // 59. 98,364 (indx 42.5%),  China (98,261), China_jiangsu (11,592)
+		addCommon("und"); // 60. 112,932 (indx 14.4%),  Germany (97,839), Germany_nordrhein-westfalen (17,143)
+		addCommon("south"); // 61. 156,813 (indx 32.1%),  Us (96,757), Gb_england (10,841)
+		addCommon("los"); // 62. 215,985 (indx 5.1%),  Spain (95,961), Spain_castilla-leon (24,518)
+		addCommon("gawa"); // 63. 94,463 (indx 4.9%),  Japan (94,463), Japan_hokkaido (20,840)
+		addCommon("w"); // 64. 137,758 (indx 5.9%),  Poland (93,776), Poland_masovian (10,423)
+		addCommon("west"); // 65. 176,279 (indx 30.9%),  Us (93,214), Gb_england (13,894)
+		addCommon("nán"); // 66. 91,302 (indx 44.6%),  China (91,302), China_jiangsu (11,163)
+		addCommon("der"); // 67. 120,470 (indx 3.4%),  Germany (90,844), Germany_nordrhein-westfalen (18,952)
+		addCommon("state"); // 68. 115,275 (indx 37.3%),  Us (90,264), Us_minnesota (8,559)
+		addCommon("chéng"); // 69. 87,176 (indx 33.1%),  China (87,176), China_shandong (9,317)
+		addCommon("shì"); // 70. 85,574 (indx 21.9%),  China (85,574), China_guangdong (10,735)
+		addCommon("las"); // 71. 181,858 (indx 3.7%),  Spain (83,783), Spain_castilla-leon (25,785)
+		addCommon("al"); // 72. 277,784 (indx 3.5%),  Yemen (82,059), Yemen_asia (82,059)
+		addCommon("at"); // 73. 153,601 (indx 10.9%),  Us (82,018), Canada_british-columbia (16,033)
+		addCommon("east"); // 74. 151,524 (indx 36.1%),  Us (80,771), Australia-oceania_new-south-wales (14,939)
+		addCommon("no"); // 75. 155,465 (indx 17.2%),  Japan (79,971), Japan_kanto (22,549)
+		addCommon("xiăo"); // 76. 78,126 (indx 44.0%),  China (78,126), China_shandong (10,706)
+		addCommon("chăng"); // 77. 77,165 (indx 25.6%),  China (77,165), China_shandong (11,071)
+		addCommon("no."); // 78. 77,044 (indx 100.0%),  Peru (76,123), Peru_southamerica (76,123)
+		addCommon("."); // 79. 540,717 (indx 100.0%),  France (76,003), France_auvergne-rhone-alpes (41,531)
+		addCommon("institución"); // 80. 78,366 (indx 9.2%),  Peru (75,382), Peru_southamerica (75,382)
+		addCommon("institucion"); // 81. 79,578 (indx 9.2%),  Peru (75,315), Peru_southamerica (75,315)
+		addCommon("san"); // 82. 402,505 (indx 32.7%),  Italy (74,693), Colombia_southamerica (19,263)
+		addCommon("улица"); // 83. 91,029 (indx 6.1%),  Russia (74,455), Russia_moskovskaya-oblast (12,049)
+		addCommon("dam"); // 84. 90,202 (indx 19.3%),  Us (74,306), Us_texas (6,615)
+		addCommon("ligne"); // 85. 87,534 (indx 100.0%),  France (73,714), France_great-east (10,311)
+		addCommon("yuàn"); // 86. 73,198 (indx 34.0%),  China (73,198), China_jiangsu (8,571)
+		addCommon("xué"); // 87. 72,633 (indx 34.5%),  China (72,633), China_guangdong (8,385)
+		addCommon("à"); // 88. 90,541 (indx 5.7%),  France (72,560), France_great-east (9,229)
+		addCommon("et"); // 89. 103,884 (indx 3.5%),  France (72,286), France_auvergne-rhone-alpes (9,651)
+		addCommon("y"); // 90. 208,688 (indx 8.2%),  Argentina (71,810), Argentina_buenos-aires (41,107)
+		addCommon("potok"); // 91. 120,910 (indx 100.0%),  Czech-republic (71,392), Slovakia_europe (23,705)
+		addCommon("place"); // 92. 125,682 (indx 24.9%),  France (70,445), France_auvergne-rhone-alpes (11,704)
+		addCommon("ulitsa"); // 93. 71,969 (indx 1.9%),  Russia (70,027), Russia_moskovskaya-oblast (11,502)
+		addCommon("farm"); // 94. 114,165 (indx 27.8%),  Gb (69,866), Gb_england (62,279)
+		addCommon("fork"); // 95. 69,982 (indx 31.9%),  Us (69,688), Us_california (14,372)
+		addCommon("bĕi"); // 96. 69,251 (indx 42.3%),  China (69,251), China_beijing (12,339)
+		addCommon("ozon"); // 97. 70,693 (indx 99.6%),  Russia (68,719), Russia_moskovskaya-oblast (8,847)
+		addCommon("area"); // 98. 172,919 (indx 26.9%),  Us (68,523), Australia-oceania_new-south-wales (33,773)
+		addCommon("little"); // 99. 101,437 (indx 36.4%),  Us (68,198), Gb_england (7,181)
+		addCommon("lac"); // 100. 86,733 (indx 13.4%),  Canada (68,089), Canada_quebec (66,445)
+		addCommon("county"); // 101. 74,020 (indx 32.4%),  Us (67,268), Us_texas (5,539)
+		addCommon("rue"); // 102. 97,731 (indx 20.8%),  France (66,672), Belgium_wallonia (12,079)
+		addCommon("inicial"); // 103. 69,022 (indx 100.0%),  Peru (65,656), Peru_southamerica (65,656)
+		addCommon("bois"); // 104. 74,621 (indx 22.9%),  France (65,043), France_great-east (9,249)
+		addCommon("brook"); // 105. 129,370 (indx 24.4%),  Us (63,706), Gb_england (26,456)
+		addCommon("hill"); // 106. 133,643 (indx 30.9%),  Us (63,022), Gb_england (29,015)
+		addCommon("qiáo"); // 107. 62,450 (indx 47.0%),  China (62,450), China_zhejiang (11,984)
+		addCommon("machi"); // 108. 62,352 (indx 3.6%),  Japan (62,328), Japan_chubu (21,547)
+		addCommon("gmbh"); // 109. 69,404 (indx 1.1%),  Germany (61,864), Germany_nordrhein-westfalen (10,924)
+		addCommon("kōen"); // 110. 61,834 (indx 5.2%),  Japan (61,834), Japan_kanto (23,033)
+		addCommon("kŏu"); // 111. 61,175 (indx 39.8%),  China (61,175), China_zhejiang (12,644)
+		addCommon("chōme"); // 112. 60,954 (indx 5.7%),  Japan (60,954), Japan_kanto (19,097)
+		addCommon("line"); // 113. 197,729 (indx 19.1%),  Japan (60,255), Gb_england (22,216)
+		addCommon("ecole"); // 114. 100,882 (indx 19.9%),  France (59,753), France_auvergne-rhone-alpes (8,523)
+		addCommon("shí"); // 115. 59,639 (indx 39.2%),  China (59,639), China_shandong (6,742)
+		addCommon("highway"); // 116. 142,546 (indx 43.4%),  Us (59,610), Japan_kinki (5,346)
+		addCommon("zhàn"); // 117. 59,393 (indx 29.3%),  China (59,393), China_guangdong (8,013)
+		addCommon("école"); // 118. 82,115 (indx 20.5%),  France (58,295), France_auvergne-rhone-alpes (8,362)
+		addCommon("sī"); // 119. 57,289 (indx 11.7%),  China (57,289), China_shandong (13,125)
+		addCommon("della"); // 120. 60,007 (indx 9.5%),  Italy (57,262), Italy_toscana (9,268)
+		addCommon("rua"); // 121. 78,370 (indx 23.4%),  Brazil (57,133), Brazil_sao-paulo (22,337)
+		addCommon("bach"); // 122. 69,874 (indx 100.0%),  Germany (56,475), Germany_nordrhein-westfalen (20,091)
+		addCommon("centre"); // 123. 241,224 (indx 9.3%),  France (54,749), Gb_england (36,332)
+		addCommon("dào"); // 124. 54,661 (indx 36.6%),  China (54,661), China_zhejiang (6,787)
+		addCommon("église"); // 125. 65,597 (indx 30.7%),  France (54,652), France_occitania (6,861)
+		addCommon("mairie"); // 126. 58,356 (indx 15.6%),  France (54,412), France_auvergne-rhone-alpes (6,983)
+		addCommon("eglise"); // 127. 73,128 (indx 28.5%),  France (54,319), France_occitania (6,775)
+		addCommon("diàn"); // 128. 54,006 (indx 23.6%),  China (54,006), China_shandong (6,077)
+		addCommon("bank"); // 129. 312,062 (indx 27.2%),  Us (53,703), India_kerala (9,072)
+		addCommon("baptist"); // 130. 62,011 (indx 29.5%),  Us (53,586), Us_georgia (8,535)
+		addCommon("mountain"); // 131. 70,703 (indx 31.9%),  Us (52,516), Us_california (4,887)
+		addCommon("zhuāng"); // 132. 52,206 (indx 44.7%),  China (52,206), China_shandong (13,757)
+		addCommon("u"); // 133. 109,496 (indx 8.4%),  Czech-republic (52,095), Czech-republic_jihozapad (11,299)
+		addCommon("lane"); // 134. 78,214 (indx 21.5%),  Gb (51,766), Gb_england (50,329)
+		addCommon("d"); // 135. 94,206 (indx 67.1%),  France (51,406), France_occitania (7,717)
+		addCommon("são"); // 136. 66,541 (indx 51.6%),  Brazil (51,240), Portugal_europe (13,174)
+		addCommon("route"); // 137. 199,417 (indx 31.7%),  France (51,094), France_auvergne-rhone-alpes (13,383)
+		addCommon("st"); // 138. 182,481 (indx 19.0%),  Us (51,046), Gb_england (34,112)
+		addCommon("yáng"); // 139. 50,715 (indx 43.6%),  China (50,715), China_jiangsu (6,465)
+		addCommon("riacho"); // 140. 51,021 (indx 21.0%),  Brazil (50,465), Brazil_piaui (18,548)
+		addCommon("dì"); // 141. 49,844 (indx 26.2%),  China (49,844), China_shandong (7,057)
+		addCommon("inn"); // 142. 90,536 (indx 100.0%),  Us (49,814), Gb_england (12,652)
+		addCommon("jì"); // 143. 49,658 (indx 30.9%),  China (49,658), China_shandong (9,832)
+		addCommon("arroyo"); // 144. 97,799 (indx 14.0%),  Spain (49,629), Spain_castilla-leon (20,935)
+		addCommon("jiāng"); // 145. 49,135 (indx 36.6%),  China (49,135), China_jiangsu (10,072)
+		addCommon("run"); // 146. 52,204 (indx 30.3%),  Us (49,016), Us_pennsylvania (13,641)
+		addCommon("ten"); // 147. 51,812 (indx 2.8%),  Japan (48,913), Japan_kinki (12,117)
+		addCommon("municipal"); // 148. 125,118 (indx 14.1%),  Brazil (48,645), Brazil_sao-paulo (9,953)
+		addCommon("station"); // 149. 265,914 (indx 15.0%),  Us (48,378), Gb_england (24,308)
+		addCommon("hospital"); // 150. 134,698 (indx 11.0%),  India (48,044), India_maharashtra (7,095)
+		addCommon("yī"); // 151. 47,810 (indx 32.2%),  China (47,810), China_shandong (4,950)
+		addCommon("sao"); // 152. 61,660 (indx 55.5%),  Brazil (47,636), Portugal_europe (10,974)
+		addCommon("sur"); // 153. 77,742 (indx 14.4%),  France (46,945), France_great-east (9,133)
+		addCommon("jīn"); // 154. 46,853 (indx 41.2%),  China (46,853), China_zhejiang (6,332)
+		addCommon("jean"); // 155. 56,941 (indx 18.7%),  France (46,824), France_occitania (6,222)
+		addCommon("школа"); // 156. 78,741 (indx 38.3%),  Russia (46,811), Russia_moskovskaya-oblast (6,854)
+		addCommon("قنات"); // 157. 49,665 (indx 98.9%),  Iran (46,538), Iran_kerman (13,553)
+		addCommon("yŏu"); // 158. 46,341 (indx 10.4%),  China (46,341), China_shandong (11,239)
+		addCommon("qanat"); // 159. 49,561 (indx 98.4%),  Iran (46,336), Iran_kerman (13,518)
+		addCommon("wildlife"); // 160. 50,280 (indx 100.0%),  Us (46,334), Us_florida (6,077)
+		addCommon("i"); // 161. 254,691 (indx 16.3%),  Poland (46,301), Spain_catalunya (9,499)
+		addCommon("valley"); // 162. 72,461 (indx 32.4%),  Us (46,069), Us_california (9,311)
+		addCommon("island"); // 163. 114,374 (indx 23.0%),  Us (46,056), Canada_ontario (9,999)
+		addCommon("e"); // 164. 211,343 (indx 12.1%),  Brazil (45,352), Portugal_europe (14,404)
+		addCommon("field"); // 165. 68,015 (indx 31.2%),  Us (45,316), Gb_england (6,688)
+		addCommon("hăi"); // 166. 45,274 (indx 42.1%),  China (45,274), China_shandong (6,396)
+		addCommon("st."); // 167. 133,331 (indx 100.0%),  Germany (45,271), Germany_bayern (13,371)
+		addCommon("dos"); // 168. 79,075 (indx 8.6%),  Brazil (45,189), Portugal_europe (16,763)
+		addCommon("zhōu"); // 169. 44,990 (indx 30.1%),  China (44,990), China_zhejiang (9,472)
+		addCommon("escola"); // 170. 69,855 (indx 15.2%),  Brazil (44,788), Portugal_europe (15,516)
+		addCommon("praça"); // 171. 47,607 (indx 22.5%),  Brazil (44,686), Brazil_sao-paulo (14,838)
+		addCommon("im"); // 172. 56,778 (indx 2.6%),  Germany (44,336), Germany_nordrhein-westfalen (10,444)
+		addCommon("dai"); // 173. 49,189 (indx 14.4%),  Japan (44,314), Japan_kanto (16,681)
+		addCommon("office"); // 174. 157,579 (indx 19.2%),  Us (44,312), Gb_england (17,677)
+		addCommon("au"); // 175. 61,788 (indx 14.0%),  France (44,238), France_great-east (10,426)
+		addCommon("weg"); // 176. 50,982 (indx 3.1%),  Germany (44,201), Germany_nordrhein-westfalen (9,312)
+		addCommon("railway"); // 177. 83,333 (indx 13.2%),  China (44,068), Gb_england (6,554)
+		addCommon("pond"); // 178. 66,532 (indx 25.2%),  Us (43,493), Canada_newfoundland-and-labrador (5,674)
+		addCommon("elementary"); // 179. 98,981 (indx 13.9%),  Us (43,434), South-korea_asia (6,143)
+		addCommon("house"); // 180. 168,373 (indx 18.7%),  Gb (43,269), Gb_england (36,287)
+		addCommon("fazenda"); // 181. 43,616 (indx 29.7%),  Brazil (43,203), Brazil_minas-gerais (12,513)
+		addCommon("lóng"); // 182. 43,110 (indx 44.2%),  China (43,110), China_guangdong (5,690)
+		addCommon("moulin"); // 183. 46,881 (indx 39.5%),  France (42,929), France_new-aquitaine (6,197)
+		addCommon("city"); // 184. 116,134 (indx 26.1%),  Us (42,883), Gb_england (4,332)
+		addCommon("sho"); // 185. 42,775 (indx 2.8%),  Japan (42,722), Japan_kanto (10,265)
+		addCommon("subdivision"); // 186. 52,124 (indx 18.5%),  Us (42,705), Us_california (4,021)
+		addCommon("praca"); // 187. 45,103 (indx 23.8%),  Brazil (42,680), Brazil_sao-paulo (14,307)
+		addCommon("memorial"); // 188. 77,275 (indx 15.3%),  Us (42,609), Gb_england (5,785)
+		addCommon("сад"); // 189. 54,661 (indx 42.3%),  Russia (42,489), Russia_moskovskaya-oblast (4,047)
+		addCommon("pont"); // 190. 58,365 (indx 19.1%),  France (42,483), France_auvergne-rhone-alpes (7,649)
+		addCommon("drive"); // 191. 80,041 (indx 16.2%),  Us (42,428), Gb_england (12,295)
+		addCommon("lĭ"); // 192. 42,157 (indx 39.7%),  China (42,157), China_zhejiang (5,354)
+		addCommon("детский"); // 193. 48,441 (indx 49.7%),  Russia (41,483), Russia_moskovskaya-oblast (4,289)
+		addCommon("grand"); // 194. 86,045 (indx 34.4%),  France (41,420), France_auvergne-rhone-alpes (6,859)
+		addCommon("yù"); // 195. 40,839 (indx 33.3%),  China (40,839), China_shandong (6,348)
+		addCommon("piazza"); // 196. 41,529 (indx 29.2%),  Italy (40,204), Italy_lombardia (5,668)
+		addCommon("shuĭ"); // 197. 40,064 (indx 35.1%),  China (40,064), China_guangdong (5,390)
+		addCommon("chiesa"); // 198. 40,657 (indx 19.1%),  Italy (39,761), Italy_lombardia (6,906)
+		addCommon("reserve"); // 199. 79,506 (indx 100.0%),  Australia-oceania (39,550), Australia-oceania_victoria (17,374)
+		addCommon("chemin"); // 200. 52,380 (indx 16.0%),  France (39,532), France_auvergne-rhone-alpes (7,874)
+		addCommon("escuela"); // 201. 120,485 (indx 100.0%),  Argentina (39,103), Colombia_southamerica (15,941)
+		addCommon("high"); // 202. 124,389 (indx 15.1%),  Us (39,065), Gb_england (9,976)
+		addCommon("sen"); // 203. 43,656 (indx 9.7%),  Japan (38,891), Japan_chubu (10,482)
+		addCommon("ridge"); // 204. 46,610 (indx 33.6%),  Us (38,793), Us_florida (9,509)
+		addCommon("nationalforst"); // 205. 38,798 (indx 100.0%),  Us (38,739), Us_alaska (36,689)
+		addCommon("yè"); // 206. 38,243 (indx 22.2%),  China (38,243), China_guangdong (5,821)
+		addCommon("santa"); // 207. 187,672 (indx 29.9%),  Brazil (38,238), Brazil_espirito-santo (9,425)
+		addCommon("huā"); // 208. 38,157 (indx 100.0%),  China (38,157), China_jiangsu (6,241)
+		addCommon("primaire"); // 209. 57,484 (indx 100.0%),  France (37,772), France_auvergne-rhone-alpes (5,707)
+		addCommon("huá"); // 210. 37,750 (indx 100.0%),  China (37,750), China_guangdong (4,855)
+		addCommon("снт"); // 211. 37,939 (indx 2.9%),  Russia (37,681), Russia_moskovskaya-oblast (12,088)
+		addCommon("bosque"); // 212. 47,763 (indx 100.0%),  Us (37,529), Us_alaska (36,689)
+		addCommon("hú"); // 213. 37,360 (indx 100.0%),  China (37,360), China_jiangsu (5,164)
+		addCommon("nacional"); // 214. 80,825 (indx 55.9%),  Us (37,329), Us_alaska (36,713)
+		addCommon("snt"); // 215. 37,528 (indx 1.5%),  Russia (37,255), Russia_moskovskaya-oblast (12,038)
+		addCommon("maison"); // 216. 47,981 (indx 16.3%),  France (37,192), France_auvergne-rhone-alpes (5,296)
+		addCommon("nationale"); // 217. 53,078 (indx 100.0%),  Us (37,119), Us_alaska (36,697)
+		addCommon("forêt"); // 218. 50,346 (indx 100.0%),  Us (37,098), Us_alaska (36,689)
+		addCommon("plaza"); // 219. 134,198 (indx 26.6%),  Spain (37,056), Spain_andalusia (10,507)
+		addCommon("shkola"); // 220. 50,533 (indx 18.9%),  Russia (36,924), Russia_moskovskaya-oblast (5,322)
+		addCommon("guăng"); // 221. 36,887 (indx 100.0%),  China (36,887), China_guangdong (8,717)
+		addCommon("shè"); // 222. 36,742 (indx 39.8%),  China (36,742), China_shandong (5,115)
+		addCommon("baso"); // 223. 36,854 (indx 100.0%),  Us (36,689), Us_alaska (36,689)
+		addCommon("nazionala"); // 224. 36,846 (indx 100.0%),  Us (36,689), Us_alaska (36,689)
+		addCommon("q1502633"); // 225. 36,748 (indx 100.0%),  Us (36,689), Us_alaska (36,689)
+		addCommon("r6535292"); // 226. 36,748 (indx 100.0%),  Us (36,689), Us_alaska (36,689)
+		addCommon("通加斯国家森林"); // 227. 36,748 (indx 100.0%),  Us (36,689), Us_alaska (36,689)
+		addCommon("pierre"); // 228. 43,188 (indx 38.7%),  France (36,328), France_auvergne-rhone-alpes (5,694)
+		addCommon("o"); // 229. 93,786 (indx 17.2%),  Spain (36,303), Spain_galicia (31,435)
+		addCommon("strada"); // 230. 48,283 (indx 9.9%),  Italy (36,229), Romania_europe (7,692)
+		addCommon("jiē"); // 231. 36,009 (indx 100.0%),  China (36,009), China_shandong (4,635)
+		addCommon("big"); // 232. 54,672 (indx 47.4%),  Us (35,803), Us_california (3,559)
+		addCommon("spring"); // 233. 47,436 (indx 52.3%),  Us (35,785), Us_arizona (3,823)
+		addCommon("china"); // 234. 47,524 (indx 100.0%),  China (35,662), China_shanxi (5,276)
+		addCommon("barranco"); // 235. 37,805 (indx 100.0%),  Spain (35,569), Spain_canarias (10,030)
+		addCommon("community"); // 236. 82,168 (indx 17.0%),  Us (35,446), Gb_england (9,131)
+		addCommon("xīng"); // 237. 35,442 (indx 51.9%),  China (35,442), China_jiangsu (4,640)
+		addCommon("ān"); // 238. 35,679 (indx 100.0%),  China (35,388), China_shandong (2,943)
+		addCommon("das"); // 239. 74,292 (indx 4.4%),  Brazil (35,257), Portugal_europe (16,390)
+		addCommon("dei"); // 240. 39,472 (indx 3.8%),  Italy (35,101), Italy_lombardia (5,350)
+		addCommon("jō"); // 241. 35,079 (indx 100.0%),  Japan (35,079), Japan_kanto (10,357)
+		addCommon("canal"); // 242. 136,129 (indx 100.0%),  France (35,034), Gb_england (12,218)
+		addCommon("lì"); // 243. 34,825 (indx 100.0%),  China (34,825), China_shandong (4,866)
+		addCommon("new"); // 244. 89,360 (indx 29.0%),  Us (34,665), Gb_england (11,305)
+		addCommon("fú"); // 245. 34,653 (indx 100.0%),  China (34,653), China_shandong (3,717)
+		addCommon("bahnhof"); // 246. 47,913 (indx 100.0%),  Germany (34,617), Germany_baden-wuerttemberg (5,661)
+		addCommon("quebrada"); // 247. 92,434 (indx 100.0%),  Colombia (34,614), Colombia_southamerica (34,614)
+		addCommon("rd"); // 248. 88,508 (indx 7.2%),  Australia-oceania (34,524), Australia-oceania_new-south-wales (18,644)
+		addCommon("sad"); // 249. 41,880 (indx 23.0%),  Russia (34,407), Russia_moskovskaya-oblast (3,158)
+		addCommon("ar"); // 250. 51,295 (indx 13.2%),  France (34,368), France_brittany (27,408)
+		addCommon("táng"); // 251. 34,332 (indx 100.0%),  China (34,332), China_zhejiang (6,594)
+		addCommon("wù"); // 252. 34,311 (indx 100.0%),  China (34,311), China_zhejiang (7,172)
+		addCommon("boulevard"); // 253. 56,622 (indx 16.7%),  Us (34,241), Us_california (9,769)
+		addCommon("protected"); // 254. 35,831 (indx 100.0%),  Australia-oceania (34,023), Australia-oceania_new-south-wales (28,653)
+		addCommon("aux"); // 255. 43,510 (indx 2.8%),  France (33,982), France_great-east (6,687)
+		addCommon("fēng"); // 256. 33,770 (indx 100.0%),  China (33,770), China_zhejiang (4,545)
+		addCommon("ave"); // 257. 47,475 (indx 16.7%),  Us (33,734), Us_washington (5,718)
+		addCommon("eczanesi"); // 258. 33,781 (indx 100.0%),  Turkey (33,605), Turkey_marmara (8,844)
+		addCommon("mill"); // 259. 52,195 (indx 50.5%),  Us (33,533), Gb_england (9,195)
+		addCommon("fire"); // 260. 49,474 (indx 17.2%),  Us (33,406), Us_california (2,770)
+		addCommon("jalan"); // 261. 44,509 (indx 4.5%),  Indonesia (33,278), Malaysia_asia (10,535)
+		addCommon("us"); // 262. 34,265 (indx 83.8%),  Us (33,247), Us_texas (3,574)
+		addCommon("dietskii"); // 263. 34,860 (indx 28.4%),  Russia (33,172), Russia_moskovskaya-oblast (3,269)
+		addCommon("château"); // 264. 37,848 (indx 22.2%),  France (33,037), France_new-aquitaine (4,865)
+		addCommon("masjid"); // 265. 56,866 (indx 6.6%),  Indonesia (33,031), Indonesia_jawa-tengah (7,347)
+		addCommon("rock"); // 266. 50,223 (indx 47.9%),  Us (32,975), Us_california (4,474)
+		addCommon("chateau"); // 267. 37,263 (indx 23.8%),  France (32,918), France_new-aquitaine (4,900)
+		addCommon("auto"); // 268. 101,969 (indx 9.0%),  Us (32,678), Us_california (2,679)
+		addCommon("wood"); // 269. 41,699 (indx 27.9%),  Gb (32,516), Gb_england (27,355)
+		addCommon("nr"); // 270. 38,480 (indx 100.0%),  Poland (32,380), Poland_masovian (5,683)
+		addCommon("lín"); // 271. 32,217 (indx 100.0%),  China (32,217), China_shandong (3,535)
+		addCommon("mae"); // 272. 35,938 (indx 100.0%),  Japan (32,012), Japan_kanto (12,102)
+		addCommon("gare"); // 273. 44,120 (indx 100.0%),  France (31,972), France_auvergne-rhone-alpes (6,893)
+		addCommon("jīng"); // 274. 31,508 (indx 100.0%),  China (31,508), China_beijing (6,371)
+		addCommon("pw."); // 275. 31,409 (indx 100.0%),  Poland (31,409), Poland_greater-poland (3,076)
+		addCommon("igreja"); // 276. 44,891 (indx 100.0%),  Brazil (31,397), Portugal_europe (11,235)
+		addCommon("b"); // 277. 154,288 (indx 51.8%),  France (31,350), Gb_england (6,205)
+		addCommon("friedhof"); // 278. 35,697 (indx 100.0%),  Germany (31,289), Germany_nordrhein-westfalen (5,939)
+		addCommon("united"); // 279. 42,766 (indx 32.3%),  Us (31,258), Us_ohio (2,332)
+		addCommon("champ"); // 280. 32,512 (indx 26.3%),  France (31,237), France_centre-loire-valley (4,980)
+		addCommon("poste"); // 281. 51,230 (indx 100.0%),  France (31,101), France_new-aquitaine (4,693)
+		addCommon("quadra"); // 282. 31,248 (indx 100.0%),  Brazil (30,967), Brazil_mato-grosso (14,723)
+		addCommon("croix"); // 283. 37,123 (indx 34.6%),  France (30,929), France_auvergne-rhone-alpes (6,496)
+		addCommon("club"); // 284. 167,970 (indx 11.2%),  Us (30,895), Gb_england (23,215)
+		addCommon("canada"); // 285. 47,074 (indx 100.0%),  Canada (30,886), Canada_ontario (13,760)
+		addCommon("tiān"); // 286. 30,862 (indx 100.0%),  China (30,862), China_tianjin (3,167)
+		addCommon("post"); // 287. 149,610 (indx 44.7%),  Us (30,797), Gb_england (16,594)
+		addCommon("parc"); // 288. 67,679 (indx 100.0%),  France (30,747), Canada_quebec (12,755)
+		addCommon("coffee"); // 289. 100,444 (indx 38.6%),  Us (30,642), Us_california (5,416)
+		addCommon("shiritsu"); // 290. 30,611 (indx 3.6%),  Japan (30,611), Japan_kanto (7,834)
+		addCommon("point"); // 291. 96,128 (indx 23.7%),  Us (30,390), Canada_british-columbia (4,299)
+		addCommon("en"); // 292. 79,655 (indx 7.8%),  France (30,342), France_auvergne-rhone-alpes (4,957)
+		addCommon("z"); // 293. 58,731 (indx 100.0%),  Poland (30,136), Poland_greater-poland (5,370)
+		addCommon("feuerwehr"); // 294. 35,133 (indx 100.0%),  Germany (30,032), Germany_bayern (5,727)
+		addCommon("ville"); // 295. 36,872 (indx 100.0%),  France (29,965), France_great-east (5,016)
+		addCommon("zi"); // 296. 43,313 (indx 45.3%),  China (29,951), Taiwan_asia (9,715)
+		addCommon("salle"); // 297. 35,955 (indx 100.0%),  France (29,902), France_auvergne-rhone-alpes (3,776)
+		addCommon("avenida"); // 298. 81,983 (indx 24.4%),  Brazil (29,872), Brazil_sao-paulo (14,313)
+		addCommon("old"); // 299. 72,293 (indx 29.9%),  Us (29,759), Gb_england (13,687)
+		addCommon("sān"); // 300. 29,742 (indx 100.0%),  China (29,742), China_zhejiang (2,993)
+		addCommon("torrente"); // 301. 30,504 (indx 100.0%),  Italy (29,684), Italy_toscana (10,260)
+		addCommon("na"); // 302. 106,862 (indx 3.6%),  Czech-republic (29,681), Slovakia_europe (8,252)
+		addCommon("haus"); // 303. 36,512 (indx 100.0%),  Germany (29,627), Germany_nordrhein-westfalen (6,918)
+		addCommon("ban"); // 304. 45,640 (indx 28.3%),  Thailand (29,532), Thailand_asia (29,532)
+		addCommon("jinja"); // 305. 29,667 (indx 100.0%),  Japan (29,495), Japan_kanto (7,694)
+		addCommon("first"); // 306. 47,928 (indx 31.5%),  Us (29,459), Us_texas (2,943)
+		addCommon("centro"); // 307. 155,433 (indx 100.0%),  Brazil (29,449), Colombia_southamerica (11,266)
+		addCommon("petit"); // 308. 39,955 (indx 25.4%),  France (29,307), France_new-aquitaine (3,956)
+		addCommon("reservoir"); // 309. 43,904 (indx 23.5%),  Us (29,059), Us_oklahoma (4,354)
+		addCommon("utca"); // 310. 29,729 (indx 13.4%),  Hungary (29,009), Hungary_europe (29,009)
+		addCommon("royal"); // 311. 59,607 (indx 100.0%),  Gb (28,922), Gb_england (25,117)
+		addCommon("wŭ"); // 312. 28,828 (indx 100.0%),  China (28,828), China_hubei (4,354)
+		addCommon("центр"); // 313. 42,286 (indx 100.0%),  Russia (28,816), Russia_moskovskaya-oblast (5,709)
+		addCommon("monte"); // 314. 66,218 (indx 18.8%),  Italy (28,723), Spain_galicia (6,668)
+		addCommon("guó"); // 315. 28,698 (indx 100.0%),  China (28,698), China_shandong (3,494)
+		addCommon("suites"); // 316. 33,103 (indx 100.0%),  Us (28,520), Us_texas (3,675)
+		addCommon("maternelle"); // 317. 31,531 (indx 100.0%),  France (28,469), France_ile-de-france (5,677)
+		addCommon("shàng"); // 318. 28,469 (indx 100.0%),  China (28,469), China_shanghai (4,370)
+		addCommon("bay"); // 319. 79,135 (indx 23.3%),  Us (28,444), New-zealand_australia-oceania (5,478)
+		addCommon("schule"); // 320. 31,200 (indx 100.0%),  Germany (28,430), Germany_nordrhein-westfalen (4,621)
+		addCommon("library"); // 321. 54,534 (indx 100.0%),  Us (28,404), Gb_england (4,945)
+		addCommon("huì"); // 322. 28,287 (indx 100.0%),  China (28,287), China_guangdong (5,419)
+		addCommon("mine"); // 323. 38,886 (indx 19.5%),  Us (28,189), Us_colorado (6,540)
+		addCommon("hóng"); // 324. 28,185 (indx 100.0%),  China (28,185), China_jiangsu (3,138)
+		addCommon("sentā"); // 325. 28,130 (indx 100.0%),  Japan (28,130), Japan_kanto (8,614)
+		addCommon("market"); // 326. 122,696 (indx 26.5%),  Us (28,069), Azerbaijan_asia (5,795)
+		addCommon("hall"); // 327. 99,925 (indx 18.1%),  Gb (28,064), Gb_england (24,262)
+		addCommon("kyō"); // 328. 28,026 (indx 100.0%),  Japan (28,026), Japan_kanto (11,398)
+		addCommon("sainte"); // 329. 38,772 (indx 10.1%),  France (28,009), Canada_quebec (4,352)
+		addCommon("chē"); // 330. 28,001 (indx 100.0%),  China (28,001), China_zhejiang (4,716)
+		addCommon("machine"); // 331. 30,398 (indx 100.0%),  Tanzania (27,982), Tanzania_lake (8,315)
+		addCommon("píng"); // 332. 27,783 (indx 100.0%),  China (27,783), China_guangdong (3,277)
+		addCommon("kirche"); // 333. 34,349 (indx 100.0%),  Germany (27,743), Germany_nordrhein-westfalen (5,432)
+		addCommon("bridge"); // 334. 136,865 (indx 15.7%),  Us (27,598), Gb_england (21,442)
+		addCommon("qīng"); // 335. 27,540 (indx 100.0%),  China (27,540), China_shandong (6,088)
+		addCommon("sì"); // 336. 27,581 (indx 100.0%),  China (27,524), China_shandong (2,856)
+		addCommon("an"); // 337. 108,858 (indx 19.4%),  Germany (27,474), Ireland_europe (15,443)
+		addCommon("department"); // 338. 36,045 (indx 100.0%),  Us (27,447), Us_texas (1,763)
+		addCommon("èr"); // 339. 27,446 (indx 100.0%),  China (27,446), China_shandong (2,790)
+		addCommon("die"); // 340. 35,102 (indx 5.0%),  Germany (27,355), Germany_nordrhein-westfalen (4,615)
+		addCommon("starbucks"); // 341. 51,077 (indx 100.0%),  Us (27,306), Us_california (5,244)
+		addCommon("middle"); // 342. 43,195 (indx 29.6%),  Us (27,134), South-korea_asia (3,108)
+		addCommon("găng"); // 343. 27,110 (indx 100.0%),  China (27,110), China_jiangsu (4,499)
+		addCommon("il"); // 344. 37,098 (indx 100.0%),  Italy (26,974), Italy_toscana (4,608)
+		addCommon("milling"); // 345. 27,788 (indx 100.0%),  Tanzania (26,971), Tanzania_lake (7,933)
+		addCommon("subcentre"); // 346. 27,089 (indx 100.0%),  India (26,959), India_telangana (5,738)
+		addCommon("union"); // 347. 50,465 (indx 37.3%),  Us (26,913), Gb_england (3,114)
+		addCommon("substation"); // 348. 59,490 (indx 13.7%),  Us (26,750), Gb_wales (12,901)
+		addCommon("deutsche"); // 349. 27,422 (indx 100.0%),  Germany (26,727), Germany_nordrhein-westfalen (4,429)
+		addCommon("family"); // 350. 45,023 (indx 100.0%),  Us (26,684), Us_georgia (2,907)
+		addCommon("im."); // 351. 26,622 (indx 100.0%),  Poland (26,622), Poland_masovian (4,865)
+		addCommon("bar"); // 352. 193,467 (indx 100.0%),  Us (26,613), Gb_england (7,765)
+		addCommon("grill"); // 353. 49,041 (indx 100.0%),  Us (26,601), Us_california (2,872)
+		addCommon("village"); // 354. 109,050 (indx 21.0%),  Us (26,313), Gb_england (13,753)
+		addCommon("für"); // 355. 30,555 (indx 100.0%),  Germany (26,304), Germany_nordrhein-westfalen (4,825)
+		addCommon("mín"); // 356. 26,257 (indx 100.0%),  China (26,257), China_jiangsu (2,624)
+		addCommon("zone"); // 357. 57,475 (indx 100.0%),  Australia-oceania (26,243), Australia-oceania_new-south-wales (25,269)
+		addCommon("и"); // 358. 38,022 (indx 1.5%),  Russia (26,085), Russia_moskovskaya-oblast (3,980)
+		addCommon("xiào"); // 359. 26,059 (indx 100.0%),  China (26,059), China_guangdong (3,033)
+		addCommon("zhăng"); // 360. 25,981 (indx 100.0%),  China (25,981), China_zhejiang (3,696)
+		addCommon("grove"); // 361. 37,235 (indx 52.9%),  Us (25,957), Gb_england (6,094)
+		addCommon("jiàn"); // 362. 25,889 (indx 100.0%),  China (25,889), China_shandong (3,402)
+		addCommon("guăn"); // 363. 25,821 (indx 100.0%),  China (25,821), China_shandong (2,664)
+		addCommon("lián"); // 364. 25,663 (indx 100.0%),  China (25,663), China_guangdong (3,109)
+		addCommon("yì"); // 365. 25,659 (indx 100.0%),  China (25,659), China_shandong (4,105)
+		addCommon("mount"); // 366. 59,027 (indx 18.1%),  Us (25,506), Canada_british-columbia (3,388)
+		addCommon("store"); // 367. 111,901 (indx 100.0%),  Us (25,435), Gb_england (5,673)
+		addCommon("yán"); // 368. 25,262 (indx 100.0%),  China (25,262), China_shandong (5,376)
+		addCommon("sant"); // 369. 35,786 (indx 14.1%),  Spain (25,228), Spain_catalunya (19,426)
+		addCommon("jĭng"); // 370. 25,152 (indx 100.0%),  China (25,152), China_guangdong (3,038)
+		addCommon("management"); // 371. 53,444 (indx 100.0%),  Australia-oceania (25,084), Australia-oceania_new-south-wales (24,832)
+		addCommon("casa"); // 372. 119,748 (indx 100.0%),  Spain (25,076), Portugal_europe (8,338)
+		addCommon("by"); // 373. 56,119 (indx 100.0%),  Us (25,072), Gb_england (3,924)
+		addCommon("ya"); // 374. 56,878 (indx 100.0%),  Tanzania (25,015), Japan_kanto (7,316)
+		addCommon("grande"); // 375. 90,011 (indx 33.3%),  France (24,925), France_pays-de-la-loire (3,744)
+		addCommon("jiāo"); // 376. 24,889 (indx 100.0%),  China (24,889), China_shandong (3,825)
+		addCommon("jí"); // 377. 24,831 (indx 100.0%),  China (24,831), China_shandong (3,029)
+		addCommon("bad"); // 378. 31,268 (indx 100.0%),  Germany (24,766), Germany_bayern (4,608)
+		addCommon("p"); // 379. 52,364 (indx 12.8%),  Finland (24,687), Finland_north-ostrobothnia (3,447)
+		addCommon("dame"); // 380. 33,446 (indx 31.4%),  France (24,645), France_auvergne-rhone-alpes (2,933)
+		addCommon("gōu"); // 381. 24,605 (indx 100.0%),  China (24,605), China_liaoning (6,116)
+		addCommon("barangay"); // 382. 24,573 (indx 100.0%),  Philippines (24,573), Philippines_central-visayas (3,538)
+		addCommon("mén"); // 383. 24,522 (indx 100.0%),  China (24,522), China_beijing (3,315)
+		addCommon("monument"); // 384. 62,167 (indx 100.0%),  Us (24,407), Canada_quebec (11,942)
+		addCommon("shop"); // 385. 143,603 (indx 100.0%),  Us (24,390), India_kerala (10,868)
+		addCommon("mcdonald's"); // 386. 53,007 (indx 100.0%),  Us (24,310), Gb_england (2,593)
+		addCommon("pizza"); // 387. 86,644 (indx 100.0%),  Us (24,272), Gb_england (4,006)
+		addCommon("platz"); // 388. 27,807 (indx 12.9%),  Germany (24,239), Germany_nordrhein-westfalen (4,340)
+		addCommon("jiŭ"); // 389. 24,231 (indx 100.0%),  China (24,231), China_guangdong (2,698)
+		addCommon("special"); // 390. 26,672 (indx 100.0%),  Australia-oceania (24,228), Australia-oceania_new-south-wales (24,037)
+		addCommon("pre"); // 391. 29,965 (indx 29.0%),  France (24,228), France_great-east (5,239)
+		addCommon("kē"); // 392. 24,204 (indx 100.0%),  China (24,193), China_jiangsu (3,495)
+		addCommon("red"); // 393. 49,350 (indx 50.0%),  Us (24,152), Gb_england (4,009)
+		addCommon("озеро"); // 394. 31,683 (indx 100.0%),  Russia (24,143), Russia_khanty-mansiisk (2,355)
+		addCommon("shōgakkō"); // 395. 24,132 (indx 100.0%),  Japan (24,132), Japan_kanto (7,212)
+		addCommon("canyon"); // 396. 26,410 (indx 34.8%),  Us (24,107), Us_california (7,994)
+		addCommon("shi"); // 397. 54,450 (indx 44.8%),  Taiwan (24,106), Taiwan_asia (24,106)
+		addCommon("temple"); // 398. 56,112 (indx 100.0%),  India (24,096), India_kerala (9,806)
+		addCommon("paris"); // 399. 27,659 (indx 100.0%),  France (24,051), France_ile-de-france (11,157)
+		addCommon("fur"); // 400. 26,466 (indx 100.0%),  Germany (24,034), Germany_nordrhein-westfalen (4,424)
+		addCommon("băo"); // 401. 23,936 (indx 100.0%),  China (23,936), China_guangdong (2,468)
+		addCommon("number"); // 402. 38,973 (indx 100.0%),  Us (23,929), Australia-oceania_new-south-wales (12,311)
+		addCommon("cerro"); // 403. 72,484 (indx 100.0%),  Spain (23,919), Venezuela_southamerica (10,235)
+		addCommon("vila"); // 404. 38,000 (indx 27.9%),  Brazil (23,849), Brazil_sao-paulo (7,749)
+		addCommon("gong"); // 405. 27,166 (indx 88.4%),  Taiwan (23,832), Taiwan_asia (23,832)
+		addCommon("parking"); // 406. 76,500 (indx 100.0%),  Us (23,692), France_auvergne-rhone-alpes (3,760)
+		addCommon("home"); // 407. 68,019 (indx 100.0%),  Us (23,641), Gb_england (7,436)
+		addCommon("ribeirão"); // 408. 23,608 (indx 100.0%),  Brazil (23,576), Brazil_espirito-santo (5,791)
+		addCommon("rén"); // 409. 23,566 (indx 100.0%),  China (23,566), China_jiangsu (2,258)
+		addCommon("huáng"); // 410. 23,552 (indx 100.0%),  China (23,552), China_shandong (3,175)
+		addCommon("wilderness"); // 411. 27,417 (indx 100.0%),  Us (23,493), Us_alaska (15,652)
+		addCommon("king"); // 412. 56,445 (indx 57.6%),  Us (23,402), Gb_england (4,903)
+		addCommon("cafe"); // 413. 198,971 (indx 100.0%),  Us (23,363), Gb_england (12,153)
+		addCommon("main"); // 414. 70,665 (indx 38.9%),  Us (23,362), Gb_england (9,671)
+		addCommon("fosso"); // 415. 23,345 (indx 100.0%),  Italy (23,345), Italy_toscana (14,728)
+		addCommon("notre"); // 416. 29,900 (indx 28.0%),  France (23,321), France_auvergne-rhone-alpes (2,787)
+		addCommon("mail"); // 417. 25,102 (indx 100.0%),  Gb (23,263), Gb_england (20,505)
+		addCommon("tài"); // 418. 23,635 (indx 100.0%),  China (23,201), China_shandong (3,399)
+		addCommon("fŭ"); // 419. 23,104 (indx 100.0%),  China (23,104), China_zhejiang (2,318)
+		addCommon("río"); // 420. 130,861 (indx 16.9%),  Spain (23,047), Nicaragua_centralamerica (10,701)
+		addCommon("jī"); // 421. 23,104 (indx 100.0%),  China (23,013), China_jiangsu (2,614)
+		addCommon("delle"); // 422. 24,629 (indx 3.3%),  Italy (22,980), Italy_toscana (3,962)
+		addCommon("hotel"); // 423. 274,201 (indx 100.0%),  Germany (22,959), Gb_england (8,959)
+		addCommon("dollar"); // 424. 23,669 (indx 100.0%),  Us (22,959), Us_texas (1,761)
+		addCommon("tsientr"); // 425. 29,513 (indx 100.0%),  Russia (22,875), Russia_moskovskaya-oblast (4,141)
+		addCommon("pharmacie"); // 426. 47,297 (indx 100.0%),  France (22,838), Morocco_africa (13,014)
+		addCommon("pré"); // 427. 24,488 (indx 30.7%),  France (22,830), France_great-east (5,171)
+		addCommon("ribeirao"); // 428. 22,833 (indx 100.0%),  Brazil (22,801), Brazil_espirito-santo (5,667)
+		addCommon("von"); // 429. 33,176 (indx 0.8%),  Germany (22,760), Germany_nordrhein-westfalen (3,996)
+		addCommon("zhèn"); // 430. 22,751 (indx 100.0%),  China (22,751), China_jiangsu (3,244)
+		addCommon("green"); // 431. 68,521 (indx 38.9%),  Gb (22,723), Gb_england (21,028)
+		addCommon("garden"); // 432. 74,085 (indx 23.8%),  Us (22,695), Gb_england (7,650)
+		addCommon("huán"); // 433. 22,671 (indx 100.0%),  China (22,671), China_zhejiang (2,256)
+		addCommon("in"); // 434. 95,102 (indx 8.4%),  Germany (22,643), Germany_nordrhein-westfalen (5,961)
+		addCommon("site"); // 435. 48,167 (indx 100.0%),  Us (22,607), Us_texas (4,863)
+		addCommon("podstawowa"); // 436. 22,642 (indx 100.0%),  Poland (22,606), Poland_masovian (3,306)
+		addCommon("セブン"); // 437. 24,373 (indx 100.0%),  Japan (22,595), Japan_kanto (12,269)
+		addCommon("сбербанк"); // 438. 23,167 (indx 100.0%),  Russia (22,579), Russia_moskovskaya-oblast (2,377)
+		addCommon("apartments"); // 439. 33,133 (indx 100.0%),  Us (22,542), Us_texas (2,973)
+		addCommon("ribeira"); // 440. 27,992 (indx 100.0%),  Portugal (22,512), Portugal_europe (22,512)
+		addCommon("freiwillige"); // 441. 25,147 (indx 100.0%),  Germany (22,493), Germany_bayern (4,556)
+		addCommon("szlak"); // 442. 34,320 (indx 100.0%),  Poland (22,487), Poland_silesian (2,248)
+		addCommon("chapelle"); // 443. 26,883 (indx 100.0%),  France (22,451), France_auvergne-rhone-alpes (3,487)
+		addCommon("zum"); // 444. 26,237 (indx 2.7%),  Germany (22,398), Germany_bayern (3,735)
+		addCommon("higashi"); // 445. 22,360 (indx 100.0%),  Japan (22,360), Japan_kanto (5,791)
+		addCommon("camii"); // 446. 23,110 (indx 100.0%),  Turkey (22,329), Turkey_marmara (7,194)
+		addCommon("lán"); // 447. 22,438 (indx 100.0%),  China (22,294), China_shandong (3,098)
+		addCommon("イレブン"); // 448. 24,066 (indx 100.0%),  Japan (22,289), Japan_kanto (12,124)
+		addCommon("beach"); // 449. 73,019 (indx 20.7%),  Us (22,176), Us_california (3,888)
+		addCommon("jardim"); // 450. 31,229 (indx 100.0%),  Brazil (22,163), Brazil_sao-paulo (10,422)
+		addCommon("fuente"); // 451. 25,364 (indx 100.0%),  Spain (22,145), Spain_castilla-leon (6,460)
+		addCommon("dian"); // 452. 23,644 (indx 78.0%),  Taiwan (22,120), Taiwan_asia (22,120)
+		addCommon("company"); // 453. 39,265 (indx 100.0%),  Us (22,100), Gb_england (2,072)
+		addCommon("mă"); // 454. 21,980 (indx 100.0%),  China (21,980), China_shandong (2,212)
+		addCommon("methodist"); // 455. 28,284 (indx 100.0%),  Us (21,957), Gb_england (3,740)
+		addCommon("camino"); // 456. 44,242 (indx 27.9%),  Spain (21,878), Spain_castilla-leon (4,968)
+		addCommon("stade"); // 457. 28,625 (indx 100.0%),  France (21,793), France_auvergne-rhone-alpes (3,501)
+		addCommon("inpost"); // 458. 23,994 (indx 100.0%),  Poland (21,779), Poland_masovian (4,021)
+		addCommon("fontaine"); // 459. 26,249 (indx 33.7%),  France (21,768), France_great-east (3,153)
+		addCommon("guān"); // 460. 21,660 (indx 100.0%),  China (21,660), China_guangdong (3,109)
+		addCommon("primary"); // 461. 126,213 (indx 100.0%),  Tanzania (21,629), Uganda_africa (19,209)
+		addCommon("wān"); // 462. 21,638 (indx 100.0%),  China (21,612), China_guangdong (3,439)
+		addCommon("yuan"); // 463. 26,185 (indx 84.1%),  Taiwan (21,605), Taiwan_asia (21,605)
+		addCommon("tóu"); // 464. 21,601 (indx 100.0%),  China (21,601), China_zhejiang (6,195)
+		addCommon("oziero"); // 465. 23,362 (indx 100.0%),  Russia (21,569), Russia_khanty-mansiisk (2,286)
+		addCommon("riu"); // 466. 32,667 (indx 100.0%),  Italy (21,492), Italy_sardegna (21,334)
+		addCommon("fù"); // 467. 21,385 (indx 100.0%),  China (21,385), China_shandong (2,604)
+		addCommon("town"); // 468. 47,999 (indx 27.9%),  Us (21,379), Gb_england (5,271)
+		addCommon("way"); // 469. 49,915 (indx 14.7%),  Gb (21,354), Gb_england (18,950)
+		addCommon("jr"); // 470. 22,563 (indx 100.0%),  Japan (21,340), Japan_chugoku (4,135)
+		addCommon("springs"); // 471. 24,113 (indx 31.1%),  Us (21,268), Us_california (2,364)
+		addCommon("iglesia"); // 472. 64,798 (indx 100.0%),  Spain (21,253), Spain_castilla-leon (7,123)
+		addCommon("zhong"); // 473. 24,428 (indx 87.5%),  Taiwan (21,243), Taiwan_asia (21,243)
+		addCommon("zhèng"); // 474. 21,183 (indx 100.0%),  China (21,183), China_henan (2,231)
+		addCommon("posto"); // 475. 24,650 (indx 100.0%),  Brazil (21,129), Brazil_sao-paulo (3,413)
+		addCommon("auf"); // 476. 24,447 (indx 4.6%),  Germany (20,984), Germany_nordrhein-westfalen (7,183)
+		addCommon("дом"); // 477. 30,038 (indx 100.0%),  Russia (20,974), Russia_moskovskaya-oblast (2,597)
+		addCommon("minami"); // 478. 20,952 (indx 100.0%),  Japan (20,952), Japan_kanto (5,715)
+		addCommon("alte"); // 479. 24,653 (indx 14.3%),  Germany (20,922), Germany_niedersachsen (3,245)
+		addCommon("youbike2.0"); // 480. 20,916 (indx 100.0%),  Taiwan (20,916), Taiwan_asia (20,916)
+		addCommon("carretera"); // 481. 52,692 (indx 11.1%),  Spain (20,846), Spain_castilla-leon (5,066)
+		addCommon("service"); // 482. 81,323 (indx 15.0%),  Us (20,789), Us_texas (4,565)
+		addCommon("7-eleven"); // 483. 58,125 (indx 100.0%),  Japan (20,735), Japan_kanto (11,608)
+		addCommon("estates"); // 484. 23,000 (indx 29.1%),  Us (20,605), Us_texas (1,908)
+		addCommon("oak"); // 485. 26,924 (indx 64.8%),  Us (20,559), Gb_england (3,703)
+		addCommon("martin"); // 486. 59,849 (indx 100.0%),  France (20,557), Argentina_buenos-aires (2,601)
+		addCommon("míng"); // 487. 20,547 (indx 100.0%),  China (20,547), China_guangdong (2,591)
+		addCommon("nishi"); // 488. 20,514 (indx 100.0%),  Japan (20,480), Japan_kanto (4,406)
+		addCommon("arroio"); // 489. 20,639 (indx 100.0%),  Brazil (20,422), Brazil_rio-grande-do-sul (11,639)
+		addCommon("parque"); // 490. 121,913 (indx 100.0%),  Spain (20,404), Portugal_europe (8,802)
+		addCommon("van"); // 491. 51,025 (indx 9.7%),  Netherlands (20,373), Belgium_flanders (9,631)
+		addCommon("hills"); // 492. 29,760 (indx 29.1%),  Us (20,358), Us_california (1,985)
+		addCommon("пятёрочка"); // 493. 20,348 (indx 100.0%),  Russia (20,348), Russia_moskovskaya-oblast (3,119)
+		addCommon("ii"); // 494. 106,038 (indx 12.3%),  Poland (20,342), Poland_masovian (2,637)
+		addCommon("airport"); // 495. 50,068 (indx 100.0%),  Us (20,339), Us_texas (2,080)
+		addCommon("rivière"); // 496. 35,799 (indx 100.0%),  Canada (20,263), Canada_quebec (17,574)
+		addCommon("gŭ"); // 497. 20,261 (indx 100.0%),  China (20,261), China_shandong (2,760)
+		addCommon("tōng"); // 498. 20,239 (indx 100.0%),  China (20,239), China_shandong (3,895)
+		addCommon("chang"); // 499. 24,079 (indx 81.8%),  Taiwan (20,115), Taiwan_asia (20,115)
+		addCommon("parkway"); // 500. 22,513 (indx 27.1%),  Us (20,109), Us_new-york (2,442)
+		addCommon("josé"); // 501. 55,764 (indx 30.6%),  Brazil (20,105), Brazil_sao-paulo (4,914)
+		addCommon("sparkasse"); // 502. 22,495 (indx 100.0%),  Germany (20,072), Germany_nordrhein-westfalen (4,107)
+		addCommon("borne"); // 503. 42,042 (indx 100.0%),  Canada (20,050), Canada_quebec (11,915)
+		addCommon("frontière"); // 504. 37,527 (indx 100.0%),  Canada (19,983), Canada_quebec (11,843)
+		addCommon("магнит"); // 505. 20,077 (indx 100.0%),  Russia (19,980), Russia_moskovskaya-oblast (1,754)
+		addCommon("rodovia"); // 506. 19,976 (indx 11.8%),  Brazil (19,947), Brazil_sao-paulo (6,629)
+		addCommon("country"); // 507. 33,290 (indx 34.7%),  Us (19,851), Gb_england (3,970)
+		addCommon("care"); // 508. 45,259 (indx 100.0%),  Us (19,839), Gb_england (4,578)
+		addCommon("kościół"); // 509. 20,834 (indx 100.0%),  Poland (19,802), Poland_silesian (2,243)
+		addCommon("district"); // 510. 43,297 (indx 100.0%),  Us (19,775), Us_michigan (2,061)
+		addCommon("jose"); // 511. 66,472 (indx 31.4%),  Brazil (19,774), Peru_southamerica (4,720)
+		addCommon("apotheke"); // 512. 22,237 (indx 100.0%),  Germany (19,688), Germany_nordrhein-westfalen (4,064)
+		addCommon("nord"); // 513. 57,856 (indx 100.0%),  Germany (19,679), Canada_quebec (3,487)
+		addCommon("szkoła"); // 514. 19,673 (indx 100.0%),  Poland (19,661), Poland_masovian (2,756)
+		addCommon("kita"); // 515. 34,090 (indx 100.0%),  Japan (19,661), Japan_kanto (5,131)
+		addCommon("xià"); // 516. 19,550 (indx 100.0%),  China (19,550), China_zhejiang (4,192)
+		addCommon("haut"); // 517. 21,452 (indx 100.0%),  France (19,385), France_great-east (5,545)
+		addCommon("shēng"); // 518. 19,364 (indx 100.0%),  China (19,364), China_shandong (2,174)
+		addCommon("public"); // 519. 55,140 (indx 100.0%),  Us (19,343), Canada_ontario (3,446)
+		addCommon("berlin"); // 520. 20,198 (indx 100.0%),  Germany (19,300), Germany_brandenburg (9,515)
+		addCommon("lot"); // 521. 26,383 (indx 100.0%),  Us (19,294), Us_california (2,038)
+		addCommon("stop"); // 522. 65,431 (indx 100.0%),  Australia-oceania (19,235), Australia-oceania_south-australia (7,445)
+		addCommon("pine"); // 523. 22,935 (indx 73.4%),  Us (19,174), Us_california (1,987)
+		addCommon("paczkomat"); // 524. 19,163 (indx 100.0%),  Poland (19,148), Poland_masovian (3,403)
+		addCommon("tank"); // 525. 29,028 (indx 100.0%),  Us (19,117), Us_arizona (10,013)
+		addCommon("kantor"); // 526. 19,664 (indx 100.0%),  Indonesia (19,086), Indonesia_kalimantan-selatan (3,420)
+		addCommon("christ"); // 527. 27,657 (indx 100.0%),  Us (19,060), Us_texas (1,771)
+		addCommon("tour"); // 528. 36,885 (indx 100.0%),  France (19,058), France_auvergne-rhone-alpes (3,909)
+		addCommon("eki"); // 529. 19,075 (indx 100.0%),  Japan (19,049), Japan_kanto (9,458)
+		addCommon("و"); // 530. 24,869 (indx 100.0%),  Iran (19,043), Iran_tehran (3,985)
+		addCommon("xin"); // 531. 22,212 (indx 86.8%),  Taiwan (18,992), Taiwan_asia (18,992)
+		addCommon("general"); // 532. 65,636 (indx 100.0%),  Us (18,984), Argentina_buenos-aires (3,190)
+		addCommon("yuè"); // 533. 18,950 (indx 100.0%),  China (18,950), China_guangdong (2,403)
+		addCommon("kosciol"); // 534. 18,968 (indx 100.0%),  Poland (18,906), Poland_silesian (2,156)
+		addCommon("fāng"); // 535. 18,881 (indx 100.0%),  China (18,881), China_shandong (3,626)
+		addCommon("central"); // 536. 100,273 (indx 100.0%),  Us (18,819), Portugal_europe (4,159)
+		addCommon("xiāng"); // 537. 18,783 (indx 100.0%),  China (18,783), China_zhejiang (1,708)
+		addCommon("burn"); // 538. 19,465 (indx 100.0%),  Gb (18,770), Gb_scotland (14,587)
+		addCommon("wash"); // 539. 30,648 (indx 100.0%),  Us (18,757), Us_arizona (5,270)
+		addCommon("white"); // 540. 38,971 (indx 57.3%),  Us (18,735), Gb_england (5,176)
+		addCommon("بانک"); // 541. 19,648 (indx 100.0%),  Iran (18,706), Iran_tehran (4,564)
+		addCommon("stream"); // 542. 39,259 (indx 100.0%),  New-zealand (18,700), New-zealand_australia-oceania (18,700)
+		addCommon("huà"); // 543. 18,656 (indx 100.0%),  China (18,656), China_shandong (3,513)
+		addCommon("dom"); // 544. 49,550 (indx 100.0%),  Russia (18,588), Slovakia_europe (2,528)
+		addCommon("praxis"); // 545. 19,943 (indx 100.0%),  Germany (18,423), Germany_nordrhein-westfalen (3,600)
+		addCommon("biserica"); // 546. 20,537 (indx 100.0%),  Romania (18,416), Romania_europe (18,416)
+		addCommon("calle"); // 547. 54,389 (indx 33.2%),  Spain (18,399), Colombia_southamerica (5,435)
+		addCommon("rathaus"); // 548. 19,393 (indx 100.0%),  Germany (18,220), Germany_baden-wuerttemberg (5,949)
+		addCommon("scuola"); // 549. 18,617 (indx 100.0%),  Italy (18,200), Italy_lombardia (3,367)
+		addCommon("swamp"); // 550. 22,096 (indx 100.0%),  Us (18,177), Us_north-carolina (5,738)
+		addCommon("tíng"); // 551. 18,167 (indx 100.0%),  China (18,167), China_zhejiang (2,452)
+		addCommon("negeri"); // 552. 18,751 (indx 100.0%),  Indonesia (18,148), Indonesia_jawa-barat (3,746)
+		addCommon("shèng"); // 553. 18,139 (indx 100.0%),  China (18,139), China_shandong (3,081)
+		addCommon("msingi"); // 554. 18,622 (indx 100.0%),  Tanzania (18,108), Tanzania_lake (4,626)
+		addCommon("bù"); // 555. 18,082 (indx 100.0%),  China (18,082), China_shandong (2,441)
+		addCommon("shule"); // 556. 18,662 (indx 100.0%),  Tanzania (18,052), Tanzania_lake (4,813)
+		addCommon("szkola"); // 557. 18,042 (indx 100.0%),  Poland (18,042), Poland_masovian (2,430)
+		addCommon("riviere"); // 558. 29,595 (indx 100.0%),  Canada (18,040), Canada_quebec (16,887)
+		addCommon("chez"); // 559. 27,597 (indx 100.0%),  France (18,036), France_new-aquitaine (6,683)
+		addCommon("indian"); // 560. 32,026 (indx 48.0%),  Us (17,920), India_kerala (1,907)
+		addCommon("wén"); // 561. 17,903 (indx 100.0%),  China (17,903), China_zhejiang (2,542)
+		addCommon("tiĕ"); // 562. 17,871 (indx 100.0%),  China (17,871), China_zhejiang (1,661)
+		addCommon("s"); // 563. 92,007 (indx 18.5%),  Us (17,861), Gb_england (3,879)
+		addCommon("bear"); // 564. 21,493 (indx 100.0%),  Us (17,846), Us_california (3,138)
+		addCommon("tái"); // 565. 17,844 (indx 100.0%),  China (17,844), China_shandong (2,876)
+		addCommon("yŏng"); // 566. 17,810 (indx 100.0%),  China (17,810), China_guangdong (3,517)
+		addCommon("blue"); // 567. 38,218 (indx 39.7%),  Us (17,773), Greece_europe (3,408)
+		addCommon("maria"); // 568. 95,522 (indx 21.6%),  Brazil (17,727), Peru_southamerica (4,441)
+		addCommon("zhì"); // 569. 17,670 (indx 100.0%),  China (17,670), China_shandong (2,477)
+		addCommon("etang"); // 570. 19,017 (indx 100.0%),  France (17,601), France_centre-loire-valley (3,427)
+		addCommon("parco"); // 571. 18,885 (indx 100.0%),  Italy (17,588), Italy_lombardia (4,029)
+		addCommon("can"); // 572. 25,473 (indx 100.0%),  Spain (17,567), Spain_catalunya (14,635)
+		addCommon("express"); // 573. 64,083 (indx 100.0%),  Us (17,564), Gb_england (5,615)
+		addCommon("étang"); // 574. 18,930 (indx 100.0%),  France (17,543), France_centre-loire-valley (3,429)
+		addCommon("infantil"); // 575. 38,209 (indx 100.0%),  Spain (17,528), Spain_andalusia (4,238)
+		addCommon("centrum"); // 576. 33,692 (indx 100.0%),  Poland (17,462), Slovakia_europe (2,952)
+		addCommon("yú"); // 577. 17,461 (indx 100.0%),  China (17,461), China_zhejiang (2,022)
+		addCommon("shù"); // 578. 17,415 (indx 100.0%),  China (17,415), China_jiangsu (2,253)
+		addCommon("trung"); // 579. 17,584 (indx 100.0%),  Vietnam (17,378), Vietnam_asia (17,378)
+		addCommon("preserve"); // 580. 17,599 (indx 100.0%),  Us (17,332), Us_florida (4,252)
+		addCommon("petite"); // 581. 22,493 (indx 100.0%),  France (17,327), France_pays-de-la-loire (4,129)
+		addCommon("clinic"); // 582. 73,275 (indx 100.0%),  India (17,304), South-korea_asia (11,099)
+		addCommon("pyaterochka"); // 583. 17,286 (indx 100.0%),  Russia (17,286), Russia_moskovskaya-oblast (2,318)
+		addCommon("shanghai"); // 584. 17,370 (indx 100.0%),  China (17,213), China_guizhou (3,108)
+		addCommon("golf"); // 585. 45,647 (indx 100.0%),  Us (17,178), Gb_england (3,729)
+		addCommon("camp"); // 586. 46,947 (indx 26.3%),  Us (17,164), Spain_catalunya (2,686)
+		addCommon("santo"); // 587. 47,462 (indx 100.0%),  Brazil (17,160), Portugal_europe (7,518)
+		addCommon("grundschule"); // 588. 17,481 (indx 100.0%),  Germany (17,152), Germany_niedersachsen (2,837)
+		addCommon("на"); // 589. 31,271 (indx 100.0%),  Russia (17,119), Bulgaria_europe (2,596)
+		addCommon("black"); // 590. 38,867 (indx 100.0%),  Us (17,102), Gb_england (5,372)
+		addCommon("xíng"); // 591. 17,046 (indx 100.0%),  China (17,046), China_zhejiang (3,322)
+		addCommon("bīn"); // 592. 17,045 (indx 100.0%),  China (17,045), China_shandong (1,963)
+		addCommon("falls"); // 593. 27,628 (indx 100.0%),  Us (17,009), Us_new-york (1,510)
+		addCommon("chapel"); // 594. 30,197 (indx 100.0%),  Us (16,985), Gb_england (4,058)
+		addCommon("restaurant"); // 595. 130,600 (indx 100.0%),  Us (16,967), South-korea_asia (3,882)
+		addCommon("desa"); // 596. 18,986 (indx 100.0%),  Indonesia (16,923), Indonesia_kalimantan-selatan (2,833)
+		addCommon("hof"); // 597. 22,024 (indx 100.0%),  Germany (16,918), Germany_nordrhein-westfalen (3,260)
+		addCommon("sungai"); // 598. 29,617 (indx 100.0%),  Malaysia (16,911), Malaysia_asia (16,911)
+		addCommon("kindergarten"); // 599. 31,102 (indx 100.0%),  Germany (16,878), Germany_baden-wuerttemberg (4,317)
+		addCommon("shā"); // 600. 16,889 (indx 100.0%),  China (16,869), China_guangdong (3,351)
+		addCommon("zur"); // 601. 19,406 (indx 9.1%),  Germany (16,803), Germany_bayern (2,823)
+		addCommon("cedar"); // 602. 18,607 (indx 77.9%),  Us (16,766), Us_iowa (1,152)
+		addCommon("estadual"); // 603. 16,836 (indx 100.0%),  Brazil (16,764), Brazil_sao-paulo (3,432)
+		addCommon("cmentarz"); // 604. 17,682 (indx 100.0%),  Poland (16,747), Poland_lesser-poland (2,418)
+		addCommon("ochotnicza"); // 605. 16,791 (indx 100.0%),  Poland (16,737), Poland_subcarpathian (2,503)
+		addCommon("kan"); // 606. 21,143 (indx 100.0%),  Japan (16,717), Japan_kanto (4,310)
+		addCommon("champs"); // 607. 17,637 (indx 100.0%),  France (16,664), France_bourgogne-franche-comte (3,027)
+		addCommon("te"); // 608. 25,972 (indx 13.3%),  New-zealand (16,645), New-zealand_australia-oceania (16,645)
+		addCommon("zhāng"); // 609. 16,582 (indx 100.0%),  China (16,582), China_shandong (2,336)
+		addCommon("mont"); // 610. 26,485 (indx 100.0%),  France (16,556), France_auvergne-rhone-alpes (4,002)
+		addCommon("pharmacy"); // 611. 53,007 (indx 100.0%),  Us (16,529), Gb_england (5,516)
+		addCommon("storage"); // 612. 20,288 (indx 100.0%),  Us (16,404), Us_texas (1,630)
+		addCommon("col"); // 613. 25,302 (indx 100.0%),  France (16,401), France_auvergne-rhone-alpes (6,770)
+		addCommon("sud"); // 614. 51,278 (indx 100.0%),  France (16,371), Germany_bayern (2,930)
+		addCommon("dhl"); // 615. 20,498 (indx 100.0%),  Germany (16,364), Germany_nordrhein-westfalen (3,326)
+		addCommon("bei"); // 616. 39,063 (indx 22.3%),  Germany (16,333), Taiwan_asia (7,906)
+		addCommon("níng"); // 617. 16,323 (indx 100.0%),  China (16,323), China_zhejiang (3,247)
+		addCommon("lĭng"); // 618. 16,302 (indx 100.0%),  China (16,302), China_zhejiang (3,207)
+		addCommon("nad"); // 619. 33,586 (indx 100.0%),  Czech-republic (16,295), Slovakia_europe (9,372)
+		addCommon("salon"); // 620. 65,874 (indx 100.0%),  Us (16,250), Gb_england (2,236)
+		addCommon("gō"); // 621. 16,229 (indx 100.0%),  Japan (16,229), Japan_hokkaido (3,834)
+		addCommon("jú"); // 622. 16,194 (indx 100.0%),  China (16,194), China_shandong (2,138)
+		addCommon("after"); // 623. 22,979 (indx 100.0%),  Australia-oceania (16,192), Australia-oceania_western-australia (7,031)
+		addCommon("yíng"); // 624. 16,175 (indx 100.0%),  China (16,175), China_beijing (2,428)
+		addCommon("aire"); // 625. 19,656 (indx 100.0%),  France (16,174), France_new-aquitaine (2,395)
+		addCommon("yóu"); // 626. 16,105 (indx 100.0%),  China (16,105), China_shandong (2,485)
+		addCommon("refuge"); // 627. 22,219 (indx 100.0%),  Us (16,084), Us_alaska (2,790)
+		addCommon("france"); // 628. 17,528 (indx 100.0%),  France (16,064), France_ile-de-france (2,991)
+		addCommon("villa"); // 629. 89,188 (indx 100.0%),  Italy (16,014), Colombia_southamerica (3,966)
+		addCommon("ri"); // 630. 24,750 (indx 12.1%),  South-korea (15,983), South-korea_asia (15,983)
+		addCommon("n"); // 631. 88,717 (indx 27.6%),  Us (15,965), Poland_greater-poland (6,226)
+		addCommon("university"); // 632. 48,400 (indx 100.0%),  Us (15,947), Gb_england (2,253)
+		addCommon("xi"); // 633. 21,378 (indx 78.3%),  Taiwan (15,923), Taiwan_asia (15,923)
+		addCommon("northwest"); // 634. 16,967 (indx 24.9%),  Us (15,892), Us_florida (5,955)
+		addCommon("quán"); // 635. 18,390 (indx 100.0%),  China (15,824), China_shandong (2,430)
+		addCommon("guāng"); // 636. 15,821 (indx 100.0%),  China (15,821), China_shandong (1,864)
+		addCommon("valle"); // 637. 39,696 (indx 100.0%),  Italy (15,812), Italy_lombardia (5,567)
+		addCommon("qì"); // 638. 15,782 (indx 100.0%),  China (15,782), China_shandong (2,000)
+		addCommon("pod"); // 639. 45,841 (indx 100.0%),  Slovakia (15,731), Slovakia_europe (15,731)
+		addCommon("catholic"); // 640. 30,529 (indx 100.0%),  Us (15,701), Gb_england (3,321)
+		addCommon("nossa"); // 641. 22,872 (indx 100.0%),  Brazil (15,691), Portugal_europe (6,265)
+		addCommon("ro"); // 642. 21,947 (indx 100.0%),  South-korea (15,674), South-korea_asia (15,674)
+		addCommon("colegio"); // 643. 47,395 (indx 100.0%),  Spain (15,641), Colombia_southamerica (5,036)
+		addCommon("carrefour"); // 644. 27,737 (indx 100.0%),  France (15,630), France_ile-de-france (2,988)
+		addCommon("hôtel"); // 645. 23,366 (indx 100.0%),  France (15,610), France_ile-de-france (2,552)
+		addCommon("cycling"); // 646. 20,281 (indx 100.0%),  Japan (15,609), Japan_kanto (11,008)
+		addCommon("sd"); // 647. 20,475 (indx 100.0%),  Indonesia (15,578), Indonesia_jawa-barat (3,155)
+		addCommon("college"); // 648. 78,871 (indx 100.0%),  Us (15,557), Gb_england (5,604)
+		addCommon("clos"); // 649. 16,374 (indx 30.2%),  France (15,548), France_centre-loire-valley (2,321)
+		addCommon("l"); // 650. 46,741 (indx 100.0%),  Finland (15,510), Germany_baden-wuerttemberg (1,912)
+		addCommon("kunming"); // 651. 15,507 (indx 100.0%),  China (15,507), China_yunnan (5,235)
+		addCommon("senhora"); // 652. 24,324 (indx 29.9%),  Brazil (15,490), Portugal_europe (7,862)
+		addCommon("joão"); // 653. 20,051 (indx 42.4%),  Brazil (15,490), Portugal_europe (3,828)
+		addCommon("chūsha"); // 654. 15,430 (indx 100.0%),  Japan (15,430), Japan_kanto (5,389)
+		addCommon("cimetière"); // 655. 20,688 (indx 100.0%),  France (15,389), France_occitania (2,287)
+		addCommon("taman"); // 656. 22,060 (indx 100.0%),  Malaysia (15,379), Malaysia_asia (15,379)
+		addCommon("court"); // 657. 64,952 (indx 17.3%),  Us (15,356), Gb_england (10,535)
+		addCommon("beck"); // 658. 16,975 (indx 100.0%),  Gb (15,351), Gb_england (15,351)
+		addCommon("iriguchi"); // 659. 15,333 (indx 100.0%),  Japan (15,333), Japan_kanto (9,346)
+		addCommon("shāng"); // 660. 15,311 (indx 100.0%),  China (15,311), China_shandong (2,166)
+		addCommon("health"); // 661. 60,047 (indx 100.0%),  Us (15,278), Gb_england (3,648)
+		addCommon("süd"); // 662. 19,364 (indx 100.0%),  Germany (15,265), Germany_bayern (3,030)
+		addCommon("lu"); // 663. 26,255 (indx 66.0%),  Taiwan (15,256), Taiwan_asia (15,256)
+		addCommon("residencial"); // 664. 27,148 (indx 100.0%),  Brazil (15,251), Brazil_sao-paulo (5,450)
+		addCommon("учреждение"); // 665. 15,969 (indx 100.0%),  Russia (15,249), Russia_leningradskaya (2,858)
+		addCommon("mù"); // 666. 15,217 (indx 100.0%),  China (15,217), China_zhejiang (1,923)
+		addCommon("water"); // 667. 50,310 (indx 100.0%),  Us (15,202), Gb_england (4,470)
+		addCommon("john"); // 668. 31,981 (indx 100.0%),  Us (15,183), Gb_england (4,382)
+		addCommon("washington"); // 669. 16,078 (indx 100.0%),  Us (15,170), Us_washington (1,819)
+		addCommon("zhī"); // 670. 15,161 (indx 100.0%),  China (15,161), China_zhejiang (1,932)
+		addCommon("cascina"); // 671. 15,194 (indx 100.0%),  Italy (15,161), Italy_lombardia (8,027)
+		addCommon("yún"); // 672. 15,160 (indx 100.0%),  China (15,160), China_jiangsu (1,930)
+		addCommon("wáng"); // 673. 15,157 (indx 100.0%),  China (15,157), China_shandong (3,004)
+		addCommon("tún"); // 674. 15,168 (indx 100.0%),  China (15,149), China_heilongjiang (4,713)
+		addCommon("conservation"); // 675. 31,867 (indx 100.0%),  Australia-oceania (15,139), Australia-oceania_tasmania (6,509)
+		addCommon("charles"); // 676. 26,337 (indx 100.0%),  France (15,103), France_provence-alpes-cote-d-azur (3,401)
+		addCommon("francisco"); // 677. 43,423 (indx 38.1%),  Brazil (15,073), Brazil_sao-paulo (2,937)
+		addCommon("церковь"); // 678. 19,151 (indx 100.0%),  Russia (15,056), Russia_moskovskaya-oblast (2,102)
+		addCommon("torrent"); // 679. 20,722 (indx 100.0%),  Spain (15,023), Spain_catalunya (12,583)
+		addCommon("ponte"); // 680. 32,775 (indx 100.0%),  Italy (15,021), Portugal_europe (4,276)
+		addCommon("yàn"); // 681. 15,020 (indx 100.0%),  China (15,020), China_jiangsu (1,899)
+		addCommon("1-chome"); // 682. 14,986 (indx 1.9%),  Japan (14,986), Japan_kinki (3,742)
+		addCommon("cimetiere"); // 683. 19,901 (indx 100.0%),  France (14,956), France_occitania (2,296)
+		addCommon("southwest"); // 684. 17,844 (indx 28.8%),  Us (14,945), Us_florida (6,047)
+		addCommon("fu"); // 685. 20,809 (indx 72.4%),  Taiwan (14,938), Taiwan_asia (14,938)
+		addCommon("li"); // 686. 20,753 (indx 74.7%),  Taiwan (14,936), Taiwan_asia (14,936)
+		addCommon("brasil"); // 687. 16,688 (indx 100.0%),  Brazil (14,875), Brazil_sao-paulo (4,376)
+		addCommon("nature"); // 688. 38,948 (indx 100.0%),  Australia-oceania (14,852), Australia-oceania_western-australia (6,120)
+		addCommon("louis"); // 689. 23,336 (indx 100.0%),  France (14,841), France_auvergne-rhone-alpes (2,194)
+		addCommon("dry"); // 690. 20,758 (indx 100.0%),  Us (14,808), Us_california (2,483)
+		addCommon("shan"); // 691. 22,716 (indx 72.4%),  Taiwan (14,800), Taiwan_asia (14,800)
+		addCommon("pres"); // 692. 16,029 (indx 100.0%),  France (14,789), France_great-east (2,877)
+		addCommon("government"); // 693. 23,124 (indx 100.0%),  India (14,785), India_kerala (5,645)
+		addCommon("bas"); // 694. 19,416 (indx 100.0%),  France (14,777), France_great-east (2,352)
+		addCommon("spielplatz"); // 695. 16,537 (indx 100.0%),  Germany (14,768), Germany_nordrhein-westfalen (3,270)
+		addCommon("2-chome"); // 696. 14,756 (indx 1.8%),  Japan (14,756), Japan_kinki (3,725)
+		addCommon("hello"); // 697. 14,863 (indx 100.0%),  Japan (14,748), Japan_kanto (10,519)
+		addCommon("den"); // 698. 29,552 (indx 4.6%),  Germany (14,722), Germany_nordrhein-westfalen (3,285)
+		addCommon("loop"); // 699. 25,702 (indx 31.2%),  Us (14,708), Us_texas (1,928)
+		addCommon("hoikuen"); // 700. 14,697 (indx 100.0%),  Japan (14,697), Japan_kanto (4,499)
+		addCommon("statale"); // 701. 14,711 (indx 100.0%),  Italy (14,694), Italy_sardegna (1,742)
+		addCommon("joao"); // 702. 18,463 (indx 44.6%),  Brazil (14,637), Brazil_sao-paulo (3,269)
+		addCommon("collège"); // 703. 19,991 (indx 100.0%),  France (14,629), France_auvergne-rhone-alpes (2,512)
+		addCommon("háng"); // 704. 14,623 (indx 100.0%),  China (14,623), China_zhejiang (7,689)
+		addCommon("c"); // 705. 75,424 (indx 43.3%),  France (14,617), Mali_africa (4,035)
+		addCommon("heights"); // 706. 20,828 (indx 24.2%),  Us (14,605), Us_nebraska (1,011)
+		addCommon("v"); // 707. 59,200 (indx 12.6%),  Czech-republic (14,601), Slovakia_europe (4,037)
+		addCommon("magnit"); // 708. 14,631 (indx 100.0%),  Russia (14,598), Russia_moskovskaya-oblast (1,724)
+		addCommon("yòu"); // 709. 14,597 (indx 100.0%),  China (14,597), China_guangdong (2,039)
+		addCommon("bike"); // 710. 46,803 (indx 100.0%),  Us (14,558), Us_new-york (5,425)
+		addCommon("lè"); // 711. 14,488 (indx 100.0%),  China (14,488), China_guangdong (1,871)
+		addCommon("paul"); // 712. 36,861 (indx 100.0%),  France (14,482), France_ile-de-france (2,487)
+		addCommon("alto"); // 713. 43,869 (indx 100.0%),  Spain (14,478), Spain_castilla-leon (4,002)
+		addCommon("парк"); // 714. 30,969 (indx 100.0%),  Russia (14,469), Russia_moskovskaya-oblast (2,540)
+		addCommon("wĕi"); // 715. 14,452 (indx 100.0%),  China (14,452), China_guangdong (2,384)
+		addCommon("long"); // 716. 51,432 (indx 53.6%),  Us (14,438), Vietnam_asia (7,484)
+		addCommon("close"); // 717. 15,400 (indx 20.9%),  Gb (14,425), Gb_england (13,832)
+		addCommon("campo"); // 718. 59,573 (indx 100.0%),  Spain (14,408), Portugal_europe (5,173)
+		addCommon("ér"); // 719. 15,918 (indx 100.0%),  China (14,386), China_guangdong (1,967)
+		addCommon("dong"); // 720. 32,910 (indx 60.2%),  Taiwan (14,385), Taiwan_asia (14,385)
+		addCommon("ハローサイクリング"); // 721. 14,381 (indx 100.0%),  Japan (14,381), Japan_kanto (10,391)
+		addCommon("yí"); // 722. 14,396 (indx 100.0%),  China (14,380), China_shandong (2,124)
+		addCommon("вулиця"); // 723. 22,500 (indx 5.5%),  Ukraine (14,376), Russia_moscow (3,613)
+		addCommon("lóu"); // 724. 14,357 (indx 100.0%),  China (14,357), China_shandong (1,890)
+		addCommon("bus"); // 725. 75,542 (indx 100.0%),  India (14,335), Iran_razavi-khorasan (5,507)
+		addCommon("qián"); // 726. 14,315 (indx 100.0%),  China (14,315), China_zhejiang (3,015)
+		addCommon("dōu"); // 727. 14,309 (indx 100.0%),  China (14,309), China_sichuan (3,704)
+		addCommon("ka"); // 728. 25,215 (indx 100.0%),  Japan (14,308), Japan_kanto (4,758)
+		addCommon("sberbank"); // 729. 14,623 (indx 100.0%),  Russia (14,276), Russia_moskovskaya-oblast (1,766)
+		addCommon("bó"); // 730. 14,271 (indx 100.0%),  China (14,271), China_shandong (2,376)
+		addCommon("cimitero"); // 731. 14,454 (indx 100.0%),  Italy (14,252), Italy_lombardia (2,371)
+		addCommon("t"); // 732. 37,760 (indx 100.0%),  Us (14,247), Azerbaijan_asia (2,834)
+		addCommon("ji"); // 733. 29,786 (indx 48.4%),  Taiwan (14,247), Taiwan_asia (14,247)
+		addCommon("burger"); // 734. 42,173 (indx 100.0%),  Us (14,202), Us_california (1,984)
+		addCommon("ファミリーマート"); // 735. 17,056 (indx 100.0%),  Japan (14,174), Japan_kanto (5,558)
+		addCommon("yolu"); // 736. 16,184 (indx 2.3%),  Turkey (14,158), Turkey_marmara (3,613)
+		addCommon("car"); // 737. 66,838 (indx 100.0%),  Gb (14,124), Gb_england (11,709)
+		addCommon("sous"); // 738. 16,179 (indx 100.0%),  France (14,032), France_great-east (3,780)
+		addCommon("american"); // 739. 16,952 (indx 100.0%),  Us (14,030), Us_california (1,288)
+		addCommon("bái"); // 740. 14,029 (indx 100.0%),  China (14,029), China_guangdong (1,627)
+		addCommon("parkplatz"); // 741. 17,497 (indx 100.0%),  Germany (14,006), Germany_baden-wuerttemberg (3,320)
+		addCommon("shell"); // 742. 49,118 (indx 100.0%),  Us (13,949), Gb_england (1,841)
+		addCommon("kyoku"); // 743. 13,942 (indx 100.0%),  Japan (13,942), Japan_kanto (4,918)
+		addCommon("freeway"); // 744. 18,500 (indx 100.0%),  Us (13,888), Us_california (6,243)
+		addCommon("upper"); // 745. 35,040 (indx 100.0%),  Us (13,870), Australia-oceania_new-south-wales (7,141)
+		addCommon("nova"); // 746. 39,781 (indx 100.0%),  Brazil (13,847), Portugal_europe (4,264)
+		addCommon("view"); // 747. 32,236 (indx 47.9%),  Us (13,845), Gb_england (4,215)
+		addCommon("serra"); // 748. 25,292 (indx 100.0%),  Brazil (13,831), Brazil_minas-gerais (3,404)
+		addCommon("guangzhou"); // 749. 14,126 (indx 100.0%),  China (13,799), China_guangdong (7,844)
+		addCommon("jardin"); // 750. 39,990 (indx 100.0%),  France (13,797), Argentina_buenos-aires (2,213)
+		addCommon("dem"); // 751. 15,368 (indx 4.3%),  Germany (13,783), Germany_nordrhein-westfalen (4,502)
+		addCommon("kè"); // 752. 13,745 (indx 100.0%),  China (13,732), China_xinjiang-uygur (2,002)
+		addCommon("nation"); // 753. 16,367 (indx 100.0%),  Canada (13,731), Canada_saskatchewan (3,866)
+		addCommon("пг"); // 754. 14,170 (indx 100.0%),  Russia (13,689), Russia_volgograd (5,991)
+		addCommon("familymart"); // 755. 18,904 (indx 100.0%),  Japan (13,681), Japan_kanto (5,421)
+		addCommon("circuit"); // 756. 20,152 (indx 100.0%),  France (13,675), France_great-east (2,891)
+		addCommon("graben"); // 757. 16,125 (indx 100.0%),  Germany (13,659), Germany_niedersachsen (3,485)
+		addCommon("food"); // 758. 54,890 (indx 100.0%),  Us (13,637), Gb_england (7,332)
+		addCommon("dé"); // 759. 13,707 (indx 100.0%),  China (13,599), China_guangdong (1,757)
+		addCommon("shika"); // 760. 13,590 (indx 100.0%),  Japan (13,590), Japan_kanto (5,121)
+		addCommon("ve"); // 761. 16,555 (indx 100.0%),  Turkey (13,587), Turkey_marmara (6,780)
+		addCommon("boa"); // 762. 15,489 (indx 100.0%),  Brazil (13,510), Brazil_espirito-santo (3,989)
+		addCommon("lieu"); // 763. 14,109 (indx 100.0%),  France (13,499), France_pays-de-la-loire (8,764)
+		addCommon("jidō"); // 764. 13,478 (indx 100.0%),  Japan (13,478), Japan_kanto (4,973)
+		addCommon("tsierkov'"); // 765. 13,921 (indx 100.0%),  Russia (13,445), Russia_moskovskaya-oblast (1,884)
+		addCommon("christian"); // 766. 23,361 (indx 100.0%),  Us (13,405), Us_california (1,440)
+		addCommon("pedro"); // 767. 44,704 (indx 38.5%),  Brazil (13,395), Portugal_europe (3,536)
+		addCommon("barranc"); // 768. 13,418 (indx 100.0%),  Spain (13,368), Spain_catalunya (6,825)
+		addCommon("bu"); // 769. 19,452 (indx 100.0%),  Taiwan (13,351), Taiwan_asia (13,351)
+		addCommon("xiàng"); // 770. 13,346 (indx 100.0%),  China (13,346), China_jiangsu (1,721)
+		addCommon("voie"); // 771. 14,397 (indx 16.4%),  France (13,344), France_great-east (2,315)
+		addCommon("ng"); // 772. 17,281 (indx 100.0%),  Philippines (13,334), Philippines_central-visayas (2,353)
+		addCommon("radweg"); // 773. 18,780 (indx 100.0%),  Germany (13,330), Germany_bayern (3,544)
+		addCommon("camping"); // 774. 41,865 (indx 100.0%),  France (13,314), France_new-aquitaine (2,055)
+		addCommon("liú"); // 775. 13,300 (indx 100.0%),  China (13,300), China_shandong (2,486)
+		addCommon("ermita"); // 776. 13,692 (indx 100.0%),  Spain (13,290), Spain_castilla-leon (2,730)
+		addCommon("to"); // 777. 76,131 (indx 100.0%),  Us (13,282), Gb_england (9,136)
+		addCommon("antonio"); // 778. 48,933 (indx 35.4%),  Brazil (13,230), Brazil_sao-paulo (3,534)
+		addCommon("osiedle"); // 779. 13,228 (indx 3.0%),  Poland (13,216), Poland_silesian (2,854)
+		addCommon("tián"); // 780. 13,138 (indx 100.0%),  China (13,138), China_guangdong (2,453)
+		addCommon("markt"); // 781. 15,913 (indx 100.0%),  Germany (13,115), Germany_nordrhein-westfalen (3,021)
+		addCommon("héng"); // 782. 13,115 (indx 100.0%),  China (13,115), China_zhejiang (1,889)
+		addCommon("tree"); // 783. 27,647 (indx 49.3%),  Us (13,063), Gb_england (4,648)
+		addCommon("ruta"); // 784. 48,856 (indx 100.0%),  Argentina (13,059), Argentina_buenos-aires (3,647)
+		addCommon("bäckerei"); // 785. 14,734 (indx 100.0%),  Germany (13,050), Germany_bayern (2,278)
+		addCommon("shin"); // 786. 14,594 (indx 100.0%),  Japan (13,037), Japan_kanto (4,229)
+		addCommon("café"); // 787. 79,955 (indx 100.0%),  Germany (13,036), Portugal_europe (4,413)
+		addCommon("subway"); // 788. 25,824 (indx 100.0%),  Us (13,033), Gb_england (1,819)
+		addCommon("estrada"); // 789. 19,925 (indx 21.2%),  Brazil (13,030), Brazil_sao-paulo (4,180)
+		addCommon("museum"); // 790. 47,348 (indx 100.0%),  Us (12,976), Gb_england (2,628)
+		addCommon("academy"); // 791. 32,951 (indx 100.0%),  Us (12,923), Gb_england (6,091)
+		addCommon("northeast"); // 792. 13,503 (indx 17.5%),  Us (12,914), Us_florida (2,275)
+		addCommon("jana"); // 793. 16,653 (indx 1.5%),  Poland (12,896), Poland_silesian (1,496)
+		addCommon("packstation"); // 794. 12,896 (indx 100.0%),  Germany (12,896), Germany_nordrhein-westfalen (2,807)
+		addCommon("spa"); // 795. 35,757 (indx 100.0%),  Us (12,880), Us_california (1,710)
+		addCommon("marie"); // 796. 24,983 (indx 100.0%),  France (12,837), France_auvergne-rhone-alpes (1,684)
+		addCommon("val"); // 797. 31,275 (indx 100.0%),  Italy (12,834), Italy_trentino-alto-adige (4,759)
+		addCommon("beaver"); // 798. 15,373 (indx 100.0%),  Us (12,826), Us_colorado (985)
+		addCommon("района"); // 799. 15,453 (indx 100.0%),  Russia (12,800), Russia_leningradskaya (3,187)
+		addCommon("rouge"); // 800. 18,399 (indx 100.0%),  France (12,791), France_bourgogne-franche-comte (2,621)
+		addCommon("rundweg"); // 801. 14,024 (indx 100.0%),  Germany (12,774), Germany_nordrhein-westfalen (4,704)
+		addCommon("day"); // 802. 26,977 (indx 100.0%),  Us (12,764), Gb_england (2,883)
+		addCommon("medical"); // 803. 47,401 (indx 100.0%),  Us (12,757), Gb_england (2,928)
+		addCommon("campground"); // 804. 16,317 (indx 100.0%),  Us (12,739), Us_california (1,629)
+		addCommon("ranch"); // 805. 14,446 (indx 25.6%),  Us (12,738), Us_california (3,179)
+		addCommon("comunale"); // 806. 12,897 (indx 100.0%),  Italy (12,727), Italy_lombardia (2,404)
+		addCommon("dit"); // 807. 12,919 (indx 100.0%),  France (12,711), France_pays-de-la-loire (8,615)
+		addCommon("juan"); // 808. 53,402 (indx 26.2%),  Spain (12,696), Peru_southamerica (3,900)
+		addCommon("willow"); // 809. 15,321 (indx 83.6%),  Us (12,688), Us_california (2,950)
+		addCommon("yùn"); // 810. 12,683 (indx 100.0%),  China (12,683), China_jiangsu (2,123)
+		addCommon("farmacia"); // 811. 47,572 (indx 100.0%),  Spain (12,666), Spain_andalusia (3,771)
+		addCommon("great"); // 812. 37,910 (indx 100.0%),  Us (12,663), Gb_england (7,383)
+		addCommon("backerei"); // 813. 14,199 (indx 100.0%),  Germany (12,645), Germany_bayern (2,221)
+		addCommon("wu"); // 814. 16,100 (indx 79.2%),  Taiwan (12,621), Taiwan_asia (12,621)
+		addCommon("services"); // 815. 38,007 (indx 100.0%),  Us (12,605), Gb_england (4,011)
+		addCommon("xing"); // 816. 14,978 (indx 82.5%),  Taiwan (12,603), Taiwan_asia (12,603)
+		addCommon("ferme"); // 817. 19,389 (indx 100.0%),  France (12,602), Belgium_wallonia (2,442)
+		addCommon("cove"); // 818. 25,339 (indx 27.8%),  Us (12,574), Canada_newfoundland-and-labrador (5,239)
+		addCommon("dō"); // 819. 12,571 (indx 100.0%),  Japan (12,571), Japan_kanto (3,485)
+		addCommon("up"); // 820. 20,232 (indx 100.0%),  Us (12,543), Us_texas (2,060)
+		addCommon("fā"); // 821. 12,543 (indx 100.0%),  China (12,543), China_shandong (2,585)
+		addCommon("woods"); // 822. 16,213 (indx 27.9%),  Us (12,533), Gb_england (1,629)
+		addCommon("khu"); // 823. 13,029 (indx 100.0%),  Vietnam (12,511), Vietnam_asia (12,511)
+		addCommon("zhū"); // 824. 12,482 (indx 100.0%),  China (12,482), China_guangdong (2,556)
+		addCommon("espace"); // 825. 15,494 (indx 100.0%),  France (12,480), France_auvergne-rhone-alpes (2,120)
+		addCommon("chāng"); // 826. 12,456 (indx 100.0%),  China (12,456), China_shandong (3,284)
+		addCommon("dòng"); // 827. 12,419 (indx 100.0%),  China (12,419), China_guangdong (1,637)
+		addCommon("lawson"); // 828. 13,711 (indx 100.0%),  Japan (12,408), Japan_kanto (4,485)
+		addCommon("tera"); // 829. 12,849 (indx 100.0%),  Japan (12,405), Japan_kinki (3,304)
+		addCommon("ローソン"); // 830. 12,375 (indx 100.0%),  Japan (12,375), Japan_kanto (4,323)
+		addCommon("pena"); // 831. 16,844 (indx 100.0%),  Spain (12,372), Spain_castilla-leon (3,530)
+		addCommon("yi"); // 832. 15,970 (indx 76.2%),  Taiwan (12,367), Taiwan_asia (12,367)
+		addCommon("ost"); // 833. 16,767 (indx 100.0%),  Germany (12,304), Germany_bayern (2,203)
+		addCommon("gakkō"); // 834. 12,304 (indx 100.0%),  Japan (12,304), Japan_kanto (3,386)
+		addCommon("tanigawa"); // 835. 12,303 (indx 100.0%),  Japan (12,303), Japan_kinki (3,628)
+		addCommon("byōin"); // 836. 12,288 (indx 100.0%),  Japan (12,288), Japan_kanto (3,689)
+		addCommon("tai"); // 837. 24,361 (indx 100.0%),  Taiwan (12,273), Taiwan_asia (12,273)
+		addCommon("trường"); // 838. 12,489 (indx 100.0%),  Vietnam (12,268), Vietnam_asia (12,268)
+		addCommon("в"); // 839. 19,195 (indx 100.0%),  Russia (12,256), Russia_moskovskaya-oblast (1,545)
+		addCommon("lyon"); // 840. 12,524 (indx 100.0%),  France (12,252), France_auvergne-rhone-alpes (6,377)
+		addCommon("provinciale"); // 841. 12,933 (indx 15.4%),  Italy (12,235), Italy_toscana (1,859)
+		addCommon("pŭ"); // 842. 12,225 (indx 100.0%),  China (12,225), China_shanghai (3,968)
+		addCommon("wat"); // 843. 13,580 (indx 100.0%),  Thailand (12,206), Thailand_asia (12,206)
+		addCommon("mobile"); // 844. 25,998 (indx 100.0%),  Us (12,203), Us_california (1,693)
+		addCommon("kabushikigaisha"); // 845. 12,194 (indx 100.0%),  Japan (12,194), Japan_chubu (3,277)
+		addCommon("near"); // 846. 24,298 (indx 100.0%),  Us (12,187), Australia-oceania_queensland (5,276)
+		addCommon("lagoa"); // 847. 14,392 (indx 100.0%),  Brazil (12,175), Brazil_bahia (3,456)
+		addCommon("kulam"); // 848. 12,653 (indx 100.0%),  India (12,164), India_kerala (11,929)
+		addCommon("dr"); // 849. 41,342 (indx 5.6%),  Us (12,134), Australia-oceania_new-south-wales (5,364)
+		addCommon("sportplatz"); // 850. 14,176 (indx 100.0%),  Germany (12,127), Germany_nordrhein-westfalen (1,890)
+		addCommon("volksbank"); // 851. 12,936 (indx 100.0%),  Germany (12,123), Germany_nordrhein-westfalen (3,061)
+		addCommon("kreuz"); // 852. 16,503 (indx 100.0%),  Germany (12,110), Germany_nordrhein-westfalen (2,250)
+		addCommon("chi"); // 853. 21,971 (indx 100.0%),  Japan (12,108), Taiwan_asia (4,210)
+		addCommon("primaria"); // 854. 42,318 (indx 100.0%),  Spain (12,107), Argentina_buenos-aires (4,389)
+		addCommon("meadow"); // 855. 17,934 (indx 54.4%),  Us (12,076), Gb_england (3,759)
+		addCommon("no1"); // 856. 22,791 (indx 100.0%),  Australia-oceania (12,061), Australia-oceania_new-south-wales (12,010)
+		addCommon("banco"); // 857. 60,223 (indx 100.0%),  Spain (12,021), Argentina_buenos-aires (2,931)
+		addCommon("dental"); // 858. 51,369 (indx 100.0%),  Us (12,015), Gb_england (4,319)
+		addCommon("lower"); // 859. 37,301 (indx 100.0%),  Us (12,015), Australia-oceania_new-south-wales (8,901)
+		addCommon("circle"); // 860. 24,026 (indx 60.4%),  Us (12,003), Us_arizona (1,184)
+		addCommon("prés"); // 861. 12,686 (indx 100.0%),  France (11,998), France_great-east (2,411)
+		addCommon("plaça"); // 862. 12,846 (indx 23.4%),  Spain (11,969), Spain_catalunya (8,218)
+		addCommon("kitchen"); // 863. 27,463 (indx 100.0%),  Us (11,966), Gb_england (3,001)
+		addCommon("madrid"); // 864. 12,547 (indx 100.0%),  Spain (11,956), Spain_madrid (3,746)
+		addCommon("bourg"); // 865. 12,754 (indx 100.0%),  France (11,955), France_auvergne-rhone-alpes (2,722)
+		addCommon("россии"); // 866. 12,127 (indx 100.0%),  Russia (11,911), Russia_moskovskaya-oblast (1,882)
+		addCommon("giovanni"); // 867. 12,292 (indx 35.1%),  Italy (11,905), Italy_lombardia (2,285)
+		addCommon("square"); // 868. 46,974 (indx 21.8%),  France (11,897), Gb_england (4,692)
+		addCommon("qiao"); // 869. 13,448 (indx 90.0%),  Taiwan (11,891), Taiwan_asia (11,891)
+		addCommon("yakkyoku"); // 870. 11,890 (indx 100.0%),  Japan (11,890), Japan_kanto (4,208)
+		addCommon("nagar"); // 871. 12,574 (indx 100.0%),  India (11,887), India_telangana (2,334)
+		addCommon("résidence"); // 872. 15,092 (indx 13.5%),  France (11,861), France_occitania (1,924)
+		addCommon("peak"); // 873. 22,259 (indx 100.0%),  Us (11,846), Us_california (2,380)
+		addCommon("dels"); // 874. 12,580 (indx 0.9%),  Spain (11,836), Spain_catalunya (8,407)
+		addCommon("guo"); // 875. 13,176 (indx 100.0%),  Taiwan (11,835), Taiwan_asia (11,835)
+		addCommon("colony"); // 876. 15,184 (indx 100.0%),  India (11,819), India_kerala (6,488)
+		addCommon("residence"); // 877. 31,219 (indx 17.4%),  France (11,802), France_occitania (1,903)
+		addCommon("placa"); // 878. 12,243 (indx 24.2%),  Spain (11,761), Spain_catalunya (8,073)
+		addCommon("domaine"); // 879. 13,740 (indx 100.0%),  France (11,757), France_occitania (2,122)
+		addCommon("india"); // 880. 13,038 (indx 100.0%),  India (11,756), India_kerala (2,721)
+		addCommon("chūō"); // 881. 11,733 (indx 100.0%),  Japan (11,733), Japan_kanto (4,142)
+		addCommon("canale"); // 882. 11,810 (indx 100.0%),  Italy (11,696), Italy_toscana (2,659)
+		addCommon("fort"); // 883. 29,686 (indx 100.0%),  Us (11,662), Us_texas (1,392)
+		addCommon("cầu"); // 884. 11,773 (indx 100.0%),  Vietnam (11,656), Vietnam_asia (11,656)
+		addCommon("fitness"); // 885. 33,536 (indx 100.0%),  Us (11,637), Gb_england (1,563)
+		addCommon("mississippi"); // 886. 11,808 (indx 100.0%),  Us (11,619), Us_minnesota (4,931)
+		addCommon("ditch"); // 887. 12,195 (indx 100.0%),  Us (11,603), Us_colorado (5,993)
+		addCommon("unidade"); // 888. 12,536 (indx 100.0%),  Brazil (11,578), Brazil_sao-paulo (2,258)
+		addCommon("building"); // 889. 31,752 (indx 100.0%),  Us (11,570), Hong-kong_asia (3,855)
+		addCommon("elementaire"); // 890. 12,618 (indx 100.0%),  France (11,557), France_ile-de-france (2,323)
+		addCommon("деревня"); // 891. 11,715 (indx 100.0%),  Russia (11,509), Russia_smolensk (9,248)
+		addCommon("america"); // 892. 14,947 (indx 100.0%),  Us (11,500), Us_california (1,820)
+		addCommon("schloss"); // 893. 16,769 (indx 100.0%),  Germany (11,500), Germany_bayern (2,168)
+		addCommon("bell"); // 894. 17,833 (indx 100.0%),  Us (11,493), Gb_england (1,746)
+		addCommon("pleasant"); // 895. 13,332 (indx 100.0%),  Us (11,429), Us_texas (655)
+		addCommon("shui"); // 896. 14,480 (indx 68.7%),  Taiwan (11,426), Taiwan_asia (11,426)
+		addCommon("élémentaire"); // 897. 12,744 (indx 100.0%),  France (11,408), France_ile-de-france (2,285)
+		addCommon("lakes"); // 898. 18,192 (indx 100.0%),  Us (11,384), Canada_british-columbia (1,455)
+		addCommon("merkezi"); // 899. 11,948 (indx 100.0%),  Turkey (11,380), Turkey_marmara (5,151)
+		addCommon("western"); // 900. 29,004 (indx 100.0%),  Us (11,364), Australia-oceania_queensland (2,356)
+		addCommon("проспект"); // 901. 13,933 (indx 100.0%),  Russia (11,355), Russia_leningradskaya (3,152)
+		addCommon("hollow"); // 902. 12,065 (indx 29.6%),  Us (11,334), Us_missouri (1,132)
+		addCommon("estate"); // 903. 31,484 (indx 100.0%),  Gb (11,327), Gb_england (9,844)
+		addCommon("pangnirtung"); // 904. 11,325 (indx 100.0%),  Canada (11,325), Canada_nunavut-se (11,325)
+		addCommon("sitesi"); // 905. 11,363 (indx 100.0%),  Turkey (11,320), Turkey_marmara (4,998)
+		addCommon("see"); // 906. 17,760 (indx 100.0%),  Germany (11,311), Germany_bayern (1,845)
+		addCommon("chūgakkō"); // 907. 11,298 (indx 100.0%),  Japan (11,298), Japan_kanto (3,319)
+		addCommon("mart"); // 908. 33,105 (indx 100.0%),  Us (11,269), South-korea_asia (4,992)
+		addCommon("pool"); // 909. 26,640 (indx 100.0%),  Us (11,267), Gb_england (2,641)
+		addCommon("usps"); // 910. 11,329 (indx 100.0%),  Us (11,244), Us_new-york (1,783)
+		addCommon("stora"); // 911. 12,652 (indx 100.0%),  Sweden (11,243), Sweden_vastra-gotaland (2,542)
+		addCommon("hòu"); // 912. 11,206 (indx 100.0%),  China (11,206), China_shandong (1,741)
+		addCommon("iin"); // 913. 11,285 (indx 100.0%),  Japan (11,202), Japan_kanto (3,682)
+		addCommon("продукты"); // 914. 13,003 (indx 100.0%),  Russia (11,195), Russia_leningradskaya (1,353)
+		addCommon("oficina"); // 915. 22,611 (indx 100.0%),  Japan (11,182), Japan_chubu (2,610)
+		addCommon("банк"); // 916. 28,734 (indx 100.0%),  Russia (11,146), Georgia_asia (4,943)
+		addCommon("sha"); // 917. 19,830 (indx 100.0%),  Japan (11,141), Hong-kong_asia (3,568)
+		addCommon("kurinikku"); // 918. 11,139 (indx 100.0%),  Japan (11,139), Japan_kanto (4,244)
+		addCommon("3-chome"); // 919. 11,120 (indx 100.0%),  Japan (11,120), Japan_kinki (2,785)
+		addCommon("przedszkole"); // 920. 11,120 (indx 100.0%),  Poland (11,120), Poland_masovian (2,130)
+		addCommon("keisatsu"); // 921. 11,115 (indx 100.0%),  Japan (11,115), Japan_kanto (2,581)
+		addCommon("lands"); // 922. 14,282 (indx 100.0%),  Canada (11,112), Canada_nunavut-se (6,722)
+		addCommon("produkty"); // 923. 12,395 (indx 100.0%),  Russia (11,063), Russia_leningradskaya (1,342)
+		addCommon("wéi"); // 924. 11,050 (indx 100.0%),  China (11,050), China_shandong (3,784)
+		addCommon("combe"); // 925. 12,071 (indx 100.0%),  France (11,039), France_auvergne-rhone-alpes (3,978)
+		addCommon("correos"); // 926. 17,189 (indx 100.0%),  Japan (11,033), Japan_chubu (2,575)
+		addCommon("antônio"); // 927. 11,049 (indx 47.7%),  Brazil (11,031), Brazil_sao-paulo (2,838)
+		addCommon("dá"); // 928. 11,100 (indx 100.0%),  China (11,022), China_sichuan (1,542)
+		addCommon("комплекс"); // 929. 16,962 (indx 100.0%),  Russia (11,021), Russia_moskovskaya-oblast (2,381)
+		addCommon("qu"); // 930. 12,814 (indx 82.7%),  Taiwan (11,010), Taiwan_asia (11,010)
+		addCommon("cote"); // 931. 14,259 (indx 100.0%),  France (11,006), France_great-east (3,549)
+		addCommon("taco"); // 932. 12,066 (indx 100.0%),  Us (11,003), Us_california (1,552)
+		addCommon("templom"); // 933. 12,973 (indx 100.0%),  Hungary (10,989), Hungary_europe (10,989)
+		addCommon("бюджетное"); // 934. 11,017 (indx 100.0%),  Russia (10,974), Russia_leningradskaya (2,628)
+		addCommon("dao"); // 935. 15,410 (indx 79.5%),  Taiwan (10,965), Taiwan_asia (10,965)
+		addCommon("recreation"); // 936. 21,597 (indx 100.0%),  Us (10,942), Canada_british-columbia (2,752)
+		addCommon("patak"); // 937. 13,493 (indx 100.0%),  Hungary (10,941), Hungary_europe (10,941)
+		addCommon("hampton"); // 938. 12,717 (indx 100.0%),  Us (10,930), Gb_england (793)
+		addCommon("почта"); // 939. 13,992 (indx 100.0%),  Russia (10,910), Russia_moskovskaya-oblast (1,690)
+		addCommon("vista"); // 940. 30,800 (indx 47.7%),  Brazil (10,898), Us_california (2,423)
+		addCommon("cami"); // 941. 18,651 (indx 13.6%),  Turkey (10,897), Spain_catalunya (4,418)
+		addCommon("wildberries"); // 942. 12,234 (indx 100.0%),  Russia (10,881), Russia_moskovskaya-oblast (1,997)
+		addCommon("coiffure"); // 943. 19,257 (indx 100.0%),  France (10,846), Ivory-coast_africa (2,874)
+		addCommon("font"); // 944. 15,510 (indx 100.0%),  Spain (10,835), Spain_catalunya (7,684)
+		addCommon("jū"); // 945. 12,058 (indx 100.0%),  China (10,835), China_guangdong (1,572)
+		addCommon("truong"); // 946. 10,903 (indx 100.0%),  Vietnam (10,826), Vietnam_asia (10,826)
+		addCommon("szent"); // 947. 12,726 (indx 100.0%),  Hungary (10,820), Hungary_europe (10,820)
+		addCommon("autohaus"); // 948. 11,616 (indx 100.0%),  Germany (10,809), Germany_bayern (1,720)
+		addCommon("yōchien"); // 949. 10,785 (indx 100.0%),  Japan (10,785), Japan_kanto (3,227)
+		addCommon("paulo"); // 950. 12,293 (indx 36.9%),  Brazil (10,773), Brazil_sao-paulo (4,628)
+		addCommon("nails"); // 951. 21,830 (indx 100.0%),  Us (10,772), Gb_england (2,260)
+		addCommon("osp"); // 952. 10,790 (indx 100.0%),  Poland (10,765), Poland_subcarpathian (1,328)
+		addCommon("dr."); // 953. 20,612 (indx 100.0%),  Germany (10,763), Germany_bayern (5,941)
+		addCommon("deresi"); // 954. 11,029 (indx 100.0%),  Turkey (10,731), Turkey_marmara (3,182)
+		addCommon("урочище"); // 955. 13,983 (indx 100.0%),  Russia (10,726), Russia_altayskiy (2,444)
+		addCommon("port"); // 956. 40,789 (indx 100.0%),  France (10,722), France_brittany (1,443)
+		addCommon("ru"); // 957. 15,054 (indx 100.0%),  France (10,663), France_ile-de-france (3,887)
+		addCommon("chicken"); // 958. 32,561 (indx 100.0%),  Us (10,615), Gb_england (2,281)
+		addCommon("guan"); // 959. 11,957 (indx 100.0%),  Taiwan (10,611), Taiwan_asia (10,611)
+		addCommon("yūbin"); // 960. 10,598 (indx 100.0%),  Japan (10,598), Japan_kanto (3,970)
+		addCommon("ring"); // 961. 27,674 (indx 100.0%),  China (10,588), China_sichuan (1,879)
+		addCommon("alter"); // 962. 11,865 (indx 100.0%),  Germany (10,550), Germany_nordrhein-westfalen (1,988)
+		addCommon("cesta"); // 963. 19,287 (indx 100.0%),  Czech-republic (10,543), Czech-republic_severovychod (3,964)
+		addCommon("for"); // 964. 37,549 (indx 100.0%),  Us (10,541), Gb_england (2,234)
+		addCommon("xiao"); // 965. 12,433 (indx 84.6%),  Taiwan (10,539), Taiwan_asia (10,539)
+		addCommon("kō"); // 966. 10,535 (indx 100.0%),  Japan (10,535), Japan_kanto (2,297)
+		addCommon("federal"); // 967. 22,630 (indx 100.0%),  Brazil (10,502), Brazil_sao-paulo (1,818)
+		addCommon("kù"); // 968. 10,479 (indx 100.0%),  China (10,479), China_guangdong (1,329)
+		addCommon("silva"); // 969. 14,408 (indx 25.1%),  Brazil (10,473), Brazil_sao-paulo (2,738)
+		addCommon("pulau"); // 970. 13,627 (indx 100.0%),  Indonesia (10,456), Malaysia_asia (2,661)
+		addCommon("buffalo"); // 971. 11,886 (indx 100.0%),  Us (10,450), Us_north-carolina (1,240)
+		addCommon("chuān"); // 972. 10,449 (indx 100.0%),  China (10,449), China_shanghai (2,518)
+		addCommon("wales"); // 973. 13,028 (indx 100.0%),  Us (10,442), Us_florida (8,796)
+		addCommon("đường"); // 974. 11,698 (indx 45.6%),  Vietnam (10,422), Vietnam_asia (10,422)
+		addCommon("restaurante"); // 975. 32,722 (indx 100.0%),  Brazil (10,400), Portugal_europe (3,079)
+		addCommon("che"); // 976. 13,245 (indx 100.0%),  Taiwan (10,391), Taiwan_asia (10,391)
+		addCommon("xiang"); // 977. 12,379 (indx 82.0%),  Taiwan (10,354), Taiwan_asia (10,354)
+		addCommon("اباد"); // 978. 11,829 (indx 100.0%),  Iran (10,336), Pakistan_asia (994)
+		addCommon("k"); // 979. 63,276 (indx 100.0%),  Us (10,333), Myanmar_asia (5,501)
+		addCommon("cruz"); // 980. 40,025 (indx 100.0%),  Spain (10,332), Portugal_europe (2,668)
+		addCommon("xian"); // 981. 13,488 (indx 75.9%),  Taiwan (10,328), Taiwan_asia (10,328)
+		addCommon("luò"); // 982. 10,307 (indx 100.0%),  China (10,307), China_henan (2,709)
+		addCommon("harbor"); // 983. 10,832 (indx 100.0%),  Us (10,304), Us_california (1,562)
+		addCommon("ki"); // 984. 14,882 (indx 100.0%),  Japan (10,293), Japan_kanto (3,072)
+		addCommon("edeka"); // 985. 10,287 (indx 100.0%),  Germany (10,287), Germany_bayern (2,197)
+		addCommon("torre"); // 986. 27,100 (indx 100.0%),  Spain (10,278), Spain_catalunya (2,493)
+		addCommon("opp"); // 987. 17,685 (indx 100.0%),  Australia-oceania (10,262), Australia-oceania_new-south-wales (10,118)
+		addCommon("police"); // 988. 45,296 (indx 100.0%),  Us (10,259), Gb_england (1,660)
+		addCommon("lilla"); // 989. 11,286 (indx 100.0%),  Sweden (10,256), Sweden_vastra-gotaland (2,318)
+		addCommon("nuestra"); // 990. 24,911 (indx 100.0%),  Spain (10,255), Spain_andalusia (2,474)
+		addCommon("walk"); // 991. 18,367 (indx 17.9%),  Gb (10,244), Gb_england (8,965)
+		addCommon("jia"); // 992. 12,076 (indx 84.1%),  Taiwan (10,237), Taiwan_asia (10,237)
+		addCommon("as"); // 993. 38,019 (indx 100.0%),  Spain (10,236), Yemen_asia (9,970)
+		addCommon("jones"); // 994. 12,933 (indx 100.0%),  Us (10,233), Us_north-carolina (882)
+		addCommon("kolonia"); // 995. 10,385 (indx 100.0%),  Poland (10,228), Poland_lublin (1,882)
+		addCommon("islands"); // 996. 26,255 (indx 100.0%),  Canada (10,226), Canada_british-columbia (6,573)
+		addCommon("sint"); // 997. 14,175 (indx 100.0%),  Belgium (10,220), Belgium_flanders (9,971)
+		addCommon("sentier"); // 998. 16,509 (indx 100.0%),  France (10,218), Canada_quebec (2,955)
+		addCommon("ρι"); // 999. 10,855 (indx 100.0%),  South-korea (10,215), South-korea_asia (10,215)
+		addCommon("mas"); // 1000. 23,418 (indx 100.0%),  Spain (10,204), Spain_catalunya (5,752)
+		addCommon("kampung"); // 1001. 12,573 (indx 100.0%),  Malaysia (10,199), Malaysia_asia (10,199)
+		addCommon("jìng"); // 1002. 10,198 (indx 100.0%),  China (10,198), China_guangdong (1,298)
+		addCommon("diamantina"); // 1003. 10,301 (indx 100.0%),  Australia-oceania (10,188), Australia-oceania_queensland (8,612)
+		addCommon("sawa"); // 1004. 10,238 (indx 100.0%),  Japan (10,184), Japan_tohoku (3,657)
+		addCommon("before"); // 1005. 14,292 (indx 100.0%),  Australia-oceania (10,180), Australia-oceania_new-south-wales (4,941)
+		addCommon("mĕi"); // 1006. 10,177 (indx 100.0%),  China (10,177), China_guangdong (1,804)
+		addCommon("wū"); // 1007. 10,163 (indx 100.0%),  China (10,163), China_guangdong (1,564)
+		addCommon("lycée"); // 1008. 16,461 (indx 100.0%),  France (10,160), France_ile-de-france (1,850)
+		addCommon("marseille"); // 1009. 10,226 (indx 100.0%),  France (10,135), France_provence-alpes-cote-d-azur (5,241)
+		addCommon("ristorante"); // 1010. 13,252 (indx 100.0%),  Italy (10,101), Italy_lombardia (1,918)
+		addCommon("jacques"); // 1011. 12,701 (indx 100.0%),  France (10,099), France_ile-de-france (1,462)
+		addCommon("you"); // 1012. 13,391 (indx 77.9%),  Taiwan (10,083), Taiwan_asia (10,083)
+		addCommon("roche"); // 1013. 11,544 (indx 100.0%),  France (10,063), France_auvergne-rhone-alpes (2,342)
+		addCommon("autovía"); // 1014. 10,382 (indx 100.0%),  Spain (10,055), Spain_castilla-leon (2,632)
+		addCommon("em"); // 1015. 13,502 (indx 100.0%),  Brazil (10,048), Brazil_maranhao (4,394)
+		addCommon("urochishchie"); // 1016. 12,273 (indx 100.0%),  Russia (10,042), Russia_altayskiy (2,425)
+		addCommon("thanh"); // 1017. 10,164 (indx 100.0%),  Vietnam (10,042), Vietnam_asia (10,042)
+		addCommon("lajeado"); // 1018. 10,098 (indx 100.0%),  Brazil (10,035), Brazil_santa-catarina (6,524)
+		addCommon("madonna"); // 1019. 10,397 (indx 100.0%),  Italy (10,032), Italy_piemonte (2,310)
+		addCommon("silver"); // 1020. 14,333 (indx 100.0%),  Us (10,004), Us_california (955)
+		addCommon("микрорайон"); // 1021. 12,949 (indx 100.0%),  Russia (10,003), Russia_moskovskaya-oblast (1,417)
+		addCommon("세븐일레븐"); // 1022. 13,228 (indx 100.0%),  Japan (9,951), Japan_kanto (7,482)
+		addCommon("anganwadi"); // 1023. 9,927 (indx 100.0%),  India (9,927), India_kerala (9,574)
+	}
 
-		addCommon("plaza");
-		addCommon("pasaje");
-		addCommon("expressway");
-		addCommon("ruta");
-		addCommon("square");
-		addCommon("freeway");
-		addCommon("line");
-
-		addCommon("track");
-
-		addCommon("zum");
-		addCommon("rodovia");
-		addCommon("sokak");
-		addCommon("sur");
-		addCommon("path");
-		addCommon("das");
-
-		addCommon("yolu");
-
-		addCommon("проспект");
-
-		addCommon("auf");
-		addCommon("alley");
-		addCommon("são");
-		addCommon("les");
-		addCommon("paseo");
-		addCommon("autostrada");
-		addCommon("iela");
-		addCommon("autovía");
-		addCommon("d");
-		addCommon("ulica");
-
-		addCommon("na");
-		addCommon("проезд");
-		addCommon("n");
-		addCommon("ул.");
-		addCommon("voie");
-		addCommon("ring");
-		addCommon("ruelle");
-		addCommon("vicolo");
-		addCommon("avinguda");
-		addCommon("шоссе");
-		addCommon("zur");
-		addCommon("corso");
-		addCommon("autopista");
-		addCommon("провулок");
-		addCommon("broadway");
-		addCommon("to");
-		addCommon("passage");
-		addCommon("sentier");
-		addCommon("aleja");
-		addCommon("dem");
-		addCommon("valle");
-		addCommon("cruz");
-
-		addCommon("bypass");
-		addCommon("rúa");
-		addCommon("crest");
-		addCommon("ave");
-
-		addCommon("turnpike");
-
-		addCommon("autoroute");
-		addCommon("crossing");
-		addCommon("camí");
-		addCommon("bend");
-
-		addCommon("end");
-		addCommon("caddesi");
-		addCommon("bis");
-
-		addCommon("ქუჩა");
-		addCommon("kalea");
-		addCommon("pass");
-		addCommon("ponte");
-		addCommon("cruce");
-		addCommon("se");
-		addCommon("au");
-
-		addCommon("allee");
-		addCommon("autobahn");
-		addCommon("väg");
-		addCommon("sentiero");
-		addCommon("plaça");
-		addCommon("o");
-		addCommon("vej");
-		addCommon("aux");
-		addCommon("spur");
-		addCommon("ringstraße");
-		addCommon("lindenstraße");
-		addCommon("kirchstraße");
-		addCommon("bergstraße");
-		addCommon("mühlenstraße");
-		addCommon("industriestraße");
-		addCommon("schillerstraße");
-		addCommon("talstraße");
-		addCommon("gartenstraße");
-		addCommon("prospect");
-		addCommon("m.");
-		addCommon("chaussee");
-		addCommon("row");
-		addCommon("link");
-
-		addCommon("travesía");
-		addCommon("degli");
-		addCommon("piazzale");
-		addCommon("vei");
-		addCommon("waldstraße");
-		addCommon("promenade");
-		addCommon("puente");
-		addCommon("rond-point");
-		addCommon("vía");
-		addCommon("pod");
-		addCommon("triq");
-		addCommon("hwy");
-		addCommon("οδός");
-		addCommon("dels");
-		addCommon("and");
-
-		addCommon("pré");
-		addCommon("plac");
-		addCommon("fairway");
-
-// 		addCommon("farm-to-market");
-
-		addCommon("набережная");
-
-		addCommon("chaussée");
-
-		addCommon("náměstí");
-		addCommon("tér");
-		addCommon("roundabout");
-		addCommon("lakeshore");
-		addCommon("lakeside");
-		addCommon("alle");
-		addCommon("gasse");
-		addCommon("str.");
-//		addCommon("p.");
-		addCommon("ville");
-		addCommon("beco");
-		addCommon("platz");
-
-// 		addCommon("porto");
-
-		addCommon("sideroad");
-		addCommon("pista");
-
-		addCommon("аллея");
-		addCommon("бульвар");
-		addCommon("город");
-		addCommon("городок");
-		addCommon("деревня");
-		addCommon("дер.");
-		addCommon("пос.");
-		addCommon("дорога");
-		addCommon("дорожка");
-		addCommon("кольцо");
-		addCommon("мост");
-		addCommon("остров");
-		addCommon("островок");
-		addCommon("поселок");
-		addCommon("посёлок");
-		addCommon("путепровод");
-		addCommon("слобода");
-		addCommon("станция");
-		addCommon("тоннель");
-		addCommon("тракт");
-		addCommon("island");
-		addCommon("islet");
-		addCommon("tunnel");
-		addCommon("stadt");
-		addCommon("brücke");
-		addCommon("damm");
-		addCommon("insel");
-		addCommon("dorf");
-		addCommon("bereich");
-		addCommon("überführung");
-		addCommon("bulevar");
-		addCommon("ciudad");
-		addCommon("pueblo");
-		addCommon("anillo");
-		addCommon("muelle");
-		addCommon("isla");
-		addCommon("islote");
-		addCommon("carril");
-		addCommon("viaje");
-		addCommon("città");
-		addCommon("paese");
-		addCommon("villaggio");
-		addCommon("banchina");
-		addCommon("isola");
-		addCommon("isolotto");
-		addCommon("corsia");
-		addCommon("viaggio");
-		addCommon("canale");
-		addCommon("pont");
-		addCommon("quai");
-		addCommon("île");
-		addCommon("îlot");
-		addCommon("voyage");
-		addCommon("descente");
-		addCommon("straat");
-		addCommon("stad");
-		addCommon("dorp");
-		addCommon("brug");
-		addCommon("kade");
-		addCommon("eiland");
-		addCommon("eilandje");
-		addCommon("laan");
-		addCommon("plein");
-		addCommon("reizen");
-		addCommon("afkomst");
-		addCommon("kanaal");
-		addCommon("doodlopende");
-		addCommon("stradă");
-		addCommon("rutier");
-		addCommon("alee");
-		addCommon("municipiu");
-		addCommon("oras");
-		addCommon("drumuri");
-		addCommon("poduri");
-		addCommon("cheu");
-		addCommon("insula");
-		addCommon("ostrov");
-		addCommon("sat");
-		addCommon("călătorie");
-		addCommon("coborâre");
-		addCommon("statie");
-		addCommon("tunel");
-		addCommon("fundătură");
-		addCommon("ulice");
-		addCommon("silnice");
-		addCommon("bulvár");
-		addCommon("město");
-		addCommon("obec");
-		addCommon("most");
-		addCommon("nábřeží");
-		addCommon("ostrova");
-		addCommon("ostrůvek");
-		addCommon("vesnice");
-		addCommon("jezdit");
-		addCommon("sestup");
-		addCommon("nádraží");
-		addCommon("kanál");
-		addCommon("ulička");
-		addCommon("gata");
-		addCommon("by");
-		addCommon("bro");
-		addCommon("kaj");
-		addCommon("ö");
-		addCommon("holme");
-		addCommon("fyrkant");
-		addCommon("resa");
-		addCommon("härkomst");
-		addCommon("kanal");
-		addCommon("återvändsgränd");
-		addCommon("cesty");
-		addCommon("ostrovček");
-		addCommon("námestie");
-		addCommon("dediny");
-		addCommon("jazdiť");
-		addCommon("zostup");
-		addCommon("stanice");
-		addCommon("cesta");
-		addCommon("pot");
-		addCommon("mesto");
-		addCommon("kraj");
-		addCommon("vas");
-		addCommon("pomol");
-		addCommon("otok");
-		addCommon("otoček");
-		addCommon("trg");
-		addCommon("potovanje");
-		addCommon("spust");
-		addCommon("postaja");
-		addCommon("predor");
-		addCommon("вуліца");
-		addCommon("шаша");
-		addCommon("алея");
-		addCommon("горад");
-		addCommon("мястэчка");
-		addCommon("вёска");
-		addCommon("дарога");
-		addCommon("набярэжная");
-		addCommon("востраў");
-		addCommon("астравок");
-		addCommon("завулак");
-		addCommon("плошча");
-		addCommon("пасёлак");
-		addCommon("праезд");
-		addCommon("праспект");
-		addCommon("станцыя");
-		addCommon("тунэль");
-		addCommon("тупік");
-		addCommon("افي.");
-		addCommon("إلى");
-		addCommon("تسوية");
-		addCommon("جادة");
-		addCommon("جزيرة");
-		addCommon("جسر");
-		addCommon("زقاق");
-		addCommon("شارع");
-		addCommon("طريق");
-		addCommon("قرية");
-		addCommon("مأزق");
-		addCommon("محطة");
-		addCommon("مدينة");
-		addCommon("مرور");
-		addCommon("مسار");
-		addCommon("ممر");
-		addCommon("منطقة");
-		addCommon("نفق");
-		addCommon("път");
-		addCommon("булевард");
-		addCommon("град");
-		addCommon("село");
-		addCommon("кей");
-		addCommon("островче");
-		addCommon("платно");
-		addCommon("квадрат");
-		addCommon("пътуване");
-		addCommon("произход");
-		addCommon("гара");
-		addCommon("тунел");
-		addCommon("канал");
-		addCommon("körút");
-		addCommon("híd");
-		addCommon("rakpart");
-		addCommon("állomás");
-		addCommon("alagút");
-		addCommon("đường");
-		addCommon("đại");
-		addCommon("làng");
-		addCommon("cầu");
-		addCommon("đảo");
-		addCommon("phố");
-		addCommon("gốc");
-		addCommon("kênh");
-		addCommon("δρόμο");
-		addCommon("λεωφόρος");
-		addCommon("πόλη");
-		addCommon("κωμόπολη");
-		addCommon("χωριό");
-		addCommon("δρόμος");
-		addCommon("γέφυρα");
-		addCommon("αποβάθρα");
-		addCommon("νησί");
-		addCommon("νησίδα");
-		addCommon("λωρίδα");
-		addCommon("πλατεία");
-		addCommon("χωριό");
-		addCommon("ταξίδια");
-		addCommon("ø");
-		addCommon("bane");
-
+	// Calculated using index_words_dashboard.html sorted by Top in Region! 
+	private void addCalculatedPoiFrequentWords() {
+		addFrequent("lincoln"); // 1024. 11,606 (indx 100.0%),  Us (9,898), Us_illinois (1,174)
+		addFrequent("مسجد"); // 1025. 32,038 (indx 100.0%),  Iran (9,892), Algeria_africa (3,513)
+		addFrequent("komplieks"); // 1026. 12,549 (indx 100.0%),  Russia (9,892), Russia_moskovskaya-oblast (2,143)
+		addFrequent("нова"); // 1027. 10,671 (indx 100.0%),  Ukraine (9,888), Ukraine_kyiv (1,802)
+		addFrequent("sv."); // 1028. 24,624 (indx 100.0%),  Czech-republic (9,882), Slovakia_europe (5,653)
+		addFrequent("smith"); // 1029. 13,187 (indx 100.0%),  Us (9,882), Us_north-carolina (688)
+		addFrequent("naturreservat"); // 1030. 19,141 (indx 100.0%),  Sweden (9,859), Norway_vestland (1,448)
+		addFrequent("eagle"); // 1031. 12,439 (indx 100.0%),  Us (9,852), Us_california (832)
+		addFrequent("hua"); // 1032. 13,626 (indx 74.6%),  Taiwan (9,839), Taiwan_asia (9,839)
+		addFrequent("شعىب"); // 1033. 10,134 (indx 100.0%),  Saudi-arabia (9,830), Saudi-arabia_asia (9,830)
+		addFrequent("prospiekt"); // 1034. 10,411 (indx 100.0%),  Russia (9,826), Russia_leningradskaya (3,028)
+		addFrequent("plantation"); // 1035. 13,241 (indx 100.0%),  Gb (9,818), Gb_england (8,086)
+		addFrequent("vallee"); // 1036. 11,407 (indx 100.0%),  France (9,798), France_centre-loire-valley (1,568)
+		addFrequent("shree"); // 1037. 13,038 (indx 100.0%),  Nepal (9,777), Nepal_asia (9,777)
+		addFrequent("kai"); // 1038. 15,277 (indx 100.0%),  Japan (9,741), Japan_kanto (2,784)
+		addFrequent("suo"); // 1039. 10,042 (indx 100.0%),  Taiwan (9,737), Taiwan_asia (9,737)
+		addFrequent("h"); // 1040. 36,184 (indx 100.0%),  Us (9,725), Us_texas (2,324)
+		addFrequent("deus"); // 1041. 10,820 (indx 100.0%),  Brazil (9,714), Brazil_sao-paulo (1,679)
+		addFrequent("средняя"); // 1042. 13,043 (indx 100.0%),  Russia (9,712), Russia_leningradskaya (777)
+		addFrequent("berg"); // 1043. 14,968 (indx 100.0%),  Germany (9,709), Germany_nordrhein-westfalen (1,807)
+		addFrequent("corner"); // 1044. 25,075 (indx 100.0%),  Us (9,705), Gb_england (4,236)
+		addFrequent("lycee"); // 1045. 15,523 (indx 100.0%),  France (9,644), France_ile-de-france (1,724)
+		addFrequent("ting"); // 1046. 11,462 (indx 79.7%),  Taiwan (9,641), Taiwan_asia (9,641)
+		addFrequent("wald"); // 1047. 13,086 (indx 100.0%),  Germany (9,635), Germany_bayern (2,462)
+		addFrequent("hair"); // 1048. 42,263 (indx 100.0%),  Us (9,620), Gb_england (6,284)
+		addFrequent("caddesi"); // 1049. 9,823 (indx 9.3%),  Turkey (9,619), Turkey_marmara (5,653)
+		addFrequent("stazione"); // 1050. 10,260 (indx 100.0%),  Italy (9,618), Italy_lombardia (1,693)
+		addFrequent("dăo"); // 1051. 9,613 (indx 100.0%),  China (9,613), China_shandong (3,049)
+		addFrequent("fish"); // 1052. 27,065 (indx 100.0%),  Us (9,594), Gb_england (4,614)
+		addFrequent("capela"); // 1053. 20,770 (indx 100.0%),  Portugal (9,579), Portugal_europe (9,579)
+		addFrequent("jiao"); // 1054. 10,599 (indx 100.0%),  Taiwan (9,575), Taiwan_asia (9,575)
+		addFrequent("vieux"); // 1055. 11,836 (indx 42.8%),  France (9,573), France_great-east (1,322)
+		addFrequent("vallée"); // 1056. 11,578 (indx 100.0%),  France (9,568), France_centre-loire-valley (1,507)
+		addFrequent("sul"); // 1057. 13,285 (indx 100.0%),  Brazil (9,559), Brazil_espirito-santo (2,273)
+		addFrequent("correio"); // 1058. 9,558 (indx 100.0%),  Japan (9,558), Japan_chubu (2,242)
+		addFrequent("castle"); // 1059. 23,127 (indx 100.0%),  Gb (9,557), Gb_england (5,809)
+		addFrequent("on"); // 1060. 27,451 (indx 100.0%),  Us (9,557), Gb_england (3,128)
+		addFrequent("hiroba"); // 1061. 9,551 (indx 100.0%),  Japan (9,551), Japan_kanto (3,497)
+		addFrequent("sports"); // 1062. 40,337 (indx 100.0%),  Us (9,550), Gb_england (5,024)
+		addFrequent("tuán"); // 1063. 9,548 (indx 100.0%),  China (9,548), China_shandong (1,588)
+		addFrequent("manzana"); // 1064. 12,931 (indx 100.0%),  Argentina (9,544), Argentina_misiones (7,036)
+		addFrequent("norte"); // 1065. 36,652 (indx 100.0%),  Brazil (9,541), Brazil_espirito-santo (4,801)
+		addFrequent("prairie"); // 1066. 13,936 (indx 100.0%),  Us (9,540), Us_illinois (1,358)
+		addFrequent("beijing"); // 1067. 9,787 (indx 100.0%),  China (9,539), China_beijing (1,607)
+		addFrequent("posten"); // 1068. 9,538 (indx 100.0%),  Norway (9,538), Norway_vestland (1,325)
+		addFrequent("johnson"); // 1069. 10,763 (indx 100.0%),  Us (9,531), Us_texas (906)
+		addFrequent("mexican"); // 1070. 9,673 (indx 100.0%),  Us (9,518), Us_california (1,246)
+		addFrequent("shēn"); // 1071. 9,495 (indx 100.0%),  China (9,495), China_guangdong (2,290)
+		addFrequent("peña"); // 1072. 12,720 (indx 100.0%),  Spain (9,489), Spain_castilla-leon (3,472)
+		addFrequent("zhen"); // 1073. 10,462 (indx 100.0%),  Taiwan (9,477), Taiwan_asia (9,477)
+		addFrequent("sōgō"); // 1074. 9,461 (indx 100.0%),  Japan (9,461), Japan_hokkaido (2,688)
+		addFrequent("greenway"); // 1075. 14,793 (indx 100.0%),  Us (9,453), Us_north-carolina (1,711)
+		addFrequent("dài"); // 1076. 9,446 (indx 100.0%),  China (9,446), China_zhejiang (2,026)
+		addFrequent("pizzeria"); // 1077. 33,297 (indx 100.0%),  Italy (9,427), Germany_nordrhein-westfalen (1,721)
+		addFrequent("deer"); // 1078. 11,704 (indx 100.0%),  Us (9,411), Us_california (1,340)
+		addFrequent("метро"); // 1079. 9,405 (indx 100.0%),  Russia (9,405), Russia_moskovskaya-oblast (4,707)
+		addFrequent("beauty"); // 1080. 40,908 (indx 100.0%),  Us (9,395), Gb_england (5,200)
+		addFrequent("av"); // 1081. 28,273 (indx 23.8%),  Us (9,394), Australia-oceania_new-south-wales (5,861)
+		addFrequent("michel"); // 1082. 12,082 (indx 100.0%),  France (9,379), France_occitania (1,211)
+		addFrequent("polska"); // 1083. 9,524 (indx 100.0%),  Poland (9,368), Poland_masovian (1,392)
+		addFrequent("sū"); // 1084. 9,358 (indx 100.0%),  China (9,358), China_jiangsu (5,726)
+		addFrequent("condominio"); // 1085. 17,082 (indx 100.0%),  Brazil (9,353), Brazil_sao-paulo (2,575)
+		addFrequent("имени"); // 1086. 12,378 (indx 100.0%),  Russia (9,352), Russia_moskovskaya-oblast (1,624)
+		addFrequent("żabka"); // 1087. 9,336 (indx 100.0%),  Poland (9,326), Poland_masovian (1,532)
+		addFrequent("autovia"); // 1088. 9,553 (indx 100.0%),  Spain (9,324), Spain_castilla-leon (2,376)
+		addFrequent("mile"); // 1089. 21,235 (indx 100.0%),  Us (9,280), Australia-oceania_queensland (2,931)
+		addFrequent("nº"); // 1090. 13,873 (indx 100.0%),  Argentina (9,278), Argentina_misiones (2,440)
+		addFrequent("k-150"); // 1091. 10,319 (indx 100.0%),  Russia (9,274), Russia_krasnodar (4,582)
+		addFrequent("solar"); // 1092. 25,658 (indx 100.0%),  Us (9,271), Australia-oceania_queensland (2,577)
+		addFrequent("красное"); // 1093. 9,418 (indx 100.0%),  Russia (9,257), Russia_moskovskaya-oblast (1,029)
+		addFrequent("educación"); // 1094. 17,117 (indx 100.0%),  Spain (9,256), Spain_andalusia (2,628)
+		addFrequent("és"); // 1095. 9,728 (indx 100.0%),  Hungary (9,250), Hungary_europe (9,250)
+		addFrequent("aldi"); // 1096. 18,535 (indx 100.0%),  Germany (9,241), Germany_nordrhein-westfalen (2,125)
+		addFrequent("gasthaus"); // 1097. 14,354 (indx 100.0%),  Germany (9,238), Germany_bayern (2,828)
+		addFrequent("zabka"); // 1098. 9,340 (indx 100.0%),  Poland (9,216), Poland_masovian (1,503)
+		addFrequent("friedrich"); // 1099. 9,730 (indx 100.0%),  Germany (9,202), Germany_nordrhein-westfalen (1,652)
+		addFrequent("playground"); // 1100. 20,782 (indx 100.0%),  Us (9,197), Gb_england (1,375)
+		addFrequent("r"); // 1101. 47,073 (indx 100.0%),  Us (9,162), Portugal_europe (7,581)
+		addFrequent("sri"); // 1102. 15,807 (indx 100.0%),  India (9,162), Malaysia_asia (3,318)
+		addFrequent("qìng"); // 1103. 9,161 (indx 100.0%),  China (9,161), China_chongqing (1,822)
+		addFrequent("l'etang"); // 1104. 9,399 (indx 100.0%),  France (9,160), France_great-east (1,639)
+		addFrequent("georges"); // 1105. 11,949 (indx 100.0%),  France (9,152), France_ile-de-france (1,615)
+		addFrequent("lago"); // 1106. 20,645 (indx 100.0%),  Italy (9,147), Italy_lombardia (1,737)
+		addFrequent("group"); // 1107. 35,893 (indx 100.0%),  Us (9,137), Canada_british-columbia (4,095)
+		addFrequent("cettii"); // 1108. 9,132 (indx 100.0%),  Myanmar (9,132), Myanmar_asia (9,132)
+		addFrequent("hoa"); // 1109. 9,426 (indx 100.0%),  Vietnam (9,103), Vietnam_asia (9,103)
+		addFrequent("mikroraion"); // 1110. 10,666 (indx 100.0%),  Russia (9,103), Russia_moskovskaya-oblast (1,279)
+		addFrequent("gully"); // 1111. 11,091 (indx 100.0%),  Australia-oceania (9,089), Australia-oceania_new-south-wales (4,425)
+		addFrequent("wanderweg"); // 1112. 15,558 (indx 100.0%),  Germany (9,088), Germany_bayern (2,717)
+		addFrequent("terres"); // 1113. 15,937 (indx 100.0%),  Canada (9,086), Canada_nunavut-se (6,722)
+		addFrequent("santos"); // 1114. 18,587 (indx 16.2%),  Brazil (9,083), Brazil_sao-paulo (2,682)
+		addFrequent("စေတီ"); // 1115. 9,080 (indx 100.0%),  Myanmar (9,080), Myanmar_asia (9,080)
+		addFrequent("kg"); // 1116. 10,837 (indx 100.0%),  Germany (9,066), Germany_nordrhein-westfalen (2,095)
+		addFrequent("línea"); // 1117. 22,571 (indx 100.0%),  Japan (9,061), Japan_kanto (6,240)
+		addFrequent("th"); // 1118. 12,717 (indx 100.0%),  Finland (9,055), Vietnam_asia (1,933)
+		addFrequent("cross"); // 1119. 26,471 (indx 100.0%),  Gb (9,035), Gb_england (7,728)
+		addFrequent("lodge"); // 1120. 34,813 (indx 100.0%),  Us (9,032), Gb_england (6,681)
+		addFrequent("белое"); // 1121. 9,215 (indx 100.0%),  Russia (9,015), Russia_moskovskaya-oblast (1,021)
+		addFrequent("học"); // 1122. 9,153 (indx 100.0%),  Vietnam (9,010), Vietnam_asia (9,010)
+		addFrequent("sankt"); // 1123. 18,313 (indx 100.0%),  Germany (9,009), Germany_bayern (2,227)
+		addFrequent("phc"); // 1124. 9,540 (indx 100.0%),  India (9,001), India_tamil-nadu (1,283)
+		addFrequent("ayuntamiento"); // 1125. 9,402 (indx 100.0%),  Spain (9,000), Spain_castilla-leon (2,809)
+		addFrequent("straż"); // 1126. 8,990 (indx 100.0%),  Poland (8,971), Poland_subcarpathian (1,285)
+		addFrequent("granja"); // 1127. 15,576 (indx 100.0%),  Mexico (8,956), Mexico_sinaloa (8,441)
+		addFrequent("cooper"); // 1128. 11,263 (indx 100.0%),  Australia-oceania (8,940), Australia-oceania_queensland (8,690)
+		addFrequent("nan"); // 1129. 16,284 (indx 62.5%),  Taiwan (8,932), Taiwan_asia (8,932)
+		addFrequent("railroad"); // 1130. 9,140 (indx 100.0%),  Us (8,931), Us_california (571)
+		addFrequent("tepesi"); // 1131. 9,407 (indx 100.0%),  Turkey (8,915), Turkey_central-anatolia (4,316)
+		addFrequent("bom"); // 1132. 10,868 (indx 100.0%),  Brazil (8,910), Portugal_europe (1,552)
+		addFrequent("санкт"); // 1133. 8,909 (indx 100.0%),  Russia (8,909), Russia_leningradskaya (4,468)
+		addFrequent("star"); // 1134. 26,196 (indx 100.0%),  Us (8,904), Gb_england (1,655)
+		addFrequent("allt"); // 1135. 8,902 (indx 100.0%),  Gb (8,902), Gb_scotland (8,319)
+		addFrequent("esq."); // 1136. 8,900 (indx 100.0%),  Chile (8,900), Chile_metropolitana-de-santiago (8,900)
+		addFrequent("est"); // 1137. 18,004 (indx 100.0%),  France (8,897), Canada_quebec (2,172)
+		addFrequent("po"); // 1138. 25,138 (indx 100.0%),  Russia (8,896), Hong-kong_asia (3,412)
+		addFrequent("نهر"); // 1139. 21,881 (indx 100.0%),  Iraq (8,864), Iraq_asia (8,864)
+		addFrequent("maría"); // 1140. 23,168 (indx 100.0%),  Spain (8,841), Spain_galicia (1,754)
+		addFrequent("landing"); // 1141. 11,088 (indx 100.0%),  Us (8,840), Us_california (548)
+		addFrequent("haute"); // 1142. 13,263 (indx 100.0%),  France (8,826), France_pays-de-la-loire (1,361)
+		addFrequent("straz"); // 1143. 9,174 (indx 100.0%),  Poland (8,800), Poland_subcarpathian (1,279)
+		addFrequent("bayou"); // 1144. 8,841 (indx 100.0%),  Us (8,797), Us_louisiana (5,385)
+		addFrequent("doutor"); // 1145. 12,705 (indx 29.8%),  Brazil (8,791), Brazil_sao-paulo (3,991)
+		addFrequent("james"); // 1146. 17,028 (indx 100.0%),  Us (8,783), Gb_england (2,636)
+		addFrequent("cycle"); // 1147. 19,940 (indx 100.0%),  Gb (8,774), Gb_england (7,233)
+		addFrequent("best"); // 1148. 18,521 (indx 100.0%),  Us (8,742), Gb_england (1,298)
+		addFrequent("l'étang"); // 1149. 8,920 (indx 100.0%),  France (8,729), France_great-east (1,580)
+		addFrequent("duong"); // 1150. 8,837 (indx 62.6%),  Vietnam (8,727), Vietnam_asia (8,727)
+		addFrequent("sentiero"); // 1151. 9,351 (indx 100.0%),  Italy (8,704), Italy_lombardia (1,958)
+		addFrequent("junction"); // 1152. 30,430 (indx 100.0%),  India (8,687), Gb_england (4,384)
+		addFrequent("educacion"); // 1153. 17,185 (indx 100.0%),  Spain (8,679), Spain_andalusia (2,613)
+		addFrequent("lne"); // 1154. 8,670 (indx 100.0%),  Australia-oceania (8,670), Australia-oceania_new-south-wales (8,670)
+		addFrequent("subestação"); // 1155. 10,351 (indx 100.0%),  Brazil (8,663), Brazil_sao-paulo (1,849)
+		addFrequent("nha"); // 1156. 9,031 (indx 100.0%),  Vietnam (8,655), Vietnam_asia (8,655)
+		addFrequent("nam"); // 1157. 16,840 (indx 100.0%),  Vietnam (8,649), Vietnam_asia (8,649)
+		addFrequent("co"); // 1158. 39,248 (indx 30.4%),  Gb (8,625), Gb_england (7,392)
+		addFrequent("subestacao"); // 1159. 10,135 (indx 100.0%),  Brazil (8,608), Brazil_sao-paulo (1,712)
+		addFrequent("ground"); // 1160. 24,318 (indx 100.0%),  India (8,601), Gb_england (5,288)
+		addFrequent("wells"); // 1161. 9,577 (indx 100.0%),  Us (8,592), Us_california (1,563)
+		addFrequent("pożarna"); // 1162. 8,604 (indx 100.0%),  Poland (8,589), Poland_subcarpathian (1,248)
+		addFrequent("zì"); // 1163. 8,584 (indx 100.0%),  China (8,584), China_zhejiang (2,333)
+		addFrequent("wild"); // 1164. 13,196 (indx 100.0%),  Us (8,582), Us_new-york (2,034)
+		addFrequent("grands"); // 1165. 9,183 (indx 100.0%),  France (8,580), France_great-east (1,488)
+		addFrequent("saúde"); // 1166. 11,635 (indx 100.0%),  Brazil (8,573), Portugal_europe (1,949)
+		addFrequent("ken"); // 1167. 9,313 (indx 100.0%),  Japan (8,570), Japan_kanto (2,465)
+		addFrequent("wú"); // 1168. 8,567 (indx 100.0%),  China (8,567), China_jiangsu (1,824)
+		addFrequent("lisesi"); // 1169. 8,624 (indx 100.0%),  Turkey (8,560), Turkey_marmara (3,376)
+		addFrequent("santiago"); // 1170. 24,188 (indx 100.0%),  Spain (8,549), Spain_galicia (2,300)
+		addFrequent("وادى"); // 1171. 22,620 (indx 100.0%),  Saudi-arabia (8,545), Saudi-arabia_asia (8,545)
+		addFrequent("ヶ"); // 1172. 8,543 (indx 100.0%),  Japan (8,543), Japan_kanto (2,555)
+		addFrequent("barrio"); // 1173. 22,514 (indx 100.0%),  Argentina (8,540), Argentina_san-juan (2,148)
+		addFrequent("आँगनवाडी"); // 1174. 8,532 (indx 100.0%),  India (8,532), India_kerala (8,400)
+		addFrequent("yu"); // 1175. 17,656 (indx 52.4%),  Taiwan (8,510), Taiwan_asia (8,510)
+		addFrequent("chase"); // 1176. 9,512 (indx 100.0%),  Us (8,509), Us_california (1,369)
+		addFrequent("space"); // 1177. 13,641 (indx 100.0%),  Us (8,501), Us_california (2,502)
+		addFrequent("verte"); // 1178. 10,778 (indx 100.0%),  France (8,501), Canada_quebec (1,388)
+		addFrequent("berliner"); // 1179. 8,608 (indx 100.0%),  Germany (8,491), Germany_brandenburg (2,832)
+		addFrequent("tower"); // 1180. 27,865 (indx 100.0%),  Us (8,489), Gb_england (2,569)
+		addFrequent("балка"); // 1181. 13,149 (indx 100.0%),  Ukraine (8,480), Ukraine_donetsk (4,204)
+		addFrequent("msjd"); // 1182. 21,075 (indx 100.0%),  Iran (8,470), Algeria_africa (2,048)
+		addFrequent("gardens"); // 1183. 24,655 (indx 20.2%),  Gb (8,451), Gb_england (7,106)
+		addFrequent("meadows"); // 1184. 11,698 (indx 100.0%),  Us (8,451), Gb_england (1,319)
+		addFrequent("camaronera"); // 1185. 8,679 (indx 100.0%),  Mexico (8,433), Mexico_sinaloa (8,312)
+		addFrequent("pozarna"); // 1186. 8,443 (indx 100.0%),  Poland (8,428), Poland_subcarpathian (1,243)
+		addFrequent("rocky"); // 1187. 11,223 (indx 100.0%),  Us (8,420), Us_north-carolina (1,273)
+		addFrequent("camí"); // 1188. 8,725 (indx 11.1%),  Spain (8,390), Spain_catalunya (4,558)
+		addFrequent("gunung"); // 1189. 9,690 (indx 100.0%),  Indonesia (8,381), Indonesia_jawa-tengah (1,674)
+		addFrequent("sh'yb"); // 1190. 8,490 (indx 100.0%),  Saudi-arabia (8,381), Saudi-arabia_asia (8,381)
+		addFrequent("nhà"); // 1191. 8,403 (indx 100.0%),  Vietnam (8,361), Vietnam_asia (8,361)
+		addFrequent("gunter"); // 1192. 10,192 (indx 100.0%),  Germany (8,355), Germany_nordrhein-westfalen (4,261)
+		addFrequent("states"); // 1193. 8,527 (indx 100.0%),  Us (8,347), Us_new-york (591)
+		addFrequent("sdn"); // 1194. 12,408 (indx 100.0%),  Indonesia (8,340), Malaysia_asia (3,578)
+		addFrequent("karl"); // 1195. 10,794 (indx 100.0%),  Germany (8,330), Germany_baden-wuerttemberg (1,337)
+		addFrequent("john's"); // 1196. 13,105 (indx 100.0%),  Us (8,314), Gb_england (1,911)
+		addFrequent("condomínio"); // 1197. 8,442 (indx 100.0%),  Brazil (8,308), Brazil_sao-paulo (2,312)
+		addFrequent("passo"); // 1198. 11,847 (indx 100.0%),  Italy (8,303), Italy_trentino-alto-adige (1,973)
+		addFrequent("foret"); // 1199. 10,366 (indx 100.0%),  France (8,302), France_great-east (1,243)
+		addFrequent("roggia"); // 1200. 8,295 (indx 100.0%),  Italy (8,295), Italy_lombardia (4,699)
+		addFrequent("m"); // 1201. 69,867 (indx 100.0%),  Us (8,280), Azerbaijan_asia (6,924)
+		addFrequent("государственное"); // 1202. 8,741 (indx 100.0%),  Russia (8,271), Russia_leningradskaya (2,620)
+		addFrequent("loch"); // 1203. 11,212 (indx 100.0%),  Gb (8,270), Gb_scotland (8,223)
+		addFrequent("shitsu"); // 1204. 8,269 (indx 100.0%),  Japan (8,269), Japan_tohoku (2,718)
+		addFrequent("youbike"); // 1205. 8,261 (indx 100.0%),  Taiwan (8,261), Taiwan_asia (8,261)
+		addFrequent("côte"); // 1206. 10,580 (indx 100.0%),  France (8,248), France_great-east (3,166)
+		addFrequent("nahr"); // 1207. 9,052 (indx 100.0%),  Iraq (8,245), Iraq_asia (8,245)
+		addFrequent("quinta"); // 1208. 14,364 (indx 100.0%),  Portugal (8,234), Portugal_europe (8,234)
+		addFrequent("barcelona"); // 1209. 8,644 (indx 100.0%),  Spain (8,230), Spain_catalunya (6,662)
+		addFrequent("horse"); // 1210. 14,028 (indx 100.0%),  Us (8,229), Gb_england (2,740)
+		addFrequent("bombeo"); // 1211. 9,250 (indx 100.0%),  Argentina (8,219), Argentina_santa-cruz (6,213)
+		addFrequent("rundwanderweg"); // 1212. 9,405 (indx 100.0%),  Germany (8,219), Germany_hessen (2,130)
+		addFrequent("nordre"); // 1213. 8,679 (indx 100.0%),  Norway (8,210), Norway_innlandet (2,695)
+		addFrequent("castello"); // 1214. 9,848 (indx 100.0%),  Italy (8,197), Italy_piemonte (1,059)
+		addFrequent("agios"); // 1215. 9,027 (indx 100.0%),  Greece (8,196), Greece_europe (8,196)
+		addFrequent("roma"); // 1216. 11,223 (indx 100.0%),  Italy (8,184), Italy_lazio (3,711)
+		addFrequent("huo"); // 1217. 8,512 (indx 100.0%),  Taiwan (8,180), Taiwan_asia (8,180)
+		addFrequent("slough"); // 1218. 9,111 (indx 100.0%),  Us (8,176), Us_california (1,868)
+		addFrequent("aib"); // 1219. 8,587 (indx 100.0%),  Argentina (8,169), Argentina_santa-cruz (6,213)
+		addFrequent("aparato"); // 1220. 8,169 (indx 100.0%),  Argentina (8,169), Argentina_santa-cruz (6,213)
+		addFrequent("individual"); // 1221. 8,227 (indx 100.0%),  Argentina (8,169), Argentina_santa-cruz (6,213)
+		addFrequent("mori"); // 1222. 8,589 (indx 100.0%),  Japan (8,161), Japan_kanto (2,881)
+		addFrequent("heide"); // 1223. 9,621 (indx 100.0%),  Germany (8,151), Germany_niedersachsen (2,350)
+		addFrequent("studio"); // 1224. 49,112 (indx 100.0%),  Us (8,145), Gb_england (2,896)
+		addFrequent("docomo"); // 1225. 8,135 (indx 100.0%),  Japan (8,135), Japan_kanto (3,494)
+		addFrequent("morro"); // 1226. 10,968 (indx 100.0%),  Brazil (8,131), Brazil_bahia (1,504)
+		addFrequent("box"); // 1227. 30,177 (indx 100.0%),  Czech-republic (8,123), Gb_england (1,999)
+		addFrequent("ribeiro"); // 1228. 12,879 (indx 23.4%),  Portugal (8,116), Portugal_europe (8,116)
+		addFrequent("kleine"); // 1229. 12,808 (indx 100.0%),  Germany (8,108), Belgium_flanders (1,791)
+		addFrequent("thodu"); // 1230. 8,098 (indx 100.0%),  India (8,098), India_kerala (7,968)
+		addFrequent("شهید"); // 1231. 8,139 (indx 0.6%),  Iran (8,091), Iran_razavi-khorasan (1,477)
+		addFrequent("kindertagesstätte"); // 1232. 8,259 (indx 100.0%),  Germany (8,080), Germany_nordrhein-westfalen (1,750)
+		addFrequent("london"); // 1233. 9,982 (indx 100.0%),  Gb (8,065), Gb_england (7,977)
+		addFrequent("provincial"); // 1234. 22,001 (indx 100.0%),  Argentina (8,057), Canada_british-columbia (2,175)
+		addFrequent("lin"); // 1235. 10,505 (indx 100.0%),  Taiwan (8,054), Taiwan_asia (8,054)
+		addFrequent("radverkehrsnetz"); // 1236. 8,109 (indx 100.0%),  Germany (8,053), Germany_nordrhein-westfalen (3,733)
+		addFrequent("garage"); // 1237. 30,334 (indx 100.0%),  France (8,049), Gb_england (4,045)
+		addFrequent("addition"); // 1238. 8,399 (indx 100.0%),  Us (8,044), Us_nebraska (5,251)
+		addFrequent("land"); // 1239. 22,566 (indx 100.0%),  Us (8,041), Us_massachusetts (2,303)
+		addFrequent("caño"); // 1240. 12,803 (indx 100.0%),  Nicaragua (8,037), Nicaragua_centralamerica (8,037)
+		addFrequent("loma"); // 1241. 19,593 (indx 100.0%),  Spain (8,030), Spain_andalusia (3,398)
+		addFrequent("cachoeira"); // 1242. 8,022 (indx 100.0%),  Brazil (8,022), Brazil_minas-gerais (1,627)
+		addFrequent("mandir"); // 1243. 11,953 (indx 100.0%),  India (8,010), Nepal_asia (3,516)
+		addFrequent("cau"); // 1244. 8,406 (indx 100.0%),  Vietnam (8,008), Vietnam_asia (8,008)
+		addFrequent("с"); // 1245. 11,120 (indx 100.0%),  Russia (8,006), Russia_moskovskaya-oblast (757)
+		addFrequent("igrexa"); // 1246. 8,002 (indx 100.0%),  Spain (8,002), Spain_galicia (7,506)
+		addFrequent("pho"); // 1247. 11,387 (indx 68.0%),  Vietnam (8,000), Vietnam_asia (8,000)
+		addFrequent("e.v."); // 1248. 7,996 (indx 100.0%),  Germany (7,996), Germany_niedersachsen (3,158)
+		addFrequent("puente"); // 1249. 27,873 (indx 100.0%),  Spain (7,994), Bolivia_southamerica (2,875)
+		addFrequent("alta"); // 1250. 20,468 (indx 100.0%),  Spain (7,993), Spain_andalusia (1,411)
+		addFrequent("ration"); // 1251. 7,990 (indx 100.0%),  India (7,990), India_kerala (7,815)
+		addFrequent("siedlung"); // 1252. 9,687 (indx 100.0%),  Germany (7,977), Germany_nordrhein-westfalen (1,279)
+		addFrequent("purok"); // 1253. 7,977 (indx 100.0%),  Philippines (7,977), Philippines_davao-region (3,575)
+		addFrequent("toko"); // 1254. 8,754 (indx 100.0%),  Indonesia (7,968), Indonesia_kalimantan-timur (1,365)
+		addFrequent("zhu"); // 1255. 8,681 (indx 100.0%),  Taiwan (7,962), Taiwan_asia (7,962)
+		addFrequent("mahallesi"); // 1256. 7,979 (indx 100.0%),  Turkey (7,936), Turkey_marmara (2,919)
+		addFrequent("cháng"); // 1257. 7,918 (indx 100.0%),  China (7,918), China_jiangsu (4,575)
+		addFrequent("danchi"); // 1258. 7,913 (indx 100.0%),  Japan (7,913), Japan_kanto (3,445)
+		addFrequent("ào"); // 1259. 7,898 (indx 100.0%),  China (7,898), China_zhejiang (2,991)
+		addFrequent("iskola"); // 1260. 8,199 (indx 100.0%),  Hungary (7,891), Hungary_europe (7,891)
+		addFrequent("d'en"); // 1261. 12,634 (indx 100.0%),  Spain (7,869), Spain_catalunya (5,009)
+		addFrequent("площадь"); // 1262. 10,513 (indx 100.0%),  Russia (7,867), Russia_moskovskaya-oblast (1,024)
+		addFrequent("he"); // 1263. 13,982 (indx 70.2%),  Taiwan (7,866), Taiwan_asia (7,866)
+		addFrequent("kuài"); // 1264. 7,859 (indx 100.0%),  China (7,859), China_jiangsu (1,825)
+		addFrequent("parkı"); // 1265. 9,119 (indx 100.0%),  Turkey (7,852), Turkey_marmara (3,067)
+		addFrequent("kindertagesstatte"); // 1266. 7,901 (indx 100.0%),  Germany (7,851), Germany_nordrhein-westfalen (1,673)
+		addFrequent("lotissement"); // 1267. 8,646 (indx 15.9%),  France (7,848), France_provence-alpes-cote-d-azur (2,238)
+		addFrequent("plac"); // 1268. 8,205 (indx 100.0%),  Poland (7,835), Poland_masovian (1,139)
+		addFrequent("sierra"); // 1269. 15,014 (indx 100.0%),  Spain (7,833), Spain_andalusia (2,466)
+		addFrequent("hope"); // 1270. 12,307 (indx 100.0%),  Us (7,820), Us_north-carolina (859)
+		addFrequent("dog"); // 1271. 15,207 (indx 100.0%),  Us (7,811), Gb_england (1,475)
+		addFrequent("saude"); // 1272. 11,517 (indx 100.0%),  Brazil (7,808), Portugal_europe (1,683)
+		addFrequent("ta"); // 1273. 18,357 (indx 100.0%),  Japan (7,788), Japan_kanto (1,997)
+		addFrequent("sitio"); // 1274. 13,136 (indx 100.0%),  Brazil (7,773), Brazil_espirito-santo (2,136)
+		addFrequent("verde"); // 1275. 31,559 (indx 100.0%),  Brazil (7,769), Brazil_sao-paulo (1,640)
+		addFrequent("erreka"); // 1276. 9,693 (indx 100.0%),  Spain (7,762), Spain_navarra (4,985)
+		addFrequent("wa"); // 1277. 13,749 (indx 100.0%),  Japan (7,761), Japan_kanto (2,345)
+		addFrequent("es"); // 1278. 16,835 (indx 100.0%),  Hungary (7,759), Hungary_europe (7,759)
+		addFrequent("mza"); // 1279. 7,768 (indx 100.0%),  Argentina (7,754), Argentina_salta (7,495)
+		addFrequent("gewerbegebiet"); // 1280. 8,144 (indx 100.0%),  Germany (7,748), Germany_bayern (1,997)
+		addFrequent("út"); // 1281. 8,885 (indx 8.6%),  Hungary (7,747), Hungary_europe (7,747)
+		addFrequent("mühle"); // 1282. 8,880 (indx 100.0%),  Germany (7,742), Germany_nordrhein-westfalen (1,589)
+		addFrequent("george"); // 1283. 18,522 (indx 100.0%),  Us (7,741), Gb_england (2,750)
+		addFrequent("sheng"); // 1284. 8,901 (indx 100.0%),  Taiwan (7,735), Taiwan_asia (7,735)
+		addFrequent("fontana"); // 1285. 9,239 (indx 100.0%),  Italy (7,734), Italy_piemonte (1,448)
+		addFrequent("viale"); // 1286. 7,847 (indx 17.2%),  Italy (7,732), Italy_lombardia (2,546)
+		addFrequent("hoc"); // 1287. 7,762 (indx 100.0%),  Vietnam (7,719), Vietnam_asia (7,719)
+		addFrequent("motel"); // 1288. 22,525 (indx 100.0%),  Us (7,708), South-korea_asia (3,242)
+		addFrequent("wilhelm"); // 1289. 8,096 (indx 100.0%),  Germany (7,700), Germany_nordrhein-westfalen (1,364)
+		addFrequent("puerto"); // 1290. 24,964 (indx 100.0%),  Spain (7,699), Colombia_southamerica (2,416)
+		addFrequent("hauptstraße"); // 1291. 9,151 (indx 100.0%),  Germany (7,699), Germany_bayern (1,556)
+		addFrequent("большой"); // 1292. 8,823 (indx 100.0%),  Russia (7,682), Russia_khanty-mansiisk (495)
+		addFrequent("southeast"); // 1293. 8,157 (indx 25.6%),  Us (7,674), Us_oregon (2,533)
+		addFrequent("parki"); // 1294. 8,205 (indx 100.0%),  Turkey (7,673), Turkey_marmara (3,010)
+		addFrequent("vulitsia"); // 1295. 7,663 (indx 1.2%),  Ukraine (7,663), Ukraine_kharkiv (959)
+		addFrequent("acres"); // 1296. 9,022 (indx 31.7%),  Us (7,657), Gb_england (795)
+		addFrequent("estación"); // 1297. 22,137 (indx 100.0%),  Spain (7,653), Argentina_buenos-aires (2,700)
+		addFrequent("ст"); // 1298. 14,209 (indx 100.0%),  Belarus (7,651), Belarus_minsk (2,404)
+		addFrequent("ravin"); // 1299. 7,755 (indx 100.0%),  France (7,643), France_provence-alpes-cote-d-azur (3,786)
+		addFrequent("one"); // 1300. 27,137 (indx 100.0%),  Us (7,636), Gb_england (2,893)
+		addFrequent("free"); // 1301. 12,719 (indx 100.0%),  Us (7,630), Us_california (816)
+		addFrequent("fahrschule"); // 1302. 8,028 (indx 100.0%),  Germany (7,627), Germany_nordrhein-westfalen (1,551)
+		addFrequent("prado"); // 1303. 11,542 (indx 100.0%),  Spain (7,622), Spain_castilla-leon (3,805)
+		addFrequent("vert"); // 1304. 9,227 (indx 100.0%),  France (7,612), France_auvergne-rhone-alpes (1,098)
+		addFrequent("loire"); // 1305. 7,607 (indx 100.0%),  France (7,607), France_centre-loire-valley (2,620)
+		addFrequent("clube"); // 1306. 10,212 (indx 100.0%),  Brazil (7,601), Portugal_europe (2,243)
+		addFrequent("end"); // 1307. 12,810 (indx 100.0%),  Gb (7,597), Gb_england (6,413)
+		addFrequent("natural"); // 1308. 30,982 (indx 100.0%),  Us (7,594), Colombia_southamerica (1,644)
+		addFrequent("linha"); // 1309. 15,182 (indx 100.0%),  Brazil (7,577), East-timor_asia (4,462)
+		addFrequent("deli"); // 1310. 11,295 (indx 100.0%),  Us (7,572), Us_new-york (2,607)
+		addFrequent("deportes"); // 1311. 11,811 (indx 100.0%),  Costa-rica (7,571), Costa-rica_centralamerica (7,571)
+		addFrequent("gasthof"); // 1312. 11,326 (indx 100.0%),  Germany (7,562), Germany_bayern (2,844)
+		addFrequent("stone"); // 1313. 16,106 (indx 100.0%),  Us (7,557), Gb_england (2,577)
+		addFrequent("к-150"); // 1314. 8,598 (indx 100.0%),  Russia (7,554), Russia_krasnodar (3,794)
+		addFrequent("giuseppe"); // 1315. 7,595 (indx 41.0%),  Italy (7,552), Italy_lombardia (1,204)
+		addFrequent("rural"); // 1316. 30,231 (indx 100.0%),  Colombia (7,548), Colombia_southamerica (7,548)
+		addFrequent("hauptstrasse"); // 1317. 9,250 (indx 100.0%),  Germany (7,543), Germany_bayern (1,499)
+		addFrequent("ilha"); // 1318. 10,046 (indx 100.0%),  Brazil (7,531), Brazil_para (922)
+		addFrequent("fosse"); // 1319. 8,243 (indx 100.0%),  France (7,512), France_great-east (1,993)
+		addFrequent("novo"); // 1320. 13,457 (indx 100.0%),  Brazil (7,502), Portugal_europe (2,223)
+		addFrequent("остров"); // 1321. 9,908 (indx 100.0%),  Russia (7,496), Russia_leningradskaya (1,172)
+		addFrequent("carrer"); // 1322. 7,679 (indx 17.8%),  Spain (7,490), Spain_catalunya (5,258)
+		addFrequent("blanc"); // 1323. 10,132 (indx 100.0%),  France (7,484), France_auvergne-rhone-alpes (1,583)
+		addFrequent("hi"); // 1324. 10,970 (indx 100.0%),  Japan (7,483), Japan_kanto (1,867)
+		addFrequent("церква"); // 1325. 7,901 (indx 100.0%),  Ukraine (7,483), Ukraine_lviv (1,747)
+		addFrequent("bypass"); // 1326. 19,758 (indx 100.0%),  Japan (7,466), Japan_chubu (1,418)
+		addFrequent("oaks"); // 1327. 8,979 (indx 38.7%),  Us (7,465), Us_texas (1,361)
+		addFrequent("unit"); // 1328. 16,859 (indx 100.0%),  Us (7,457), Gb_england (3,987)
+		addFrequent("жабка"); // 1329. 7,480 (indx 100.0%),  Poland (7,455), Poland_masovian (1,434)
+		addFrequent("fukushi"); // 1330. 7,454 (indx 100.0%),  Japan (7,454), Japan_kanto (1,966)
+		addFrequent("4-chome"); // 1331. 7,452 (indx 100.0%),  Japan (7,452), Japan_kinki (1,849)
+		addFrequent("cottonwood"); // 1332. 7,695 (indx 100.0%),  Us (7,447), Us_california (1,645)
+		addFrequent("vignes"); // 1333. 7,568 (indx 100.0%),  France (7,432), France_great-east (1,941)
+		addFrequent("hàn"); // 1334. 7,422 (indx 100.0%),  China (7,422), China_hubei (2,436)
+		addFrequent("flat"); // 1335. 11,503 (indx 100.0%),  Us (7,421), Us_california (1,118)
+		addFrequent("muhle"); // 1336. 8,281 (indx 100.0%),  Germany (7,412), Germany_nordrhein-westfalen (1,530)
+		addFrequent("sítio"); // 1337. 7,459 (indx 100.0%),  Brazil (7,409), Brazil_espirito-santo (2,104)
+		addFrequent("αυτοκινητόδρομος"); // 1338. 9,060 (indx 100.0%),  South-korea (7,407), South-korea_asia (7,407)
+		addFrequent("jiān"); // 1339. 7,399 (indx 100.0%),  China (7,399), China_zhejiang (1,652)
+		addFrequent("bayt"); // 1340. 7,758 (indx 100.0%),  Yemen (7,399), Yemen_asia (7,399)
+		addFrequent("shenzhen"); // 1341. 7,968 (indx 100.0%),  China (7,390), China_guangdong (4,630)
+		addFrequent("colle"); // 1342. 8,336 (indx 100.0%),  Italy (7,386), Italy_piemonte (1,510)
+		addFrequent("allee"); // 1343. 11,033 (indx 9.2%),  Germany (7,377), Germany_brandenburg (1,821)
+		addFrequent("мир"); // 1344. 8,640 (indx 100.0%),  Russia (7,371), Russia_moskovskaya-oblast (1,359)
+		addFrequent("hoya"); // 1345. 7,759 (indx 100.0%),  Spain (7,365), Spain_castilla-la-mancha (2,284)
+		addFrequent("anadolu"); // 1346. 7,421 (indx 100.0%),  Turkey (7,359), Turkey_marmara (3,152)
+		addFrequent("sv"); // 1347. 9,443 (indx 100.0%),  Germany (7,358), Germany_bayern (1,916)
+		addFrequent("coast"); // 1348. 24,093 (indx 100.0%),  Us (7,355), Gb_england (3,389)
+		addFrequent("side"); // 1349. 17,867 (indx 100.0%),  Australia-oceania (7,353), Australia-oceania_south-australia (7,293)
+		addFrequent("kōtō"); // 1350. 7,346 (indx 100.0%),  Japan (7,346), Japan_kanto (2,013)
+		addFrequent("로손"); // 1351. 7,327 (indx 100.0%),  Japan (7,327), Japan_kanto (2,374)
+		addFrequent("świętego"); // 1352. 7,596 (indx 100.0%),  Poland (7,324), Poland_lesser-poland (738)
+		addFrequent("she"); // 1353. 7,813 (indx 87.0%),  Taiwan (7,317), Taiwan_asia (7,317)
+		addFrequent("heinrich"); // 1354. 7,674 (indx 100.0%),  Germany (7,315), Germany_nordrhein-westfalen (1,595)
+		addFrequent("broadway"); // 1355. 9,366 (indx 100.0%),  Us (7,307), Us_new-york (1,456)
+		addFrequent("vale"); // 1356. 16,162 (indx 100.0%),  Portugal (7,300), Portugal_europe (7,300)
+		addFrequent("agua"); // 1357. 28,572 (indx 100.0%),  Brazil (7,298), East-timor_asia (2,243)
+		addFrequent("stadt"); // 1358. 8,425 (indx 100.0%),  Germany (7,294), Germany_nordrhein-westfalen (2,075)
+		addFrequent("iran"); // 1359. 7,504 (indx 100.0%),  Iran (7,291), Iran_tehran (1,733)
+		addFrequent("inuit"); // 1360. 7,301 (indx 100.0%),  Canada (7,289), Canada_nunavut-se (6,767)
+		addFrequent("kēng"); // 1361. 7,289 (indx 100.0%),  China (7,289), China_guangdong (2,634)
+		addFrequent("norra"); // 1362. 7,692 (indx 100.0%),  Sweden (7,289), Sweden_vastra-gotaland (986)
+		addFrequent("eurovelo"); // 1363. 47,740 (indx 100.0%),  Greece (7,286), Greece_europe (7,286)
+		addFrequent("rōjin"); // 1364. 7,281 (indx 100.0%),  Japan (7,281), Japan_kanto (1,671)
+		addFrequent("ut"); // 1365. 8,012 (indx 9.4%),  Hungary (7,264), Hungary_europe (7,264)
+		addFrequent("er"); // 1366. 13,012 (indx 58.2%),  Taiwan (7,249), Taiwan_asia (7,249)
+		addFrequent("owned"); // 1367. 7,354 (indx 100.0%),  Canada (7,244), Canada_nunavut-se (6,722)
+		addFrequent("het"); // 1368. 10,178 (indx 100.0%),  Netherlands (7,241), Belgium_flanders (2,588)
+		addFrequent("southern"); // 1369. 13,359 (indx 100.0%),  Us (7,236), Us_new-york (819)
+		addFrequent("range"); // 1370. 16,892 (indx 100.0%),  Us (7,223), Canada_alberta (2,181)
+		addFrequent("jardins"); // 1371. 10,137 (indx 100.0%),  France (7,220), France_great-east (1,081)
+		addFrequent("zhi"); // 1372. 7,823 (indx 100.0%),  Taiwan (7,208), Taiwan_asia (7,208)
+		addFrequent("marais"); // 1373. 8,470 (indx 100.0%),  France (7,199), France_new-aquitaine (1,322)
+		addFrequent("hans"); // 1374. 9,930 (indx 100.0%),  Germany (7,195), Germany_bayern (1,380)
+		addFrequent("asahi"); // 1375. 7,187 (indx 100.0%),  Japan (7,187), Japan_kanto (2,415)
+		addFrequent("sandy"); // 1376. 11,947 (indx 100.0%),  Us (7,186), Australia-oceania_queensland (1,642)
+		addFrequent("peter"); // 1377. 17,928 (indx 100.0%),  Germany (7,179), Gb_england (1,866)
+		addFrequent("mir"); // 1378. 9,188 (indx 100.0%),  Russia (7,173), Russia_moskovskaya-oblast (1,336)
+		addFrequent("marche"); // 1379. 16,043 (indx 100.0%),  France (7,172), France_ile-de-france (1,530)
+		addFrequent("j"); // 1380. 20,992 (indx 30.8%),  Us (7,171), Gb_england (1,445)
+		addFrequent("ko"); // 1381. 13,387 (indx 100.0%),  Japan (7,171), Japan_kanto (1,894)
+		addFrequent("wdy"); // 1382. 9,064 (indx 100.0%),  Saudi-arabia (7,164), Saudi-arabia_asia (7,164)
+		addFrequent("rambla"); // 1383. 7,220 (indx 100.0%),  Spain (7,164), Spain_murcia (2,027)
+		addFrequent("ns"); // 1384. 14,540 (indx 100.0%),  Czech-republic (7,160), Us_texas (2,001)
+		addFrequent("inuites"); // 1385. 7,155 (indx 100.0%),  Canada (7,155), Canada_nunavut-se (6,725)
+		addFrequent("supermercado"); // 1386. 14,119 (indx 100.0%),  Brazil (7,154), Brazil_sao-paulo (1,578)
+		addFrequent("neuf"); // 1387. 7,568 (indx 100.0%),  France (7,151), France_centre-loire-valley (921)
+		addFrequent("nationalpark"); // 1388. 7,177 (indx 100.0%),  Finland (7,151), Finland_southwest-finland (4,801)
+		addFrequent("pedra"); // 1389. 13,122 (indx 100.0%),  Brazil (7,150), Spain_catalunya (3,031)
+		addFrequent("ex"); // 1390. 10,770 (indx 100.0%),  Italy (7,143), Italy_lombardia (1,046)
+		addFrequent("estacion"); // 1391. 21,593 (indx 100.0%),  Spain (7,119), Argentina_buenos-aires (2,740)
+		addFrequent("kone"); // 1392. 7,398 (indx 100.0%),  Myanmar (7,116), Myanmar_asia (7,116)
+		addFrequent("ju"); // 1393. 9,366 (indx 100.0%),  Taiwan (7,110), Taiwan_asia (7,110)
+		addFrequent("biyō"); // 1394. 7,110 (indx 100.0%),  Japan (7,110), Japan_tohoku (2,944)
+		addFrequent("mühlbach"); // 1395. 10,002 (indx 100.0%),  Germany (7,108), Germany_bayern (3,428)
+		addFrequent("instituto"); // 1396. 28,801 (indx 100.0%),  Spain (7,105), Argentina_buenos-aires (2,309)
+		addFrequent("ensino"); // 1397. 7,244 (indx 100.0%),  Brazil (7,105), Brazil_espirito-santo (1,949)
+		addFrequent("nedre"); // 1398. 8,911 (indx 100.0%),  Norway (7,101), Norway_innlandet (1,630)
+		addFrequent("ltd"); // 1399. 19,256 (indx 100.0%),  Gb (7,087), Gb_england (6,285)
+		addFrequent("unnamed"); // 1400. 7,397 (indx 100.0%),  Australia-oceania (7,086), Australia-oceania_south-australia (5,149)
+		addFrequent("fumikiri"); // 1401. 7,080 (indx 100.0%),  Japan (7,080), Japan_kyushu (3,961)
+		addFrequent("jing"); // 1402. 9,139 (indx 79.2%),  Taiwan (7,070), Taiwan_asia (7,070)
+		addFrequent("bakery"); // 1403. 30,497 (indx 100.0%),  Us (7,068), India_kerala (2,999)
+		addFrequent("manor"); // 1404. 15,663 (indx 100.0%),  Gb (7,063), Gb_england (6,743)
+		addFrequent("si"); // 1405. 21,617 (indx 44.9%),  Taiwan (7,057), Taiwan_asia (7,057)
+		addFrequent("cu"); // 1406. 12,160 (indx 100.0%),  South-korea (7,051), South-korea_asia (7,051)
+		addFrequent("ᓄᓇᖁᑎᖏᑦ"); // 1407. 7,048 (indx 100.0%),  Canada (7,048), Canada_nunavut-se (6,722)
+		addFrequent("wei"); // 1408. 8,456 (indx 100.0%),  Taiwan (7,043), Taiwan_asia (7,043)
+		addFrequent("heritage"); // 1409. 19,002 (indx 100.0%),  Us (7,040), Australia-oceania_south-australia (5,312)
+		addFrequent("plaine"); // 1410. 7,994 (indx 100.0%),  France (7,017), France_auvergne-rhone-alpes (1,226)
+		addFrequent("industrial"); // 1411. 34,953 (indx 100.0%),  Spain (7,000), Gb_england (3,617)
+		addFrequent("raya"); // 1412. 8,811 (indx 13.7%),  Indonesia (6,995), Indonesia_jawa-barat (1,057)
+		addFrequent("chengdu"); // 1413. 6,994 (indx 100.0%),  China (6,994), China_sichuan (3,865)
+		addFrequent("jesus"); // 1414. 30,807 (indx 100.0%),  Brazil (6,992), Peru_southamerica (4,354)
+		addFrequent("os"); // 1415. 10,560 (indx 100.0%),  Spain (6,986), Spain_galicia (6,719)
+		addFrequent("دکتر"); // 1416. 6,980 (indx 100.0%),  Iran (6,980), Iran_tehran (2,184)
+		addFrequent("sakura"); // 1417. 7,183 (indx 100.0%),  Japan (6,976), Japan_kanto (2,744)
+		addFrequent("kaikan"); // 1418. 6,973 (indx 100.0%),  Japan (6,973), Japan_kanto (2,599)
+		addFrequent("miguel"); // 1419. 31,594 (indx 100.0%),  Spain (6,961), Portugal_europe (2,075)
+		addFrequent("eneos"); // 1420. 6,957 (indx 100.0%),  Japan (6,957), Japan_kanto (2,093)
+		addFrequent("mata"); // 1421. 16,059 (indx 100.0%),  Brazil (6,955), Brazil_parana (3,173)
+		addFrequent("marsh"); // 1422. 10,477 (indx 100.0%),  Us (6,942), Gb_england (1,990)
+		addFrequent("r16308779"); // 1423. 6,942 (indx 100.0%),  Australia-oceania (6,942), Australia-oceania_new-south-wales (6,942)
+		addFrequent("crossing"); // 1424. 15,567 (indx 19.3%),  Us (6,940), Australia-oceania_new-south-wales (1,868)
+		addFrequent("rv"); // 1425. 7,920 (indx 100.0%),  Us (6,938), Us_texas (1,285)
+		addFrequent("ford"); // 1426. 13,579 (indx 100.0%),  Us (6,930), Gb_england (1,339)
+		addFrequent("maple"); // 1427. 8,505 (indx 70.6%),  Us (6,909), Us_michigan (753)
+		addFrequent("і"); // 1428. 9,573 (indx 100.0%),  Ukraine (6,908), Belarus_minsk (949)
+		addFrequent("degli"); // 1429. 7,085 (indx 100.0%),  Italy (6,906), Italy_lombardia (1,006)
+		addFrequent("butte"); // 1430. 9,227 (indx 100.0%),  Us (6,906), Us_oregon (1,843)
+		addFrequent("kiosk"); // 1431. 11,813 (indx 100.0%),  Germany (6,902), Germany_nordrhein-westfalen (2,447)
+		addFrequent("educativo"); // 1432. 12,174 (indx 100.0%),  Colombia (6,897), Colombia_southamerica (6,897)
+		addFrequent("muhlbach"); // 1433. 9,691 (indx 100.0%),  Germany (6,897), Germany_bayern (3,378)
+		addFrequent("água"); // 1434. 11,029 (indx 100.0%),  Brazil (6,893), East-timor_asia (2,222)
+		addFrequent("brest"); // 1435. 7,349 (indx 100.0%),  France (6,892), France_brittany (5,156)
+		addFrequent("cong"); // 1436. 7,210 (indx 100.0%),  Vietnam (6,884), Vietnam_asia (6,884)
+		addFrequent("lock"); // 1437. 11,838 (indx 100.0%),  Gb (6,876), Gb_england (6,430)
+		addFrequent("bukit"); // 1438. 11,246 (indx 100.0%),  Malaysia (6,875), Malaysia_asia (6,875)
+		addFrequent("jame"); // 1439. 7,111 (indx 100.0%),  Bangladesh (6,864), Bangladesh_asia (6,864)
+		addFrequent("таварыства"); // 1440. 6,863 (indx 100.0%),  Belarus (6,863), Belarus_minsk (2,164)
+		addFrequent("une"); // 1441. 8,990 (indx 100.0%),  Australia-oceania (6,858), Australia-oceania_new-south-wales (6,800)
+		addFrequent("yūen"); // 1442. 6,858 (indx 100.0%),  Japan (6,858), Japan_kanto (2,488)
+		addFrequent("mission"); // 1443. 12,910 (indx 100.0%),  Us (6,856), Us_california (2,634)
+		addFrequent("marché"); // 1444. 15,262 (indx 100.0%),  France (6,853), France_ile-de-france (1,536)
+		addFrequent("za"); // 1445. 28,560 (indx 100.0%),  Slovakia (6,846), Slovakia_europe (6,846)
+		addFrequent("og"); // 1446. 12,683 (indx 100.0%),  Norway (6,818), Norway_vestland (1,475)
+		addFrequent("rybník"); // 1447. 7,261 (indx 100.0%),  Czech-republic (6,802), Czech-republic_jihozapad (2,633)
+		addFrequent("nursery"); // 1448. 17,510 (indx 100.0%),  Gb (6,798), Gb_england (6,040)
+		addFrequent("swietego"); // 1449. 6,794 (indx 100.0%),  Poland (6,794), Poland_lesser-poland (677)
+		addFrequent("joseph"); // 1450. 20,725 (indx 100.0%),  France (6,791), Canada_quebec (1,391)
+		addFrequent("άγιος"); // 1451. 7,104 (indx 100.0%),  Greece (6,780), Greece_europe (6,780)
+		addFrequent("ai"); // 1452. 13,247 (indx 100.0%),  Italy (6,779), Taiwan_asia (1,931)
+		addFrequent("shō"); // 1453. 6,777 (indx 100.0%),  Japan (6,777), Japan_kanto (1,727)
+		addFrequent("rotes"); // 1454. 8,325 (indx 100.0%),  Germany (6,774), Germany_bayern (1,072)
+		addFrequent("gs25"); // 1455. 6,793 (indx 100.0%),  South-korea (6,769), South-korea_asia (6,769)
+		addFrequent("cañada"); // 1456. 14,618 (indx 100.0%),  Spain (6,767), Uruguay_southamerica (2,920)
+		addFrequent("principale"); // 1457. 8,911 (indx 100.0%),  Japan (6,764), Japan_chubu (2,548)
+		addFrequent("glen"); // 1458. 12,833 (indx 36.1%),  Us (6,763), Gb_scotland (1,155)
+		addFrequent("thomas"); // 1459. 21,336 (indx 100.0%),  Us (6,758), Gb_england (1,727)
+		addFrequent("cementerio"); // 1460. 18,306 (indx 100.0%),  Spain (6,744), Spain_castilla-leon (1,465)
+		addFrequent("кинески"); // 1461. 6,738 (indx 100.0%),  China (6,738), China_shanxi (3,402)
+		addFrequent("ku"); // 1462. 10,397 (indx 100.0%),  Japan (6,726), Japan_kanto (2,315)
+		addFrequent("qi"); // 1463. 7,842 (indx 100.0%),  Taiwan (6,717), Taiwan_asia (6,717)
+		addFrequent("жилой"); // 1464. 7,045 (indx 100.0%),  Russia (6,712), Russia_moskovskaya-oblast (1,586)
+		addFrequent("professor"); // 1465. 7,739 (indx 12.7%),  Brazil (6,707), Brazil_sao-paulo (3,032)
+		addFrequent("góra"); // 1466. 6,923 (indx 100.0%),  Poland (6,703), Poland_lesser-poland (1,102)
+		addFrequent("puy"); // 1467. 6,768 (indx 100.0%),  France (6,700), France_new-aquitaine (3,530)
+		addFrequent("mirador"); // 1468. 15,200 (indx 100.0%),  Spain (6,698), Spain_andalusia (1,329)
+		addFrequent("công"); // 1469. 6,738 (indx 100.0%),  Vietnam (6,698), Vietnam_asia (6,698)
+		addFrequent("michi"); // 1470. 6,697 (indx 100.0%),  Japan (6,697), Japan_kanto (2,601)
+		addFrequent("пятерочка"); // 1471. 6,697 (indx 100.0%),  Russia (6,697), Russia_moskovskaya-oblast (1,903)
+		addFrequent("kōminkan"); // 1472. 6,691 (indx 100.0%),  Japan (6,691), Japan_kanto (1,801)
+		addFrequent("ag"); // 1473. 13,519 (indx 100.0%),  Switzerland (6,686), Switzerland_zurich (1,603)
+		addFrequent("sato"); // 1474. 6,695 (indx 100.0%),  Japan (6,683), Japan_kanto (1,751)
+		addFrequent("hamburg"); // 1475. 6,867 (indx 100.0%),  Germany (6,676), Germany_hamburg (5,047)
+		addFrequent("feng"); // 1476. 7,734 (indx 84.1%),  Taiwan (6,676), Taiwan_asia (6,676)
+		addFrequent("golden"); // 1477. 18,958 (indx 100.0%),  Us (6,672), Gb_england (2,165)
+		addFrequent("tō"); // 1478. 6,670 (indx 100.0%),  Japan (6,670), Japan_kanto (1,978)
+		addFrequent("sawakawa"); // 1479. 6,656 (indx 100.0%),  Japan (6,656), Japan_hokkaido (5,351)
+		addFrequent("grandes"); // 1480. 7,415 (indx 100.0%),  France (6,653), France_auvergne-rhone-alpes (1,274)
+		addFrequent("colonia"); // 1481. 17,058 (indx 100.0%),  Mexico (6,650), Mexico_distrito-federal (2,261)
+		addFrequent("bp"); // 1482. 22,822 (indx 100.0%),  Us (6,641), Gb_england (1,693)
+		addFrequent("isla"); // 1483. 22,862 (indx 100.0%),  Chile (6,640), Chile_magallanes-and-chilean-antarctica (4,041)
+		addFrequent("rybnik"); // 1484. 8,241 (indx 100.0%),  Czech-republic (6,639), Czech-republic_jihozapad (2,573)
+		addFrequent("crescent"); // 1485. 14,804 (indx 23.8%),  Gb (6,638), Gb_england (5,125)
+		addFrequent("e."); // 1486. 18,959 (indx 100.0%),  Germany (6,635), Germany_niedersachsen (1,031)
+		addFrequent("trinity"); // 1487. 10,839 (indx 100.0%),  Us (6,634), Gb_england (2,034)
+		addFrequent("tsierkva"); // 1488. 6,632 (indx 100.0%),  Ukraine (6,621), Ukraine_lviv (1,625)
+		addFrequent("arms"); // 1489. 6,880 (indx 100.0%),  Gb (6,615), Gb_england (5,669)
+		addFrequent("rondo"); // 1490. 6,780 (indx 100.0%),  Poland (6,613), Poland_masovian (1,136)
+		addFrequent("township"); // 1491. 10,101 (indx 100.0%),  Us (6,608), Us_michigan (1,756)
+		addFrequent("oliveira"); // 1492. 8,542 (indx 26.1%),  Brazil (6,606), Brazil_sao-paulo (2,106)
+		addFrequent("scenic"); // 1493. 10,502 (indx 100.0%),  Us (6,597), New-zealand_australia-oceania (2,690)
+		addFrequent("bæk"); // 1494. 6,593 (indx 100.0%),  Denmark (6,593), Denmark_central-region (3,242)
+		addFrequent("pri"); // 1495. 11,427 (indx 100.0%),  Slovakia (6,585), Slovakia_europe (6,585)
+		addFrequent("terrace"); // 1496. 14,512 (indx 27.0%),  Us (6,582), Gb_england (2,490)
+		addFrequent("baek"); // 1497. 6,626 (indx 100.0%),  Denmark (6,571), Denmark_central-region (3,230)
+		addFrequent("fm"); // 1498. 7,860 (indx 100.0%),  Us (6,569), Us_texas (2,600)
+		addFrequent("luiz"); // 1499. 6,564 (indx 32.7%),  Brazil (6,564), Brazil_sao-paulo (2,005)
+		addFrequent("estação"); // 1500. 11,916 (indx 100.0%),  Brazil (6,560), Portugal_europe (4,525)
+		addFrequent("highland"); // 1501. 8,353 (indx 100.0%),  Us (6,558), Gb_scotland (982)
+		addFrequent("real"); // 1502. 27,975 (indx 100.0%),  Spain (6,556), Portugal_europe (1,661)
+		addFrequent("gran"); // 1503. 19,885 (indx 100.0%),  China (6,556), Spain_catalunya (2,028)
+		addFrequent("چین"); // 1504. 6,597 (indx 100.0%),  China (6,553), China_shanxi (1,701)
+		addFrequent("қытай"); // 1505. 6,589 (indx 100.0%),  China (6,550), China_shanxi (1,701)
+		addFrequent("بزرگ"); // 1506. 7,355 (indx 100.0%),  China (6,547), China_shanxi (1,701)
+		addFrequent("вялікая"); // 1507. 6,873 (indx 100.0%),  China (6,547), China_shanxi (1,701)
+		addFrequent("великий"); // 1508. 8,034 (indx 100.0%),  China (6,547), China_shanxi (1,701)
+		addFrequent("китайская"); // 1509. 6,583 (indx 100.0%),  China (6,539), China_shanxi (1,697)
+		addFrequent("nemzeti"); // 1510. 6,964 (indx 100.0%),  Hungary (6,538), Hungary_europe (6,538)
+		addFrequent("jõgi"); // 1511. 7,216 (indx 100.0%),  Estonia (6,533), Estonia_europe (6,533)
+		addFrequent("alpe"); // 1512. 8,264 (indx 100.0%),  Italy (6,521), Italy_piemonte (4,165)
+		addFrequent("alegre"); // 1513. 9,283 (indx 100.0%),  Brazil (6,514), Brazil_espirito-santo (2,289)
+		addFrequent("pacific"); // 1514. 11,546 (indx 100.0%),  Us (6,513), Us_california (2,429)
+		addFrequent("regional"); // 1515. 24,354 (indx 100.0%),  Us (6,512), Portugal_europe (1,028)
+		addFrequent("'t"); // 1516. 10,246 (indx 100.0%),  Netherlands (6,511), Belgium_flanders (3,665)
+		addFrequent("pg"); // 1517. 6,502 (indx 100.0%),  Russia (6,502), Russia_volgograd (2,958)
+		addFrequent("pas"); // 1518. 9,735 (indx 100.0%),  France (6,498), France_auvergne-rhone-alpes (1,453)
+		addFrequent("phố"); // 1519. 6,540 (indx 68.4%),  Vietnam (6,492), Vietnam_asia (6,492)
+		addFrequent("ic"); // 1520. 8,776 (indx 100.0%),  Japan (6,491), Japan_chubu (1,338)
+		addFrequent("kapelle"); // 1521. 11,109 (indx 100.0%),  Germany (6,487), Germany_bayern (2,020)
+		addFrequent("gulch"); // 1522. 7,286 (indx 100.0%),  Us (6,486), Us_colorado (2,298)
+		addFrequent("株"); // 1523. 6,484 (indx 100.0%),  Japan (6,484), Japan_chubu (2,288)
+		addFrequent("se"); // 1524. 19,798 (indx 44.3%),  Peru (6,483), Peru_southamerica (6,483)
+		addFrequent("batista"); // 1525. 6,555 (indx 100.0%),  Brazil (6,473), Brazil_sao-paulo (1,263)
+		addFrequent("metro"); // 1526. 32,233 (indx 100.0%),  Us (6,466), China_guangdong (2,393)
+		addFrequent("hangzhou"); // 1527. 6,464 (indx 100.0%),  China (6,464), China_zhejiang (2,854)
+		addFrequent("посёлок"); // 1528. 6,926 (indx 100.0%),  Russia (6,463), Russia_moskovskaya-oblast (1,499)
+		addFrequent("mei"); // 1529. 10,473 (indx 100.0%),  Taiwan (6,456), Taiwan_asia (6,456)
+		addFrequent("bao"); // 1530. 8,976 (indx 100.0%),  Taiwan (6,455), Taiwan_asia (6,455)
+		addFrequent("shĕn"); // 1531. 6,443 (indx 100.0%),  China (6,443), China_liaoning (2,147)
+		addFrequent("hohe"); // 1532. 7,717 (indx 100.0%),  Germany (6,442), Germany_nordrhein-westfalen (1,235)
+		addFrequent("croce"); // 1533. 6,619 (indx 100.0%),  Italy (6,437), Italy_lombardia (850)
+		addFrequent("tesco"); // 1534. 8,971 (indx 100.0%),  Gb (6,431), Gb_england (5,375)
+		addFrequent("intersection"); // 1535. 9,953 (indx 100.0%),  Taiwan (6,429), Taiwan_asia (6,429)
+		addFrequent("walnut"); // 1536. 6,565 (indx 100.0%),  Us (6,423), Us_california (698)
+		addFrequent("pass"); // 1537. 18,256 (indx 100.0%),  Us (6,422), Us_california (1,392)
+		addFrequent("gora"); // 1538. 12,112 (indx 100.0%),  Poland (6,417), Poland_lesser-poland (1,130)
+		addFrequent("cal"); // 1539. 7,289 (indx 100.0%),  Spain (6,406), Spain_catalunya (6,000)
+		addFrequent("martín"); // 1540. 13,359 (indx 100.0%),  Argentina (6,404), Argentina_buenos-aires (2,517)
+		addFrequent("crown"); // 1541. 8,732 (indx 100.0%),  Gb (6,397), Gb_england (5,875)
+		addFrequent("mühlenbach"); // 1542. 6,430 (indx 100.0%),  Germany (6,390), Germany_nordrhein-westfalen (3,499)
+		addFrequent("portugal"); // 1543. 7,681 (indx 100.0%),  Portugal (6,368), Portugal_europe (6,368)
+		addFrequent("grange"); // 1544. 13,393 (indx 100.0%),  France (6,366), Gb_england (4,675)
+		addFrequent("per"); // 1545. 8,918 (indx 100.0%),  Italy (6,365), Italy_lombardia (1,224)
+		addFrequent("chí"); // 1546. 7,595 (indx 100.0%),  China (6,361), Vietnam_asia (1,234)
+		addFrequent("resort"); // 1547. 37,936 (indx 100.0%),  Us (6,350), Thailand_asia (4,785)
+		addFrequent("образовательное"); // 1548. 6,398 (indx 100.0%),  Russia (6,347), Russia_leningradskaya (1,537)
+		addFrequent("chevron"); // 1549. 6,807 (indx 100.0%),  Us (6,345), Us_california (1,966)
+		addFrequent("access"); // 1550. 10,221 (indx 100.0%),  Us (6,342), Us_new-york (690)
+		addFrequent("садаводчае"); // 1551. 6,339 (indx 100.0%),  Belarus (6,339), Belarus_minsk (1,938)
+		addFrequent("max"); // 1552. 16,512 (indx 100.0%),  Germany (6,337), Germany_bayern (1,235)
+		addFrequent("pasar"); // 1553. 7,766 (indx 100.0%),  Indonesia (6,324), Malaysia_asia (1,326)
+		addFrequent("ke"); // 1554. 10,155 (indx 100.0%),  Taiwan (6,321), Taiwan_asia (6,321)
+		addFrequent("kyrka"); // 1555. 6,320 (indx 100.0%),  Sweden (6,320), Sweden_vastra-gotaland (1,593)
+		addFrequent("valea"); // 1556. 7,045 (indx 100.0%),  Romania (6,308), Romania_europe (6,308)
+		addFrequent("pietro"); // 1557. 6,632 (indx 100.0%),  Italy (6,305), Italy_lombardia (949)
+		addFrequent("jabal"); // 1558. 18,463 (indx 100.0%),  Yemen (6,304), Yemen_asia (6,304)
+		addFrequent("barber"); // 1559. 20,655 (indx 100.0%),  Us (6,303), Gb_england (2,667)
+		addFrequent("blvd"); // 1560. 8,312 (indx 12.2%),  Us (6,302), Israel_asia (874)
+		addFrequent("å"); // 1561. 7,321 (indx 100.0%),  Denmark (6,302), Denmark_central-region (1,718)
+		addFrequent("jogi"); // 1562. 6,450 (indx 100.0%),  Estonia (6,302), Estonia_europe (6,302)
+		addFrequent("castillo"); // 1563. 10,147 (indx 100.0%),  Spain (6,293), Spain_castilla-leon (1,221)
+		addFrequent("case"); // 1564. 7,466 (indx 100.0%),  Italy (6,292), Italy_emilia-romagna (1,204)
+		addFrequent("huī"); // 1565. 6,289 (indx 100.0%),  China (6,289), China_anhui (1,697)
+		addFrequent("basse"); // 1566. 7,120 (indx 100.0%),  France (6,280), France_pays-de-la-loire (1,350)
+		addFrequent("u.e."); // 1567. 6,271 (indx 100.0%),  Bolivia (6,271), Bolivia_southamerica (6,271)
+		addFrequent("mercado"); // 1568. 22,179 (indx 100.0%),  Brazil (6,260), Peru_southamerica (1,944)
+		addFrequent("municipio"); // 1569. 8,079 (indx 100.0%),  Italy (6,251), Italy_lombardia (1,501)
+		addFrequent("zheng"); // 1570. 6,550 (indx 100.0%),  Taiwan (6,248), Taiwan_asia (6,248)
+		addFrequent("georg"); // 1571. 6,954 (indx 100.0%),  Germany (6,242), Germany_bayern (1,612)
+		addFrequent("вул."); // 1572. 6,241 (indx 100.0%),  Ukraine (6,241), Ukraine_kyiv (2,094)
+		addFrequent("u.s."); // 1573. 6,312 (indx 100.0%),  Us (6,238), Us_california (754)
+		addFrequent("muhlenbach"); // 1574. 6,250 (indx 100.0%),  Germany (6,237), Germany_nordrhein-westfalen (3,375)
+		addFrequent("d'eau"); // 1575. 12,950 (indx 100.0%),  France (6,233), Canada_quebec (3,634)
+		addFrequent("bushland"); // 1576. 6,245 (indx 100.0%),  Australia-oceania (6,230), Australia-oceania_victoria (5,099)
+		addFrequent("world"); // 1577. 21,895 (indx 100.0%),  Us (6,223), Gb_england (1,374)
+		addFrequent("colorado"); // 1578. 10,873 (indx 100.0%),  Us (6,219), Us_colorado (3,833)
+		addFrequent("saints"); // 1579. 12,237 (indx 100.0%),  Us (6,211), Gb_england (2,633)
+		addFrequent("vrch"); // 1580. 11,680 (indx 100.0%),  Czech-republic (6,205), Slovakia_europe (5,074)
+		addFrequent("jules"); // 1581. 6,936 (indx 100.0%),  France (6,186), France_ile-de-france (1,308)
+		addFrequent("cheng"); // 1582. 8,040 (indx 79.5%),  Taiwan (6,179), Taiwan_asia (6,179)
+		addFrequent("zhiloi"); // 1583. 6,317 (indx 100.0%),  Russia (6,176), Russia_moskovskaya-oblast (1,504)
+		addFrequent("гора"); // 1584. 8,802 (indx 100.0%),  Russia (6,171), Russia_khabarovsk (2,339)
+		addFrequent("york"); // 1585. 10,162 (indx 100.0%),  Us (6,154), Us_new-york (2,932)
+		addFrequent("piece"); // 1586. 6,796 (indx 100.0%),  France (6,151), France_centre-loire-valley (2,501)
+		addFrequent("ostrov"); // 1587. 8,580 (indx 100.0%),  Russia (6,146), Russia_leningradskaya (980)
+		addFrequent("pays"); // 1588. 6,873 (indx 100.0%),  France (6,143), France_auvergne-rhone-alpes (1,086)
+		addFrequent("riera"); // 1589. 6,139 (indx 100.0%),  Spain (6,124), Spain_catalunya (5,976)
+		addFrequent("moor"); // 1590. 9,565 (indx 100.0%),  Gb (6,114), Gb_england (5,516)
+		addFrequent("centrale"); // 1591. 16,800 (indx 100.0%),  France (6,113), France_occitania (1,267)
+		addFrequent("life"); // 1592. 20,552 (indx 100.0%),  Us (6,112), Taiwan_asia (2,034)
+		addFrequent("zhòng"); // 1593. 6,104 (indx 100.0%),  China (6,104), China_chongqing (1,870)
+		addFrequent("castro"); // 1594. 12,415 (indx 100.0%),  Spain (6,101), Spain_galicia (4,172)
+		addFrequent("tian"); // 1595. 8,323 (indx 100.0%),  Taiwan (6,100), Taiwan_asia (6,100)
+		addFrequent("bru"); // 1596. 6,152 (indx 100.0%),  Norway (6,097), Norway_innlandet (986)
+		addFrequent("costa"); // 1597. 31,771 (indx 37.7%),  Spain (6,089), Portugal_europe (4,125)
+		addFrequent("khlong"); // 1598. 6,109 (indx 100.0%),  Thailand (6,088), Thailand_asia (6,088)
+		addFrequent("øvre"); // 1599. 6,171 (indx 100.0%),  Norway (6,080), Norway_innlandet (1,318)
+		addFrequent("bief"); // 1600. 6,193 (indx 100.0%),  France (6,079), France_bourgogne-franche-comte (1,882)
+		addFrequent("francesco"); // 1601. 6,102 (indx 22.3%),  Italy (6,067), Italy_sicilia (702)
+		addFrequent("vega"); // 1602. 9,704 (indx 100.0%),  Spain (6,064), Spain_castilla-leon (2,216)
+		addFrequent("pai"); // 1603. 8,195 (indx 100.0%),  Taiwan (6,058), Taiwan_asia (6,058)
+		addFrequent("minh"); // 1604. 6,076 (indx 100.0%),  Vietnam (6,050), Vietnam_asia (6,050)
+		addFrequent("queen"); // 1605. 12,583 (indx 100.0%),  Us (6,048), Gb_england (1,541)
+		addFrequent("shien"); // 1606. 6,047 (indx 100.0%),  Japan (6,047), Japan_kanto (1,711)
+		addFrequent("klein"); // 1607. 9,575 (indx 100.0%),  Germany (6,038), Germany_niedersachsen (1,256)
+		addFrequent("inc"); // 1608. 7,840 (indx 100.0%),  Us (6,037), Us_new-york (612)
+		addFrequent("delhi"); // 1609. 6,190 (indx 100.0%),  India (6,034), India_haryana (1,380)
+		addFrequent("ash"); // 1610. 14,421 (indx 100.0%),  Yemen (6,029), Yemen_asia (6,029)
+		addFrequent("ouest"); // 1611. 11,399 (indx 100.0%),  France (6,027), Canada_quebec (2,677)
+		addFrequent("wan"); // 1612. 14,095 (indx 100.0%),  Hong-kong (6,025), Hong-kong_asia (6,025)
+		addFrequent("california"); // 1613. 8,383 (indx 100.0%),  Us (6,023), Us_california (4,552)
+		addFrequent("seoul"); // 1614. 6,125 (indx 100.0%),  South-korea (6,021), South-korea_asia (6,021)
+		addFrequent("mosque"); // 1615. 25,759 (indx 100.0%),  Bangladesh (6,017), Bangladesh_asia (6,017)
+		addFrequent("caduti"); // 1616. 6,029 (indx 100.0%),  Italy (6,014), Italy_lombardia (1,231)
+		addFrequent("infantes"); // 1617. 6,645 (indx 100.0%),  Argentina (6,008), Argentina_buenos-aires (3,253)
+		addFrequent("virgen"); // 1618. 15,680 (indx 100.0%),  Spain (6,006), Peru_southamerica (3,305)
+		addFrequent("fox"); // 1619. 10,292 (indx 100.0%),  Us (6,001), Gb_england (1,801)
+		addFrequent("sō"); // 1620. 5,998 (indx 100.0%),  Japan (5,998), Japan_kanto (1,461)
+		addFrequent("d'or"); // 1621. 8,136 (indx 100.0%),  France (5,991), France_auvergne-rhone-alpes (1,228)
+		addFrequent("pla"); // 1622. 7,010 (indx 100.0%),  Spain (5,991), Spain_catalunya (4,215)
+		addFrequent("señora"); // 1623. 13,406 (indx 100.0%),  Spain (5,988), Spain_andalusia (1,348)
+		addFrequent("bà"); // 1624. 7,314 (indx 100.0%),  China (5,970), Vietnam_asia (1,321)
+		addFrequent("franklin"); // 1625. 7,107 (indx 100.0%),  Us (5,969), Us_california (567)
+		addFrequent("s."); // 1626. 23,676 (indx 100.0%),  Italy (5,960), Portugal_europe (2,087)
+		addFrequent("zhan"); // 1627. 8,634 (indx 78.4%),  Taiwan (5,957), Taiwan_asia (5,957)
+		addFrequent("oja"); // 1628. 6,627 (indx 100.0%),  Estonia (5,955), Estonia_europe (5,955)
+		addFrequent("elk"); // 1629. 6,478 (indx 100.0%),  Us (5,950), Us_colorado (808)
+		addFrequent("wine"); // 1630. 12,132 (indx 100.0%),  Us (5,943), Gb_england (2,115)
+		addFrequent("estacao"); // 1631. 9,424 (indx 100.0%),  Brazil (5,942), Portugal_europe (3,207)
+		addFrequent("hui"); // 1632. 7,327 (indx 100.0%),  Taiwan (5,942), Taiwan_asia (5,942)
+		addFrequent("track"); // 1633. 18,524 (indx 100.0%),  Us (5,940), New-zealand_australia-oceania (2,627)
+		addFrequent("chichagof"); // 1634. 5,939 (indx 100.0%),  Us (5,939), Us_alaska (5,939)
+		addFrequent("lā"); // 1635. 5,957 (indx 100.0%),  China (5,937), China_xizang (1,249)
+		addFrequent("share"); // 1636. 7,647 (indx 100.0%),  Japan (5,936), Japan_kanto (2,572)
+		addFrequent("yakobi"); // 1637. 5,935 (indx 100.0%),  Us (5,935), Us_alaska (5,935)
+		addFrequent("australia"); // 1638. 6,302 (indx 100.0%),  Australia-oceania (5,933), Australia-oceania_new-south-wales (2,021)
+		addFrequent("q7984733"); // 1639. 5,930 (indx 100.0%),  Us (5,930), Us_alaska (5,930)
+		addFrequent("r11538224"); // 1640. 5,930 (indx 100.0%),  Us (5,930), Us_alaska (5,930)
+		addFrequent("hut"); // 1641. 19,107 (indx 100.0%),  Us (5,917), Gb_england (1,652)
+		addFrequent("ohio"); // 1642. 5,957 (indx 100.0%),  Us (5,914), Us_ohio (2,894)
+		addFrequent("ekimae"); // 1643. 5,906 (indx 100.0%),  Japan (5,906), Japan_kanto (1,795)
+		addFrequent("škola"); // 1644. 13,436 (indx 100.0%),  Czech-republic (5,905), Slovakia_europe (3,003)
+		addFrequent("henri"); // 1645. 7,834 (indx 100.0%),  France (5,899), France_ile-de-france (1,395)
+		addFrequent("pozo"); // 1646. 8,824 (indx 100.0%),  Spain (5,869), Spain_canarias (1,152)
+		addFrequent("nant"); // 1647. 9,025 (indx 100.0%),  Gb (5,869), Gb_wales (5,869)
+		addFrequent("дошкольное"); // 1648. 5,923 (indx 100.0%),  Russia (5,869), Russia_leningradskaya (1,504)
+		addFrequent("monumento"); // 1649. 18,731 (indx 100.0%),  Italy (5,868), Italy_lombardia (1,246)
+		addFrequent("otto"); // 1650. 7,605 (indx 100.0%),  Germany (5,860), Germany_nordrhein-westfalen (1,080)
+		addFrequent("bluff"); // 1651. 7,786 (indx 100.0%),  Us (5,859), Us_texas (555)
+		addFrequent("cottage"); // 1652. 10,445 (indx 100.0%),  Gb (5,858), Gb_england (4,394)
+		addFrequent("trois"); // 1653. 8,818 (indx 100.0%),  France (5,855), Canada_quebec (966)
+		addFrequent("ludwig"); // 1654. 6,277 (indx 100.0%),  Germany (5,850), Germany_bayern (2,033)
+		addFrequent("امام"); // 1655. 6,647 (indx 100.0%),  Iran (5,845), Iran_tehran (845)
+		addFrequent("hong"); // 1656. 15,278 (indx 100.0%),  Hong-kong (5,840), Hong-kong_asia (5,840)
+		addFrequent("ドコモ"); // 1657. 5,839 (indx 100.0%),  Japan (5,839), Japan_kanto (2,524)
+		addFrequent("ancien"); // 1658. 8,808 (indx 100.0%),  France (5,828), Burkina-faso_africa (1,294)
+		addFrequent("policia"); // 1659. 13,618 (indx 100.0%),  Brazil (5,827), Brazil_sao-paulo (2,039)
+		addFrequent("バイクシェア"); // 1660. 5,826 (indx 100.0%),  Japan (5,826), Japan_kanto (2,515)
+		addFrequent("k-100"); // 1661. 6,267 (indx 100.0%),  Russia (5,820), Russia_krasnodar (3,041)
+		addFrequent("garten"); // 1662. 6,866 (indx 100.0%),  Germany (5,813), Germany_nordrhein-westfalen (1,180)
+		addFrequent("puits"); // 1663. 7,474 (indx 100.0%),  France (5,808), France_hauts-de-france (926)
+		addFrequent("abd"); // 1664. 8,460 (indx 100.0%),  Iran (5,799), Iraq_asia (922)
+		addFrequent("اسواق"); // 1665. 6,208 (indx 100.0%),  Iraq (5,793), Iraq_asia (5,793)
+		addFrequent("rose"); // 1666. 19,364 (indx 100.0%),  Us (5,792), Gb_england (2,313)
+		addFrequent("premier"); // 1667. 8,740 (indx 100.0%),  Gb (5,785), Gb_england (4,844)
+		addFrequent("poggio"); // 1668. 5,847 (indx 100.0%),  Italy (5,784), Italy_toscana (3,616)
+		addFrequent("sydly"); // 1669. 11,401 (indx 100.0%),  Morocco (5,773), Morocco_africa (5,773)
+		addFrequent("italia"); // 1670. 7,934 (indx 100.0%),  Italy (5,771), Italy_lombardia (1,176)
+		addFrequent("bend"); // 1671. 6,851 (indx 100.0%),  Us (5,770), Us_florida (1,702)
+		addFrequent("deutschland"); // 1672. 5,926 (indx 100.0%),  Germany (5,767), Germany_bayern (953)
+		addFrequent("open"); // 1673. 10,038 (indx 100.0%),  Us (5,764), Us_california (2,029)
+		addFrequent("sokak"); // 1674. 5,872 (indx 23.9%),  Turkey (5,763), Turkey_marmara (3,751)
+		addFrequent("professora"); // 1675. 5,787 (indx 100.0%),  Brazil (5,760), Brazil_sao-paulo (2,483)
+		addFrequent("dopływ"); // 1676. 5,799 (indx 100.0%),  Poland (5,760), Poland_lower-silesian (4,379)
+		addFrequent("l'eglise"); // 1677. 6,399 (indx 75.4%),  France (5,758), France_auvergne-rhone-alpes (946)
+		addFrequent("bordeaux"); // 1678. 5,800 (indx 100.0%),  France (5,758), France_new-aquitaine (3,811)
+		addFrequent("doplyw"); // 1679. 5,782 (indx 100.0%),  Poland (5,743), Poland_lower-silesian (4,379)
+		addFrequent("エネオス"); // 1680. 5,736 (indx 100.0%),  Japan (5,736), Japan_kanto (1,695)
+		addFrequent("hoiku"); // 1681. 5,732 (indx 100.0%),  Japan (5,732), Japan_kinki (1,359)
+		addFrequent("kōban"); // 1682. 5,726 (indx 100.0%),  Japan (5,726), Japan_kanto (1,913)
+		addFrequent("so"); // 1683. 11,248 (indx 100.0%),  Vietnam (5,724), Vietnam_asia (5,724)
+		addFrequent("belgrano"); // 1684. 5,795 (indx 100.0%),  Argentina (5,717), Argentina_buenos-aires (1,897)
+		addFrequent("rego"); // 1685. 6,286 (indx 100.0%),  Spain (5,716), Spain_galicia (5,616)
+		addFrequent("oka"); // 1686. 8,348 (indx 100.0%),  Japan (5,715), Japan_kanto (1,860)
+		addFrequent("hana"); // 1687. 6,854 (indx 100.0%),  Japan (5,712), Japan_kanto (1,711)
+		addFrequent("souza"); // 1688. 5,712 (indx 22.9%),  Brazil (5,702), Brazil_sao-paulo (1,684)
+		addFrequent("blanche"); // 1689. 7,420 (indx 100.0%),  France (5,700), France_auvergne-rhone-alpes (1,281)
+		addFrequent("vww"); // 1690. 5,853 (indx 100.0%),  Austria (5,698), Austria_vorarlberg (5,627)
+		addFrequent("junior"); // 1691. 18,109 (indx 100.0%),  Us (5,690), Taiwan_asia (1,741)
+		addFrequent("dehesa"); // 1692. 5,797 (indx 100.0%),  Spain (5,674), Spain_extremadura (1,582)
+		addFrequent("carlos"); // 1693. 23,496 (indx 25.0%),  Brazil (5,673), Brazil_sao-paulo (1,912)
+		addFrequent("super"); // 1694. 36,269 (indx 100.0%),  Us (5,668), Costa-rica_centralamerica (1,697)
+		addFrequent("dolina"); // 1695. 11,395 (indx 100.0%),  Slovakia (5,664), Slovakia_europe (5,664)
+		addFrequent("r19692289"); // 1696. 5,660 (indx 100.0%),  Us (5,660), Us_florida (5,660)
+		addFrequent("maurice"); // 1697. 7,065 (indx 100.0%),  France (5,657), France_auvergne-rhone-alpes (1,255)
+		addFrequent("r10329283"); // 1698. 5,655 (indx 100.0%),  Canada (5,655), Canada_nunavut-se (5,655)
+		addFrequent("ᐸᓐᓂᖅᑑᖅᐃᓄᐃᑦ"); // 1699. 5,655 (indx 100.0%),  Canada (5,655), Canada_nunavut-se (5,655)
+		addFrequent("praia"); // 1700. 12,202 (indx 100.0%),  Brazil (5,645), Portugal_europe (3,324)
+		addFrequent("jian"); // 1701. 6,490 (indx 100.0%),  Taiwan (5,637), Taiwan_asia (5,637)
+		addFrequent("mesa"); // 1702. 9,584 (indx 100.0%),  Us (5,634), Us_arizona (1,394)
+		addFrequent("binh"); // 1703. 5,670 (indx 100.0%),  Vietnam (5,632), Vietnam_asia (5,632)
+		addFrequent("ایستگاه"); // 1704. 5,628 (indx 100.0%),  Iran (5,628), Iran_razavi-khorasan (5,628)
+		addFrequent("leclerc"); // 1705. 6,293 (indx 100.0%),  France (5,626), France_ile-de-france (1,049)
+		addFrequent("citi"); // 1706. 5,947 (indx 100.0%),  Us (5,624), Us_new-york (4,855)
+		addFrequent("andré"); // 1707. 8,242 (indx 100.0%),  France (5,621), France_auvergne-rhone-alpes (849)
+		addFrequent("columbia"); // 1708. 6,703 (indx 100.0%),  Us (5,621), Us_washington (1,290)
+		addFrequent("квартал"); // 1709. 8,174 (indx 100.0%),  Russia (5,617), Russia_komi (842)
+		addFrequent("plan"); // 1710. 10,168 (indx 100.0%),  France (5,615), France_auvergne-rhone-alpes (2,371)
+		addFrequent("cavo"); // 1711. 5,692 (indx 100.0%),  Italy (5,614), Italy_lombardia (3,922)
+		addFrequent("صيدلية"); // 1712. 5,723 (indx 100.0%),  Morocco (5,612), Morocco_africa (5,612)
+		addFrequent("educação"); // 1713. 5,705 (indx 100.0%),  Brazil (5,610), Brazil_sao-paulo (1,395)
+		addFrequent("l'église"); // 1714. 6,149 (indx 76.2%),  France (5,606), France_auvergne-rhone-alpes (927)
+		addFrequent("müller"); // 1715. 6,705 (indx 100.0%),  Germany (5,599), Germany_bayern (1,159)
+		addFrequent("chattogram"); // 1716. 5,596 (indx 100.0%),  Bangladesh (5,596), Bangladesh_asia (5,596)
+		addFrequent("gill"); // 1717. 5,748 (indx 100.0%),  Gb (5,595), Gb_england (5,328)
+		addFrequent("kong"); // 1718. 9,969 (indx 100.0%),  Hong-kong (5,594), Hong-kong_asia (5,594)
+		addFrequent("shiten"); // 1719. 5,594 (indx 100.0%),  Japan (5,594), Japan_tohoku (1,464)
+		addFrequent("ceip"); // 1720. 5,592 (indx 100.0%),  Spain (5,592), Spain_andalusia (1,561)
+		addFrequent("петербурга"); // 1721. 5,588 (indx 100.0%),  Russia (5,588), Russia_leningradskaya (2,797)
+		addFrequent("sushi"); // 1722. 28,678 (indx 100.0%),  Japan (5,582), Japan_kanto (1,907)
+		addFrequent("cité"); // 1723. 11,884 (indx 100.0%),  France (5,561), Algeria_africa (2,754)
+		addFrequent("pièce"); // 1724. 5,639 (indx 100.0%),  France (5,549), France_centre-loire-valley (2,274)
+		addFrequent("mer"); // 1725. 10,480 (indx 100.0%),  France (5,540), France_normandy (1,296)
+		addFrequent("quốc"); // 1726. 5,809 (indx 100.0%),  Vietnam (5,536), Vietnam_asia (5,536)
+		addFrequent("seine"); // 1727. 5,835 (indx 100.0%),  France (5,536), France_ile-de-france (2,993)
+		addFrequent("cherry"); // 1728. 7,503 (indx 100.0%),  Us (5,535), Gb_england (1,057)
+		addFrequent("jie"); // 1729. 6,745 (indx 78.6%),  Taiwan (5,533), Taiwan_asia (5,533)
+		addFrequent("source"); // 1730. 9,001 (indx 100.0%),  France (5,528), France_auvergne-rhone-alpes (1,065)
+		addFrequent("chongqing"); // 1731. 5,518 (indx 100.0%),  China (5,518), China_chongqing (2,430)
+		addFrequent("ne"); // 1732. 9,813 (indx 20.7%),  Us (5,493), Us_washington (2,488)
+		addFrequent("quai"); // 1733. 6,620 (indx 100.0%),  France (5,482), France_ile-de-france (974)
+		addFrequent("ma"); // 1734. 27,405 (indx 100.0%),  Japan (5,481), Myanmar_asia (3,578)
+		addFrequent("gap"); // 1735. 7,596 (indx 100.0%),  Us (5,481), Us_north-carolina (961)
+		addFrequent("largo"); // 1736. 13,763 (indx 26.4%),  Italy (5,480), Portugal_europe (4,546)
+		addFrequent("gaulle"); // 1737. 5,704 (indx 100.0%),  France (5,479), France_ile-de-france (1,385)
+		addFrequent("zen"); // 1738. 6,051 (indx 100.0%),  Japan (5,473), Japan_kanto (1,913)
+		addFrequent("hermann"); // 1739. 6,056 (indx 100.0%),  Germany (5,458), Germany_nordrhein-westfalen (1,117)
+		addFrequent("riverside"); // 1740. 10,037 (indx 100.0%),  Us (5,449), Gb_england (1,556)
+		addFrequent("mills"); // 1741. 13,433 (indx 100.0%),  Tanzania (5,448), Tanzania_southern-highlands (2,042)
+		addFrequent("block"); // 1742. 22,080 (indx 100.0%),  Us (5,446), Egypt_africa (4,795)
+		addFrequent("hu"); // 1743. 8,579 (indx 67.6%),  Taiwan (5,446), Taiwan_asia (5,446)
+		addFrequent("hegy"); // 1744. 5,839 (indx 100.0%),  Hungary (5,438), Hungary_europe (5,438)
+		addFrequent("sunset"); // 1745. 8,097 (indx 100.0%),  Us (5,437), Us_california (1,117)
+		addFrequent("bosco"); // 1746. 9,614 (indx 100.0%),  Italy (5,412), Italy_lombardia (849)
+		addFrequent("rosa"); // 1747. 28,002 (indx 100.0%),  Brazil (5,404), Peru_southamerica (2,997)
+		addFrequent("milano"); // 1748. 6,165 (indx 100.0%),  Italy (5,402), Italy_lombardia (4,154)
+		addFrequent("bourgogne"); // 1749. 5,497 (indx 100.0%),  France (5,400), France_bourgogne-franche-comte (2,145)
+		addFrequent("cemiterio"); // 1750. 13,922 (indx 100.0%),  Spain (5,397), Spain_galicia (4,980)
+		addFrequent("kawa"); // 1751. 5,672 (indx 100.0%),  Japan (5,396), Japan_hokkaido (1,862)
+		addFrequent("laurel"); // 1752. 6,123 (indx 100.0%),  Us (5,391), Us_north-carolina (1,104)
+		addFrequent("shu"); // 1753. 8,472 (indx 100.0%),  Taiwan (5,389), Taiwan_asia (5,389)
+		addFrequent("indigenous"); // 1754. 6,032 (indx 100.0%),  Australia-oceania (5,388), Australia-oceania_western-australia (3,161)
+		addFrequent("shōten"); // 1755. 5,385 (indx 100.0%),  Japan (5,385), Japan_kanto (1,488)
+		addFrequent("tepe"); // 1756. 6,305 (indx 100.0%),  Turkey (5,381), Turkey_marmara (2,768)
+		addFrequent("air"); // 1757. 25,801 (indx 100.0%),  Us (5,375), Malaysia_asia (2,113)
+		addFrequent("oregon"); // 1758. 5,430 (indx 100.0%),  Us (5,371), Us_oregon (4,804)
+		addFrequent("indonesia"); // 1759. 5,387 (indx 100.0%),  Indonesia (5,370), Indonesia_jakarta-raya (1,249)
+		addFrequent("agreement"); // 1760. 5,367 (indx 100.0%),  Australia-oceania (5,357), Australia-oceania_south-australia (5,277)
+		addFrequent("texas"); // 1761. 5,656 (indx 100.0%),  Us (5,352), Us_texas (4,560)
+		addFrequent("cano"); // 1762. 11,040 (indx 100.0%),  Nicaragua (5,352), Nicaragua_centralamerica (5,352)
+		addFrequent("dorfstraße"); // 1763. 5,709 (indx 100.0%),  Germany (5,348), Germany_niedersachsen (1,096)
+		addFrequent("nowa"); // 1764. 5,843 (indx 100.0%),  Poland (5,344), Poland_masovian (749)
+		addFrequent("andre"); // 1765. 8,226 (indx 100.0%),  France (5,342), France_auvergne-rhone-alpes (817)
+		addFrequent("rond"); // 1766. 6,967 (indx 100.0%),  France (5,340), France_auvergne-rhone-alpes (828)
+		addFrequent("bình"); // 1767. 5,580 (indx 100.0%),  Vietnam (5,340), Vietnam_asia (5,340)
+		addFrequent("kostol"); // 1768. 5,362 (indx 100.0%),  Slovakia (5,337), Slovakia_europe (5,337)
+		addFrequent("chicago"); // 1769. 5,345 (indx 100.0%),  Us (5,333), Us_illinois (4,069)
+		addFrequent("gas"); // 1770. 23,539 (indx 100.0%),  Us (5,331), South-korea_asia (3,954)
+		addFrequent("guang"); // 1771. 5,780 (indx 100.0%),  Taiwan (5,330), Taiwan_asia (5,330)
+		addFrequent("cuesta"); // 1772. 6,224 (indx 100.0%),  Spain (5,324), Spain_castilla-leon (1,922)
+		addFrequent("cite"); // 1773. 10,569 (indx 100.0%),  France (5,320), Algeria_africa (2,056)
+		addFrequent("hàng"); // 1774. 5,339 (indx 100.0%),  Vietnam (5,312), Vietnam_asia (5,312)
+		addFrequent("sa"); // 1775. 26,539 (indx 100.0%),  Japan (5,310), Italy_sardegna (4,452)
+		addFrequent("molino"); // 1776. 10,352 (indx 100.0%),  Spain (5,304), Spain_castilla-leon (1,320)
+		addFrequent("pico"); // 1777. 9,786 (indx 100.0%),  Spain (5,302), Spain_castilla-leon (1,472)
+		addFrequent("bethel"); // 1778. 6,303 (indx 100.0%),  Us (5,299), Us_georgia (520)
+		addFrequent("skola"); // 1779. 17,428 (indx 100.0%),  Czech-republic (5,298), Slovakia_europe (2,833)
+		addFrequent("army"); // 1780. 9,261 (indx 100.0%),  Us (5,295), Us_pennsylvania (2,052)
+		addFrequent("général"); // 1781. 6,513 (indx 100.0%),  France (5,292), France_ile-de-france (1,142)
+		addFrequent("cancha"); // 1782. 27,095 (indx 100.0%),  Colombia (5,291), Colombia_southamerica (5,291)
+		addFrequent("landkreis"); // 1783. 5,324 (indx 100.0%),  Germany (5,291), Germany_bayern (1,812)
+		addFrequent("jardín"); // 1784. 16,038 (indx 100.0%),  Argentina (5,285), Argentina_buenos-aires (2,235)
+		addFrequent("kvartal"); // 1785. 6,486 (indx 100.0%),  Russia (5,284), Russia_komi (840)
+		addFrequent("fc"); // 1786. 11,717 (indx 100.0%),  Argentina (5,282), Argentina_buenos-aires (1,950)
+		addFrequent("florida"); // 1787. 9,978 (indx 100.0%),  Us (5,278), Us_florida (4,730)
+		addFrequent("copse"); // 1788. 5,272 (indx 100.0%),  Gb (5,272), Gb_england (5,272)
+		addFrequent("dorfstrasse"); // 1789. 5,826 (indx 100.0%),  Germany (5,268), Germany_schleswig-holstein (1,094)
+		addFrequent("pereira"); // 1790. 7,253 (indx 31.4%),  Brazil (5,266), Brazil_sao-paulo (1,467)
+		addFrequent("nb"); // 1791. 10,214 (indx 100.0%),  Canada (5,265), Canada_british-columbia (3,016)
+		addFrequent("tani"); // 1792. 5,507 (indx 100.0%),  Japan (5,262), Japan_chubu (1,510)
+		addFrequent("droga"); // 1793. 7,136 (indx 100.0%),  Poland (5,261), Poland_silesian (724)
+		addFrequent("ping"); // 1794. 7,635 (indx 100.0%),  Taiwan (5,260), Taiwan_asia (5,260)
+		addFrequent("turkey"); // 1795. 6,061 (indx 100.0%),  Us (5,247), Us_north-carolina (543)
+		addFrequent("gallery"); // 1796. 14,866 (indx 100.0%),  Us (5,234), Gb_england (1,805)
+		addFrequent("go"); // 1797. 23,151 (indx 100.0%),  Japan (5,232), Japan_kinki (1,474)
+		addFrequent("pit"); // 1798. 9,301 (indx 100.0%),  Us (5,231), Gb_england (1,493)
+		addFrequent("tu"); // 1799. 11,612 (indx 100.0%),  Taiwan (5,230), Taiwan_asia (5,230)
+		addFrequent("muller"); // 1800. 6,592 (indx 100.0%),  Germany (5,224), Germany_bayern (1,111)
+		addFrequent("cemitério"); // 1801. 8,540 (indx 100.0%),  Brazil (5,223), Portugal_europe (2,989)
+		addFrequent("nong"); // 1802. 8,436 (indx 100.0%),  Thailand (5,223), Thailand_asia (5,223)
+		addFrequent("skole"); // 1803. 5,822 (indx 100.0%),  Norway (5,223), Norway_akershus (1,042)
+		addFrequent("mar"); // 1804. 18,964 (indx 100.0%),  Spain (5,214), Spain_catalunya (1,509)
+		addFrequent("tam"); // 1805. 6,514 (indx 100.0%),  Vietnam (5,213), Vietnam_asia (5,213)
+		addFrequent("fuji"); // 1806. 5,229 (indx 100.0%),  Japan (5,213), Japan_chubu (1,576)
+		addFrequent("common"); // 1807. 6,719 (indx 100.0%),  Gb (5,202), Gb_england (4,964)
+		addFrequent("polícia"); // 1808. 5,490 (indx 100.0%),  Brazil (5,201), Brazil_sao-paulo (1,914)
+		addFrequent("beek"); // 1809. 8,114 (indx 100.0%),  Netherlands (5,200), Netherlands_gelderland (3,555)
+		addFrequent("michael"); // 1810. 11,481 (indx 100.0%),  Germany (5,198), Germany_bayern (1,511)
+		addFrequent("senora"); // 1811. 12,249 (indx 100.0%),  Spain (5,197), Spain_andalusia (1,164)
+		addFrequent("eb"); // 1812. 10,282 (indx 100.0%),  Canada (5,189), Canada_british-columbia (3,226)
+		addFrequent("wb"); // 1813. 9,917 (indx 100.0%),  Canada (5,184), Canada_british-columbia (3,264)
+		addFrequent("tokyo"); // 1814. 5,635 (indx 100.0%),  Japan (5,183), Japan_kanto (5,029)
+		addFrequent("shhyd"); // 1815. 5,260 (indx 0.6%),  Iran (5,179), Iran_tehran (941)
+		addFrequent("nrw"); // 1816. 5,189 (indx 100.0%),  Germany (5,178), Germany_nordrhein-westfalen (5,149)
+		addFrequent("kōgyō"); // 1817. 5,176 (indx 100.0%),  Japan (5,176), Japan_kanto (1,352)
+		addFrequent("ca'"); // 1818. 5,281 (indx 100.0%),  Italy (5,169), Italy_emilia-romagna (2,699)
+		addFrequent("coll"); // 1819. 5,844 (indx 100.0%),  Spain (5,161), Spain_catalunya (3,935)
+		addFrequent("wen"); // 1820. 5,895 (indx 100.0%),  Taiwan (5,156), Taiwan_asia (5,156)
+		addFrequent("rocher"); // 1821. 6,565 (indx 100.0%),  France (5,155), France_auvergne-rhone-alpes (1,332)
+		addFrequent("île"); // 1822. 11,605 (indx 100.0%),  Canada (5,155), Canada_quebec (4,413)
+		addFrequent("cruce"); // 1823. 11,589 (indx 100.0%),  Chile (5,155), Bolivia_southamerica (3,350)
+		addFrequent("ernst"); // 1824. 5,699 (indx 100.0%),  Germany (5,155), Germany_nordrhein-westfalen (753)
+		addFrequent("шоссе"); // 1825. 6,649 (indx 100.0%),  Russia (5,154), Russia_moskovskaya-oblast (1,611)
+		addFrequent("ابو"); // 1826. 15,434 (indx 3.7%),  Iraq (5,152), Iraq_asia (5,152)
+		addFrequent("nowy"); // 1827. 5,442 (indx 100.0%),  Poland (5,144), Poland_lesser-poland (820)
+		addFrequent("phu"); // 1828. 6,893 (indx 100.0%),  Vietnam (5,141), Vietnam_asia (5,141)
+		addFrequent("kaigo"); // 1829. 5,139 (indx 100.0%),  Japan (5,139), Japan_kanto (1,347)
+		addFrequent("vul."); // 1830. 5,126 (indx 100.0%),  Ukraine (5,126), Ukraine_kyiv (1,717)
+		addFrequent("södra"); // 1831. 5,368 (indx 100.0%),  Sweden (5,118), Sweden_vastra-gotaland (683)
+		addFrequent("r16308826"); // 1832. 5,112 (indx 100.0%),  Australia-oceania (5,112), Australia-oceania_new-south-wales (5,062)
+		addFrequent("пошта"); // 1833. 5,105 (indx 100.0%),  Ukraine (5,105), Ukraine_kyiv (1,715)
+		addFrequent("fang"); // 1834. 6,004 (indx 100.0%),  Taiwan (5,104), Taiwan_asia (5,104)
+		addFrequent("bremen"); // 1835. 5,142 (indx 100.0%),  Germany (5,095), Germany_niedersachsen (2,721)
+		addFrequent("men"); // 1836. 8,990 (indx 100.0%),  Japan (5,092), Taiwan_asia (2,120)
+		addFrequent("uvala"); // 1837. 5,278 (indx 100.0%),  Croatia (5,085), Croatia_europe (5,085)
+		addFrequent("weingut"); // 1838. 6,337 (indx 100.0%),  Germany (5,084), Germany_rheinland-pfalz (3,610)
+		addFrequent("mary"); // 1839. 14,941 (indx 100.0%),  Us (5,082), Gb_england (3,386)
+		addFrequent("bel"); // 1840. 7,241 (indx 100.0%),  France (5,076), France_pays-de-la-loire (766)
+		addFrequent("gut"); // 1841. 6,220 (indx 100.0%),  Germany (5,076), Germany_nordrhein-westfalen (1,488)
+		addFrequent("neighborhood"); // 1842. 6,974 (indx 100.0%),  Us (5,076), Egypt_africa (1,315)
+		addFrequent("jersey"); // 1843. 5,291 (indx 100.0%),  Us (5,071), Us_new-jersey (1,607)
+		addFrequent("porto"); // 1844. 16,476 (indx 100.0%),  Brazil (5,068), Portugal_europe (3,816)
+		addFrequent("große"); // 1845. 6,196 (indx 100.0%),  Germany (5,058), Germany_nordrhein-westfalen (1,069)
+		addFrequent("naturschutzgebiet"); // 1846. 5,856 (indx 100.0%),  Germany (5,056), Germany_nordrhein-westfalen (2,374)
+		addFrequent("diăn"); // 1847. 5,054 (indx 100.0%),  China (5,054), China_zhejiang (2,287)
+		addFrequent("nei"); // 1848. 5,240 (indx 100.0%),  Taiwan (5,054), Taiwan_asia (5,054)
+		addFrequent("jin"); // 1849. 10,663 (indx 57.8%),  Taiwan (5,048), Taiwan_asia (5,048)
+		addFrequent("knob"); // 1850. 5,745 (indx 100.0%),  Us (5,046), Us_north-carolina (1,086)
+		addFrequent("ovre"); // 1851. 6,375 (indx 100.0%),  Norway (5,043), Norway_innlandet (1,081)
+		addFrequent("kansallispuisto"); // 1852. 5,033 (indx 100.0%),  Finland (5,033), Finland_southwest-finland (2,148)
+		addFrequent("jack"); // 1853. 7,857 (indx 100.0%),  Us (5,029), Us_california (1,194)
+		addFrequent("els"); // 1854. 5,392 (indx 100.0%),  Spain (5,027), Spain_catalunya (3,241)
+		addFrequent("nouvelle"); // 1855. 6,785 (indx 100.0%),  France (5,021), France_auvergne-rhone-alpes (595)
+		addFrequent("grosse"); // 1856. 7,474 (indx 100.0%),  Germany (5,020), Germany_nordrhein-westfalen (1,089)
+		addFrequent("local"); // 1857. 21,827 (indx 100.0%),  Gb (5,018), Gb_england (4,492)
+		addFrequent("yokohama"); // 1858. 5,009 (indx 100.0%),  Japan (5,009), Japan_kanto (4,852)
+		addFrequent("br"); // 1859. 10,743 (indx 100.0%),  Australia-oceania (4,997), Australia-oceania_victoria (4,997)
+		addFrequent("playa"); // 1860. 16,129 (indx 100.0%),  Spain (4,995), Carribean-archipelago-all_centralamerica (1,469)
+		addFrequent("broad"); // 1861. 7,114 (indx 100.0%),  Us (4,987), Us_north-carolina (1,466)
+		addFrequent("lavoir"); // 1862. 5,239 (indx 100.0%),  France (4,983), France_auvergne-rhone-alpes (623)
+		addFrequent("superior"); // 1863. 11,693 (indx 100.0%),  Us (4,979), Us_minnesota (3,750)
+		addFrequent("kou"); // 1864. 6,322 (indx 83.1%),  Taiwan (4,978), Taiwan_asia (4,978)
+		addFrequent("sb"); // 1865. 13,740 (indx 100.0%),  Canada (4,971), Canada_british-columbia (3,069)
+		addFrequent("su"); // 1866. 21,290 (indx 32.5%),  Italy (4,966), Italy_sardegna (4,598)
+		addFrequent("all"); // 1867. 13,831 (indx 100.0%),  Us (4,960), Gb_england (4,046)
+		addFrequent("alten"); // 1868. 5,425 (indx 100.0%),  Germany (4,959), Germany_nordrhein-westfalen (973)
+		addFrequent("josef"); // 1869. 8,284 (indx 100.0%),  Germany (4,955), Germany_bayern (1,508)
+		addFrequent("lộ"); // 1870. 5,054 (indx 100.0%),  Vietnam (4,950), Vietnam_asia (4,950)
+		addFrequent("borgo"); // 1871. 5,098 (indx 100.0%),  Italy (4,949), Italy_friuli-venezia-giulia (803)
+		addFrequent("1st"); // 1872. 9,449 (indx 26.4%),  Us (4,947), Taiwan_asia (913)
+		addFrequent("quan"); // 1873. 8,168 (indx 100.0%),  Vietnam (4,944), Vietnam_asia (4,944)
+		addFrequent("kreis"); // 1874. 5,036 (indx 100.0%),  Germany (4,943), Germany_nordrhein-westfalen (3,364)
+		addFrequent("ბანკი"); // 1875. 4,939 (indx 100.0%),  Georgia (4,939), Georgia_asia (4,939)
+		addFrequent("к-100"); // 1876. 5,333 (indx 100.0%),  Russia (4,936), Russia_krasnodar (2,544)
+		addFrequent("lounge"); // 1877. 18,950 (indx 100.0%),  Us (4,934), Gb_england (1,902)
+		addFrequent("統一超商"); // 1878. 4,964 (indx 100.0%),  Taiwan (4,934), Taiwan_asia (4,934)
+		addFrequent("yang"); // 1879. 7,406 (indx 76.8%),  Taiwan (4,932), Taiwan_asia (4,932)
+		addFrequent("5-chome"); // 1880. 4,932 (indx 100.0%),  Japan (4,932), Japan_kinki (1,239)
+		addFrequent("alves"); // 1881. 5,781 (indx 31.2%),  Brazil (4,929), Brazil_sao-paulo (1,092)
+		addFrequent("chene"); // 1882. 5,606 (indx 100.0%),  France (4,929), France_pays-de-la-loire (730)
+		addFrequent("inari"); // 1883. 4,977 (indx 100.0%),  Japan (4,924), Japan_kanto (2,140)
+		addFrequent("soleil"); // 1884. 7,139 (indx 100.0%),  France (4,922), France_auvergne-rhone-alpes (1,209)
+		addFrequent("archipelago"); // 1885. 5,966 (indx 100.0%),  Finland (4,921), Finland_southwest-finland (3,247)
+		addFrequent("ha"); // 1886. 13,814 (indx 100.0%),  Lesotho (4,920), Lesotho_africa (4,920)
+		addFrequent("works"); // 1887. 14,271 (indx 100.0%),  Us (4,913), Gb_england (3,502)
+		addFrequent("autoroute"); // 1888. 12,308 (indx 100.0%),  France (4,912), Canada_quebec (2,186)
+		addFrequent("neuve"); // 1889. 5,587 (indx 100.0%),  France (4,912), France_pays-de-la-loire (966)
+		addFrequent("hā"); // 1890. 4,911 (indx 100.0%),  China (4,911), China_heilongjiang (1,821)
+		addFrequent("r15536024"); // 1891. 4,911 (indx 100.0%),  Us (4,911), Us_alabama (4,911)
+		addFrequent("pāku"); // 1892. 4,900 (indx 100.0%),  Japan (4,900), Japan_kanto (1,886)
+		addFrequent("estero"); // 1893. 10,527 (indx 100.0%),  Chile (4,898), Nicaragua_centralamerica (1,621)
+		addFrequent("sodra"); // 1894. 5,097 (indx 100.0%),  Sweden (4,894), Sweden_vastra-gotaland (665)
+		addFrequent("edward"); // 1895. 7,721 (indx 100.0%),  Us (4,892), Gb_england (683)
+		addFrequent("ipiranga"); // 1896. 4,877 (indx 100.0%),  Brazil (4,877), Brazil_sao-paulo (1,570)
+		addFrequent("chu"); // 1897. 9,415 (indx 100.0%),  Taiwan (4,873), Taiwan_asia (4,873)
+		addFrequent("ba"); // 1898. 14,637 (indx 100.0%),  Vietnam (4,872), Vietnam_asia (4,872)
+		addFrequent("marken"); // 1899. 4,946 (indx 100.0%),  Germany (4,872), Germany_nordrhein-westfalen (952)
+		addFrequent("básica"); // 1900. 12,766 (indx 100.0%),  Portugal (4,871), Portugal_europe (4,871)
+		addFrequent("مدرسه"); // 1901. 20,800 (indx 100.0%),  Iraq (4,868), Iraq_asia (4,868)
+		addFrequent("head"); // 1902. 15,577 (indx 100.0%),  Gb (4,864), Gb_england (4,186)
+		addFrequent("pointe"); // 1903. 16,871 (indx 100.0%),  France (4,858), Canada_quebec (3,425)
+		addFrequent("padre"); // 1904. 12,047 (indx 16.4%),  Brazil (4,850), Brazil_sao-paulo (1,268)
+		addFrequent("jaya"); // 1905. 8,289 (indx 100.0%),  Indonesia (4,842), Malaysia_asia (2,949)
+		addFrequent("mi"); // 1906. 21,984 (indx 100.0%),  Japan (4,841), Taiwan_asia (1,974)
+		addFrequent("sekolah"); // 1907. 7,393 (indx 100.0%),  Malaysia (4,832), Malaysia_asia (4,832)
+		addFrequent("educacao"); // 1908. 4,909 (indx 100.0%),  Brazil (4,826), Brazil_sao-paulo (1,228)
+		addFrequent("ty"); // 1909. 8,389 (indx 100.0%),  Vietnam (4,820), Vietnam_asia (4,820)
+		addFrequent("dien"); // 1910. 4,864 (indx 100.0%),  Vietnam (4,818), Vietnam_asia (4,818)
+		addFrequent("paolo"); // 1911. 4,942 (indx 100.0%),  Italy (4,812), Italy_lombardia (873)
+		addFrequent("piazzale"); // 1912. 4,871 (indx 100.0%),  Italy (4,810), Italy_lombardia (1,007)
+		addFrequent("tohoku"); // 1913. 4,806 (indx 100.0%),  Japan (4,806), Japan_tohoku (3,508)
+		addFrequent("dōri"); // 1914. 4,805 (indx 100.0%),  Japan (4,805), Japan_kanto (1,673)
+		addFrequent("رود"); // 1915. 8,074 (indx 100.0%),  Us (4,804), Us_minnesota (1,418)
+		addFrequent("hameau"); // 1916. 5,043 (indx 100.0%),  France (4,799), France_normandy (1,432)
+		addFrequent("summit"); // 1917. 6,375 (indx 100.0%),  Us (4,798), Us_california (687)
+		addFrequent("war"); // 1918. 12,026 (indx 100.0%),  Gb (4,798), Gb_england (2,815)
+		addFrequent("iela"); // 1919. 4,808 (indx 0.9%),  Latvia (4,795), Latvia_europe (4,795)
+		addFrequent("к"); // 1920. 5,634 (indx 100.0%),  Russia (4,788), Russia_leningradskaya (672)
+		addFrequent("prefeitura"); // 1921. 4,793 (indx 100.0%),  Brazil (4,783), Brazil_sao-paulo (675)
+		addFrequent("domingos"); // 1922. 6,084 (indx 100.0%),  Brazil (4,782), Brazil_espirito-santo (1,354)
+		addFrequent("بلوك"); // 1923. 4,797 (indx 100.0%),  Egypt (4,778), Egypt_africa (4,778)
+		addFrequent("bras"); // 1924. 7,405 (indx 100.0%),  France (4,775), France_brittany (1,203)
+		addFrequent("mian"); // 1925. 5,404 (indx 100.0%),  Taiwan (4,771), Taiwan_asia (4,771)
+		addFrequent("victor"); // 1926. 8,496 (indx 100.0%),  France (4,770), France_ile-de-france (1,041)
+		addFrequent("ti"); // 1927. 8,955 (indx 100.0%),  France (4,766), France_brittany (3,997)
+		addFrequent("balka"); // 1928. 9,175 (indx 100.0%),  Ukraine (4,764), Ukraine_donetsk (3,018)
+		addFrequent("william"); // 1929. 10,385 (indx 100.0%),  Us (4,761), Gb_england (2,324)
+		addFrequent("അങ്കണവാടി"); // 1930. 4,760 (indx 100.0%),  India (4,760), India_kerala (4,723)
+		addFrequent("அங்கன்வாடி"); // 1931. 4,752 (indx 100.0%),  India (4,752), India_kerala (4,713)
+		addFrequent("అంగన్వాడి"); // 1932. 4,750 (indx 100.0%),  India (4,750), India_kerala (4,713)
+		addFrequent("בית"); // 1933. 5,921 (indx 100.0%),  Israel (4,740), Israel_asia (4,740)
+		addFrequent("nuova"); // 1934. 4,840 (indx 100.0%),  Italy (4,739), Italy_lombardia (821)
+		addFrequent("ile"); // 1935. 10,028 (indx 100.0%),  Canada (4,724), Canada_quebec (4,229)
+		addFrequent("holy"); // 1936. 12,378 (indx 100.0%),  Us (4,723), Gb_england (1,787)
+		addFrequent("cao"); // 1937. 7,825 (indx 100.0%),  Vietnam (4,722), Vietnam_asia (4,722)
+		addFrequent("tin"); // 1938. 7,247 (indx 100.0%),  Hong-kong (4,718), Hong-kong_asia (4,718)
+		addFrequent("strasbourg"); // 1939. 4,752 (indx 100.0%),  France (4,714), France_great-east (3,800)
+		addFrequent("alt"); // 1940. 7,238 (indx 100.0%),  Germany (4,711), Germany_brandenburg (1,169)
+		addFrequent("branco"); // 1941. 5,861 (indx 100.0%),  Brazil (4,708), Brazil_sao-paulo (821)
+		addFrequent("ferreira"); // 1942. 6,917 (indx 31.6%),  Brazil (4,692), Portugal_europe (1,662)
+		addFrequent("qing"); // 1943. 5,528 (indx 100.0%),  Taiwan (4,690), Taiwan_asia (4,690)
+		addFrequent("mini"); // 1944. 34,251 (indx 100.0%),  Us (4,681), India_telangana (1,621)
+		addFrequent("carrera"); // 1945. 6,450 (indx 65.3%),  Colombia (4,678), Colombia_southamerica (4,678)
+		addFrequent("lee"); // 1946. 9,201 (indx 100.0%),  Us (4,672), Gb_england (1,207)
+		addFrequent("shore"); // 1947. 7,251 (indx 100.0%),  Us (4,671), Canada_nova-scotia (1,274)
+		addFrequent("fundamental"); // 1948. 4,705 (indx 100.0%),  Brazil (4,670), Brazil_espirito-santo (1,724)
+		addFrequent("ye"); // 1949. 7,833 (indx 60.9%),  Taiwan (4,665), Taiwan_asia (4,665)
+		addFrequent("manoel"); // 1950. 4,692 (indx 35.5%),  Brazil (4,665), Brazil_sao-paulo (1,101)
+		addFrequent("entre"); // 1951. 9,641 (indx 100.0%),  France (4,664), France_great-east (1,534)
+		addFrequent("cima"); // 1952. 12,254 (indx 100.0%),  Italy (4,661), Portugal_europe (1,916)
+		addFrequent("johannes"); // 1953. 6,575 (indx 100.0%),  Germany (4,661), Germany_bayern (1,242)
+		addFrequent("tang"); // 1954. 7,203 (indx 100.0%),  Taiwan (4,660), Taiwan_asia (4,660)
+		addFrequent("fonte"); // 1955. 14,885 (indx 100.0%),  Portugal (4,650), Portugal_europe (4,650)
+		addFrequent("conjunto"); // 1956. 7,805 (indx 100.0%),  Brazil (4,648), Brazil_distrito-federal (1,533)
+		addFrequent("blm"); // 1957. 4,660 (indx 100.0%),  Us (4,648), Us_colorado (2,243)
+		addFrequent("urad"); // 1958. 7,064 (indx 100.0%),  Czech-republic (4,646), Slovakia_europe (2,300)
+		addFrequent("horní"); // 1959. 4,809 (indx 100.0%),  Czech-republic (4,646), Czech-republic_severovychod (1,159)
+		addFrequent("self"); // 1960. 6,837 (indx 100.0%),  Us (4,641), Us_california (453)
+		addFrequent("nagoya"); // 1961. 4,666 (indx 100.0%),  Japan (4,636), Japan_chubu (4,201)
+		addFrequent("gu"); // 1962. 7,636 (indx 100.0%),  Taiwan (4,630), Taiwan_asia (4,630)
+		addFrequent("three"); // 1963. 10,563 (indx 100.0%),  Us (4,625), Gb_england (2,194)
+		addFrequent("françois"); // 1964. 5,942 (indx 100.0%),  France (4,625), France_auvergne-rhone-alpes (704)
+		addFrequent("business"); // 1965. 16,197 (indx 100.0%),  Gb (4,623), Gb_england (4,017)
+		addFrequent("terre"); // 1966. 7,531 (indx 100.0%),  France (4,623), France_auvergne-rhone-alpes (674)
+		addFrequent("zaragoza"); // 1967. 6,358 (indx 100.0%),  Spain (4,616), Spain_catalunya (2,133)
+		addFrequent("obere"); // 1968. 7,498 (indx 100.0%),  Germany (4,615), Germany_baden-wuerttemberg (1,526)
+		addFrequent("posiolok"); // 1969. 4,653 (indx 100.0%),  Russia (4,615), Russia_moskovskaya-oblast (1,195)
+		addFrequent("rhone"); // 1970. 4,925 (indx 100.0%),  France (4,610), France_auvergne-rhone-alpes (2,126)
+		addFrequent("xe"); // 1971. 4,866 (indx 100.0%),  Vietnam (4,606), Vietnam_asia (4,606)
+		addFrequent("bowls"); // 1972. 5,663 (indx 100.0%),  Gb (4,604), Gb_england (4,275)
+		addFrequent("bahnhofstraße"); // 1973. 5,115 (indx 100.0%),  Germany (4,601), Germany_bayern (683)
+		addFrequent("sendai"); // 1974. 4,600 (indx 100.0%),  Japan (4,600), Japan_tohoku (4,243)
+		addFrequent("montagne"); // 1975. 6,686 (indx 100.0%),  France (4,588), France_auvergne-rhone-alpes (1,381)
+		addFrequent("taiwan"); // 1976. 4,699 (indx 100.0%),  Taiwan (4,582), Taiwan_asia (4,582)
+		addFrequent("posta"); // 1977. 10,749 (indx 100.0%),  Hungary (4,577), Hungary_europe (4,577)
+		addFrequent("madison"); // 1978. 4,585 (indx 100.0%),  Us (4,563), Us_illinois (570)
+		addFrequent("vía"); // 1979. 10,698 (indx 100.0%),  Spain (4,560), Colombia_southamerica (2,548)
+		addFrequent("hang"); // 1980. 8,878 (indx 100.0%),  Vietnam (4,558), Vietnam_asia (4,558)
+		addFrequent("lange"); // 1981. 6,369 (indx 100.0%),  Germany (4,556), Germany_niedersachsen (975)
+		addFrequent("центральная"); // 1982. 6,150 (indx 28.1%),  Russia (4,546), Russia_moskovskaya-oblast (673)
+		addFrequent("chêne"); // 1983. 5,101 (indx 100.0%),  France (4,543), France_great-east (659)
+		addFrequent("none"); // 1984. 4,851 (indx 100.0%),  Czech-republic (4,535), Czech-republic_severovychod (2,918)
+		addFrequent("fiume"); // 1985. 6,237 (indx 100.0%),  Italy (4,533), Italy_toscana (739)
+		addFrequent("hot"); // 1986. 9,904 (indx 100.0%),  Us (4,525), Us_california (891)
+		addFrequent("england"); // 1987. 5,711 (indx 100.0%),  Gb (4,525), Gb_england (4,525)
+		addFrequent("میدان"); // 1988. 4,688 (indx 100.0%),  Iran (4,522), Iran_tehran (882)
+		addFrequent("av."); // 1989. 6,885 (indx 100.0%),  Spain (4,519), Spain_madrid (4,519)
+		addFrequent("bahnhofstrasse"); // 1990. 5,321 (indx 100.0%),  Germany (4,512), Germany_bayern (663)
+		addFrequent("ja"); // 1991. 8,772 (indx 100.0%),  Japan (4,510), Japan_kanto (999)
+		addFrequent("um"); // 1992. 8,521 (indx 100.0%),  Germany (4,509), Germany_bayern (1,041)
+		addFrequent("ad"); // 1993. 10,935 (indx 100.0%),  Yemen (4,507), Yemen_asia (4,507)
+		addFrequent("tan"); // 1994. 11,873 (indx 100.0%),  Vietnam (4,506), Vietnam_asia (4,506)
+		addFrequent("afon"); // 1995. 5,775 (indx 100.0%),  Gb (4,505), Gb_wales (4,282)
+		addFrequent("a'"); // 1996. 4,968 (indx 100.0%),  Gb (4,503), Gb_scotland (4,503)
+		addFrequent("rhône"); // 1997. 4,794 (indx 100.0%),  France (4,501), France_auvergne-rhone-alpes (2,259)
+		addFrequent("oratorio"); // 1998. 4,831 (indx 100.0%),  Italy (4,497), Italy_lombardia (1,474)
+		addFrequent("sede"); // 1999. 11,512 (indx 100.0%),  Colombia (4,493), Colombia_southamerica (4,493)
+		addFrequent("northern"); // 2000. 11,297 (indx 100.0%),  Us (4,484), Gb_england (858)
+		addFrequent("sanga"); // 2001. 4,837 (indx 100.0%),  Brazil (4,482), Brazil_santa-catarina (2,079)
+		addFrequent("qiu"); // 2002. 4,531 (indx 100.0%),  Taiwan (4,471), Taiwan_asia (4,471)
+		addFrequent("gate"); // 2003. 22,862 (indx 100.0%),  Us (4,468), Gb_england (3,857)
+		addFrequent("fil"); // 2004. 6,323 (indx 100.0%),  Us (4,461), Us_texas (780)
+		addFrequent("بوستان"); // 2005. 4,489 (indx 100.0%),  Iran (4,458), Iran_tehran (2,006)
+		addFrequent("gang"); // 2006. 7,723 (indx 63.8%),  Taiwan (4,458), Taiwan_asia (4,458)
+		addFrequent("don"); // 2007. 33,922 (indx 100.0%),  Italy (4,455), Argentina_buenos-aires (1,287)
+		addFrequent("pike"); // 2008. 5,405 (indx 100.0%),  Us (4,454), Us_pennsylvania (1,058)
+		addFrequent("x"); // 2009. 21,392 (indx 100.0%),  Portugal (4,442), Portugal_europe (4,442)
+		addFrequent("cappella"); // 2010. 4,621 (indx 100.0%),  Italy (4,441), Italy_piemonte (1,620)
+		addFrequent("factory"); // 2011. 17,307 (indx 100.0%),  Us (4,440), Gb_england (1,686)
+		addFrequent("shossie"); // 2012. 4,461 (indx 100.0%),  Russia (4,430), Russia_moskovskaya-oblast (1,222)
+		addFrequent("loteamento"); // 2013. 4,429 (indx 100.0%),  Brazil (4,429), Brazil_santa-catarina (1,486)
+		addFrequent("lan"); // 2014. 8,185 (indx 100.0%),  Taiwan (4,428), Taiwan_asia (4,428)
+		addFrequent("niños"); // 2015. 5,921 (indx 100.0%),  Mexico (4,424), Mexico_mexico (1,061)
+		addFrequent("bela"); // 2016. 7,266 (indx 100.0%),  Brazil (4,422), Brazil_sao-paulo (820)
+		addFrequent("elm"); // 2017. 6,109 (indx 100.0%),  Us (4,419), Us_texas (941)
+		addFrequent("kentucky"); // 2018. 13,470 (indx 100.0%),  Us (4,418), Us_kentucky (1,170)
+		addFrequent("salud"); // 2019. 21,028 (indx 100.0%),  Spain (4,418), Peru_southamerica (2,483)
+		addFrequent("ninos"); // 2020. 5,892 (indx 100.0%),  Mexico (4,416), Mexico_mexico (1,057)
+		addFrequent("cricket"); // 2021. 10,550 (indx 100.0%),  Gb (4,409), Gb_england (4,121)
+		addFrequent("yama"); // 2022. 4,432 (indx 100.0%),  Japan (4,409), Japan_kanto (1,172)
+		addFrequent("quarry"); // 2023. 10,575 (indx 100.0%),  Us (4,406), Gb_england (2,839)
+		addFrequent("văn"); // 2024. 4,424 (indx 100.0%),  Vietnam (4,401), Vietnam_asia (4,401)
+		addFrequent("poshta"); // 2025. 4,401 (indx 100.0%),  Ukraine (4,401), Ukraine_kyiv (1,663)
+		addFrequent("basica"); // 2026. 11,862 (indx 100.0%),  Portugal (4,392), Portugal_europe (4,392)
+		addFrequent("iii"); // 2027. 29,081 (indx 100.0%),  Poland (4,391), Uganda_africa (1,016)
+		addFrequent("midori"); // 2028. 4,386 (indx 100.0%),  Japan (4,386), Japan_kanto (1,812)
+		addFrequent("joan"); // 2029. 4,746 (indx 100.0%),  Spain (4,384), Spain_catalunya (3,202)
+		addFrequent("hōmu"); // 2030. 4,383 (indx 100.0%),  Japan (4,383), Japan_kanto (1,447)
+		addFrequent("dias"); // 2031. 6,887 (indx 100.0%),  Brazil (4,381), Brazil_sao-paulo (1,169)
+		addFrequent("g."); // 2032. 4,367 (indx 100.0%),  Lithuania (4,367), Lithuania_europe (4,367)
+		addFrequent("musholla"); // 2033. 4,366 (indx 100.0%),  Indonesia (4,366), Indonesia_jawa-tengah (1,992)
+		addFrequent("tim"); // 2034. 6,619 (indx 100.0%),  Canada (4,364), Canada_ontario (2,168)
+		addFrequent("tinh"); // 2035. 4,450 (indx 100.0%),  Vietnam (4,362), Vietnam_asia (4,362)
+		addFrequent("tỉnh"); // 2036. 4,456 (indx 100.0%),  Vietnam (4,361), Vietnam_asia (4,361)
+		addFrequent("bento"); // 2037. 5,894 (indx 100.0%),  Brazil (4,358), Portugal_europe (1,370)
+		addFrequent("network"); // 2038. 8,461 (indx 100.0%),  Gb (4,357), Gb_england (3,812)
+		addFrequent("carlo"); // 2039. 4,897 (indx 100.0%),  Italy (4,354), Italy_lombardia (1,010)
+		addFrequent("phú"); // 2040. 4,402 (indx 100.0%),  Vietnam (4,354), Vietnam_asia (4,354)
+		addFrequent("kapi"); // 2041. 4,627 (indx 100.0%),  Latvia (4,347), Latvia_europe (4,347)
+		addFrequent("trang"); // 2042. 4,493 (indx 100.0%),  Vietnam (4,345), Vietnam_asia (4,345)
+		addFrequent("tân"); // 2043. 4,500 (indx 100.0%),  Vietnam (4,344), Vietnam_asia (4,344)
+		addFrequent("dolní"); // 2044. 4,479 (indx 100.0%),  Czech-republic (4,336), Czech-republic_severovychod (1,023)
+		addFrequent("mm"); // 2045. 5,941 (indx 100.0%),  Iran (4,334), Iran_tehran (607)
+		addFrequent("mare"); // 2046. 17,752 (indx 100.0%),  France (4,329), Romania_europe (3,862)
+		addFrequent("marne"); // 2047. 4,518 (indx 100.0%),  France (4,328), France_great-east (1,853)
+		addFrequent("mu"); // 2048. 10,797 (indx 68.0%),  Taiwan (4,324), Taiwan_asia (4,324)
+		addFrequent("3rd"); // 2049. 6,234 (indx 38.2%),  Us (4,322), Us_california (680)
+		addFrequent("kota"); // 2050. 7,624 (indx 100.0%),  Indonesia (4,320), Malaysia_asia (1,620)
+		addFrequent("vincent"); // 2051. 6,157 (indx 100.0%),  France (4,319), France_new-aquitaine (702)
+		addFrequent("fritz"); // 2052. 4,738 (indx 100.0%),  Germany (4,315), Germany_nordrhein-westfalen (777)
+		addFrequent("deng"); // 2053. 4,367 (indx 100.0%),  Taiwan (4,314), Taiwan_asia (4,314)
+		addFrequent("osaka"); // 2054. 4,325 (indx 100.0%),  Japan (4,312), Japan_kinki (4,219)
+		addFrequent("linea"); // 2055. 17,284 (indx 100.0%),  Spain (4,306), Japan_kanto (1,597)
+		addFrequent("puig"); // 2056. 4,717 (indx 100.0%),  Spain (4,305), Spain_catalunya (2,808)
+		addFrequent("valencia"); // 2057. 6,226 (indx 100.0%),  Spain (4,294), Spain_valencia (2,556)
+		addFrequent("yan"); // 2058. 8,076 (indx 68.6%),  Taiwan (4,293), Taiwan_asia (4,293)
+		addFrequent("times"); // 2059. 4,961 (indx 100.0%),  Japan (4,288), Japan_kanto (2,253)
+		addFrequent("зона"); // 2060. 9,002 (indx 100.0%),  Belarus (4,284), Belarus_hrodna (2,187)
+		addFrequent("comunidade"); // 2061. 4,389 (indx 100.0%),  Brazil (4,283), Brazil_sao-paulo (730)
+		addFrequent("contrada"); // 2062. 4,294 (indx 100.0%),  Italy (4,283), Italy_sicilia (2,559)
+		addFrequent("ga"); // 2063. 10,593 (indx 100.0%),  Japan (4,269), Us_georgia (3,593)
+		addFrequent("covenant"); // 2064. 4,792 (indx 100.0%),  Australia-oceania (4,263), Australia-oceania_tasmania (3,458)
+		addFrequent("louisiana"); // 2065. 4,734 (indx 100.0%),  Us (4,258), Us_louisiana (914)
+		addFrequent("lima"); // 2066. 8,333 (indx 100.0%),  Brazil (4,250), Peru_southamerica (1,358)
+		addFrequent("francois"); // 2067. 5,615 (indx 100.0%),  France (4,247), Canada_quebec (670)
+		addFrequent("vietnamese"); // 2068. 17,001 (indx 100.0%),  Vietnam (4,243), Vietnam_asia (4,243)
+		addFrequent("olive"); // 2069. 5,556 (indx 100.0%),  Us (4,242), Us_california (564)
+		addFrequent("horni"); // 2070. 4,430 (indx 100.0%),  Czech-republic (4,241), Czech-republic_severovychod (993)
+		addFrequent("urbanización"); // 2071. 9,991 (indx 100.0%),  Spain (4,240), Spain_andalusia (1,332)
+		addFrequent("pot"); // 2072. 8,399 (indx 100.0%),  Slovenia (4,237), Slovenia_europe (4,237)
+		addFrequent("caminho"); // 2073. 7,834 (indx 27.6%),  Portugal (4,235), Portugal_europe (4,235)
+		addFrequent("hortons"); // 2074. 5,183 (indx 100.0%),  Canada (4,229), Canada_ontario (2,093)
+		addFrequent("ort"); // 2075. 4,217 (indx 100.0%),  Austria (4,217), Austria_styria (3,065)
+		addFrequent("5th"); // 2076. 5,265 (indx 100.0%),  Us (4,213), Us_florida (481)
+		addFrequent("shang"); // 2077. 5,181 (indx 100.0%),  Taiwan (4,210), Taiwan_asia (4,210)
+		addFrequent("sở"); // 2078. 4,232 (indx 100.0%),  Vietnam (4,206), Vietnam_asia (4,206)
+		addFrequent("sr"); // 2079. 6,980 (indx 100.0%),  Us (4,203), Us_ohio (1,748)
+		addFrequent("metzgerei"); // 2080. 4,589 (indx 100.0%),  Germany (4,202), Germany_bayern (1,807)
+		addFrequent("cour"); // 2081. 5,006 (indx 100.0%),  France (4,201), France_normandy (835)
+		addFrequent("peron"); // 2082. 7,222 (indx 100.0%),  Poland (4,199), Argentina_buenos-aires (1,471)
+		addFrequent("gyi"); // 2083. 4,197 (indx 100.0%),  Myanmar (4,197), Myanmar_asia (4,197)
+		addFrequent("hora"); // 2084. 8,466 (indx 100.0%),  Czech-republic (4,196), Slovakia_europe (2,714)
+		addFrequent("nahal"); // 2085. 5,112 (indx 100.0%),  Israel (4,196), Israel_asia (4,196)
+		addFrequent("проезд"); // 2086. 4,337 (indx 12.2%),  Russia (4,193), Russia_moskovskaya-oblast (1,661)
+		addFrequent("bairro"); // 2087. 8,900 (indx 100.0%),  Brazil (4,192), Portugal_europe (3,979)
+		addFrequent("four"); // 2088. 12,755 (indx 100.0%),  Us (4,184), Gb_england (982)
+		addFrequent("shōbōsho"); // 2089. 4,175 (indx 100.0%),  Japan (4,175), Japan_kanto (1,203)
+		addFrequent("plana"); // 2090. 4,672 (indx 100.0%),  Spain (4,171), Spain_valencia (1,616)
+		addFrequent("ಬ್ಯಾಂಕ್"); // 2091. 4,170 (indx 100.0%),  India (4,170), India_karnataka (3,438)
+		addFrequent("vicente"); // 2092. 16,186 (indx 100.0%),  Brazil (4,167), Portugal_europe (1,151)
+		addFrequent("hai"); // 2093. 9,988 (indx 65.0%),  Taiwan (4,164), Taiwan_asia (4,164)
+		addFrequent("garenne"); // 2094. 4,161 (indx 100.0%),  France (4,161), France_centre-loire-valley (663)
+		addFrequent("ankara"); // 2095. 4,161 (indx 100.0%),  Turkey (4,161), Turkey_central-anatolia (3,020)
+		addFrequent("nw"); // 2096. 7,449 (indx 28.1%),  Us (4,160), Canada_alberta (2,321)
+		addFrequent("raiffeisenbank"); // 2097. 6,935 (indx 100.0%),  Germany (4,154), Germany_bayern (2,678)
+		addFrequent("banki"); // 2098. 4,990 (indx 100.0%),  Georgia (4,152), Georgia_asia (4,152)
+		addFrequent("graz"); // 2099. 4,143 (indx 100.0%),  Austria (4,143), Austria_styria (4,143)
+		addFrequent("та"); // 2100. 5,009 (indx 100.0%),  Ukraine (4,142), Ukraine_kyiv (608)
+		addFrequent("bankası"); // 2101. 8,068 (indx 100.0%),  Turkey (4,135), Georgia_asia (3,679)
+		addFrequent("hato"); // 2102. 5,266 (indx 100.0%),  Venezuela (4,134), Venezuela_southamerica (4,134)
+		addFrequent("liu"); // 2103. 5,013 (indx 100.0%),  Taiwan (4,131), Taiwan_asia (4,131)
+		addFrequent("søndre"); // 2104. 4,398 (indx 100.0%),  Norway (4,131), Norway_innlandet (1,163)
+		addFrequent("moulins"); // 2105. 4,456 (indx 100.0%),  France (4,130), France_auvergne-rhone-alpes (960)
+		addFrequent("son"); // 2106. 11,667 (indx 100.0%),  Spain (4,129), Spain_baleares (4,067)
+		addFrequent("argentina"); // 2107. 5,500 (indx 100.0%),  Argentina (4,128), Argentina_buenos-aires (1,549)
+		addFrequent("secondary"); // 2108. 25,436 (indx 100.0%),  India (4,123), Nepal_asia (3,307)
+		addFrequent("tōhoku"); // 2109. 4,123 (indx 100.0%),  Japan (4,123), Japan_tohoku (2,535)
+		addFrequent("7th"); // 2110. 4,603 (indx 100.0%),  Us (4,122), Us_florida (875)
+		addFrequent("საქართველოს"); // 2111. 4,115 (indx 100.0%),  Georgia (4,115), Georgia_asia (4,115)
+		addFrequent("cap"); // 2112. 11,122 (indx 100.0%),  France (4,114), Spain_catalunya (1,728)
+		addFrequent("g"); // 2113. 20,923 (indx 36.6%),  Us (4,113), Peru_southamerica (1,196)
+		addFrequent("dan"); // 2114. 16,995 (indx 100.0%),  Indonesia (4,111), Vietnam_asia (2,441)
+		addFrequent("ilkokulu"); // 2115. 4,174 (indx 100.0%),  Turkey (4,111), Turkey_marmara (1,542)
+		addFrequent("lough"); // 2116. 4,930 (indx 100.0%),  Ireland (4,110), Ireland_europe (4,110)
+		addFrequent("french"); // 2117. 5,829 (indx 100.0%),  Us (4,105), Us_north-carolina (1,094)
+		addFrequent("bazar"); // 2118. 13,479 (indx 100.0%),  Bangladesh (4,101), Bangladesh_asia (4,101)
+		addFrequent("georgia"); // 2119. 6,578 (indx 100.0%),  Georgia (4,096), Georgia_asia (4,096)
+		addFrequent("baru"); // 2120. 6,705 (indx 100.0%),  Indonesia (4,095), Malaysia_asia (2,115)
+		addFrequent("נחל"); // 2121. 5,049 (indx 100.0%),  Israel (4,093), Israel_asia (4,093)
+		addFrequent("куст"); // 2122. 4,093 (indx 100.0%),  Russia (4,093), Russia_khanty-mansiisk (2,754)
+		addFrequent("ride"); // 2123. 9,958 (indx 100.0%),  Us (4,092), Gb_england (2,630)
+		addFrequent("kust"); // 2124. 4,227 (indx 100.0%),  Russia (4,091), Russia_khanty-mansiisk (2,754)
+		addFrequent("ren"); // 2125. 5,128 (indx 100.0%),  Taiwan (4,089), Taiwan_asia (4,089)
+		addFrequent("victoria"); // 2126. 19,924 (indx 100.0%),  Gb (4,087), Gb_england (3,392)
+		addFrequent("i̇lkokulu"); // 2127. 4,148 (indx 100.0%),  Turkey (4,087), Turkey_marmara (1,529)
+		addFrequent("spod"); // 2128. 4,087 (indx 100.0%),  Poland (4,087), Poland_lower-silesian (4,087)
+		addFrequent("room"); // 2129. 12,839 (indx 100.0%),  Us (4,086), Gb_england (2,296)
+		addFrequent("johns"); // 2130. 5,167 (indx 100.0%),  Us (4,081), Gb_england (437)
+		addFrequent("liao"); // 2131. 4,378 (indx 100.0%),  Taiwan (4,081), Taiwan_asia (4,081)
+		addFrequent("carl"); // 2132. 5,064 (indx 100.0%),  Germany (4,076), Germany_nordrhein-westfalen (707)
+		addFrequent("tienda"); // 2133. 17,438 (indx 100.0%),  Colombia (4,075), Colombia_southamerica (4,075)
+		addFrequent("thôn"); // 2134. 4,085 (indx 100.0%),  Vietnam (4,074), Vietnam_asia (4,074)
+		addFrequent("münchen"); // 2135. 4,339 (indx 100.0%),  Germany (4,073), Germany_bayern (4,073)
+		addFrequent("eastern"); // 2136. 12,651 (indx 100.0%),  Us (4,072), Canada_nova-scotia (1,219)
+		addFrequent("rail"); // 2137. 15,010 (indx 100.0%),  Us (4,071), Australia-oceania_new-south-wales (1,878)
+		addFrequent("haven"); // 2138. 7,076 (indx 100.0%),  Us (4,070), Us_connecticut (772)
+		addFrequent("2nd"); // 2139. 8,846 (indx 30.8%),  Us (4,070), Taiwan_asia (878)
+		addFrequent("4th"); // 2140. 5,243 (indx 100.0%),  Us (4,070), Us_florida (663)
+		addFrequent("tsientral'naia"); // 2141. 4,325 (indx 22.1%),  Russia (4,068), Russia_moskovskaya-oblast (603)
+		addFrequent("oude"); // 2142. 5,964 (indx 100.0%),  Netherlands (4,067), Belgium_flanders (1,729)
+		addFrequent("medicine"); // 2143. 10,354 (indx 100.0%),  Us (4,064), South-korea_asia (3,502)
+		addFrequent("joaquim"); // 2144. 5,319 (indx 39.0%),  Brazil (4,055), Brazil_sao-paulo (1,040)
+		addFrequent("path"); // 2145. 23,592 (indx 18.7%),  Us (4,050), New-zealand_australia-oceania (2,442)
+		addFrequent("barnehage"); // 2146. 4,050 (indx 100.0%),  Norway (4,050), Norway_vestland (800)
+		addFrequent("ул."); // 2147. 4,049 (indx 100.0%),  Russia (4,049), Russia_voronezh (2,621)
+		addFrequent("ul."); // 2148. 4,765 (indx 100.0%),  Russia (4,047), Russia_voronezh (2,619)
+		addFrequent("heath"); // 2149. 4,601 (indx 100.0%),  Gb (4,046), Gb_england (3,934)
+		addFrequent("vecchia"); // 2150. 4,195 (indx 100.0%),  Italy (4,046), Italy_lombardia (808)
+		addFrequent("mitsui"); // 2151. 4,045 (indx 100.0%),  Japan (4,045), Japan_kanto (2,148)
+		addFrequent("بىت"); // 2152. 7,417 (indx 100.0%),  Yemen (4,040), Yemen_asia (4,040)
+		addFrequent("pista"); // 2153. 12,499 (indx 100.0%),  Spain (4,039), Spain_catalunya (742)
+		addFrequent("переулок"); // 2154. 4,655 (indx 6.2%),  Russia (4,037), Russia_moskovskaya-oblast (909)
+		addFrequent("benito"); // 2155. 6,372 (indx 58.6%),  Mexico (4,036), Mexico_veracruz (554)
+		addFrequent("fond"); // 2156. 9,066 (indx 100.0%),  France (4,031), France_great-east (1,992)
+		addFrequent("allotments"); // 2157. 4,030 (indx 100.0%),  Gb (4,030), Gb_england (3,727)
+		addFrequent("surgery"); // 2158. 5,935 (indx 100.0%),  Gb (4,028), Gb_england (3,525)
+		addFrequent("min"); // 2159. 7,497 (indx 100.0%),  Taiwan (4,024), Taiwan_asia (4,024)
+		addFrequent("travel"); // 2160. 13,084 (indx 100.0%),  Us (4,021), Gb_england (1,333)
+		addFrequent("game"); // 2161. 6,067 (indx 100.0%),  Us (4,019), Us_pennsylvania (2,010)
+		addFrequent("terra"); // 2162. 7,773 (indx 100.0%),  Brazil (4,017), Brazil_espirito-santo (736)
+		addFrequent("crkva"); // 2163. 7,371 (indx 100.0%),  Croatia (4,014), Croatia_europe (4,014)
+		addFrequent("cova"); // 2164. 5,194 (indx 100.0%),  Spain (4,011), Spain_catalunya (1,555)
+		addFrequent("germany"); // 2165. 4,266 (indx 100.0%),  Germany (4,009), Germany_nordrhein-westfalen (613)
+		addFrequent("arriba"); // 2166. 6,815 (indx 100.0%),  Spain (4,006), Spain_galicia (1,833)
+		addFrequent("nguyen"); // 2167. 4,057 (indx 100.0%),  Vietnam (4,006), Vietnam_asia (4,006)
+		addFrequent("rodrigues"); // 2168. 4,920 (indx 32.3%),  Brazil (4,000), Brazil_sao-paulo (1,176)
+		addFrequent("tōkaidō"); // 2169. 3,997 (indx 100.0%),  Japan (3,997), Japan_chubu (3,997)
+		addFrequent("kirke"); // 2170. 3,995 (indx 100.0%),  Denmark (3,995), Denmark_central-region (1,027)
+		addFrequent("chuo"); // 2171. 4,056 (indx 100.0%),  Japan (3,995), Japan_kanto (1,139)
+		addFrequent("urbanizacion"); // 2172. 9,899 (indx 100.0%),  Spain (3,987), Spain_andalusia (1,276)
+		addFrequent("sai"); // 2173. 11,035 (indx 100.0%),  India (3,987), Thailand_asia (2,000)
+		addFrequent("exchange"); // 2174. 10,563 (indx 100.0%),  Gb (3,968), Gb_england (2,566)
+		addFrequent("全家便利商店"); // 2175. 4,003 (indx 100.0%),  Taiwan (3,968), Taiwan_asia (3,968)
+		addFrequent("gao"); // 2176. 4,753 (indx 83.8%),  Taiwan (3,964), Taiwan_asia (3,964)
+		addFrequent("proiezd"); // 2177. 3,964 (indx 0.6%),  Russia (3,964), Russia_moskovskaya-oblast (1,564)
+		addFrequent("crystal"); // 2178. 3,961 (indx 100.0%),  Us (3,961), Us_florida (3,961)
+		addFrequent("higher"); // 2179. 6,249 (indx 100.0%),  India (3,960), India_kerala (2,293)
+		addFrequent("braço"); // 2180. 3,958 (indx 100.0%),  Brazil (3,958), Brazil_espirito-santo (2,938)
+		addFrequent("manuel"); // 2181. 19,667 (indx 100.0%),  Spain (3,954), Portugal_europe (1,702)
+		addFrequent("latter"); // 2182. 4,939 (indx 100.0%),  Us (3,954), Us_utah (1,674)
+		addFrequent("tumani"); // 2183. 4,113 (indx 100.0%),  Uzbekistan (3,948), Uzbekistan_asia (3,948)
+		addFrequent("jitensha"); // 2184. 3,947 (indx 100.0%),  Japan (3,947), Japan_kanto (1,375)
+		addFrequent("orchard"); // 2185. 7,503 (indx 100.0%),  Us (3,944), Gb_england (2,204)
+		addFrequent("vallon"); // 2186. 4,494 (indx 100.0%),  France (3,939), France_provence-alpes-cote-d-azur (2,468)
+		addFrequent("ōsaka"); // 2187. 3,939 (indx 100.0%),  Japan (3,939), Japan_kinki (3,688)
+		addFrequent("oued"); // 2188. 9,549 (indx 100.0%),  Algeria (3,935), Algeria_africa (3,935)
+		addFrequent("sree"); // 2189. 3,983 (indx 100.0%),  India (3,932), India_kerala (3,302)
+		addFrequent("sotto"); // 2190. 4,084 (indx 100.0%),  Italy (3,931), Italy_emilia-romagna (791)
+		addFrequent("タイムズ"); // 2191. 3,931 (indx 100.0%),  Japan (3,931), Japan_kanto (2,022)
+		addFrequent("landes"); // 2192. 4,114 (indx 100.0%),  France (3,928), France_new-aquitaine (1,407)
+		addFrequent("phong"); // 2193. 4,233 (indx 100.0%),  Vietnam (3,927), Vietnam_asia (3,927)
+		addFrequent("magyar"); // 2194. 4,125 (indx 100.0%),  Hungary (3,925), Hungary_europe (3,925)
+		addFrequent("por"); // 2195. 5,980 (indx 100.0%),  Spain (3,923), Spain_castilla-leon (1,319)
+		addFrequent("новая"); // 2196. 7,275 (indx 100.0%),  Russia (3,923), Russia_moskovskaya-oblast (252)
+		addFrequent("bellevue"); // 2197. 6,295 (indx 100.0%),  France (3,920), France_auvergne-rhone-alpes (619)
+		addFrequent("k-200"); // 2198. 3,920 (indx 100.0%),  Russia (3,920), Russia_krasnodar (2,402)
+		addFrequent("provincia"); // 2199. 5,514 (indx 100.0%),  Argentina (3,919), Argentina_buenos-aires (2,476)
+		addFrequent("podere"); // 2200. 3,907 (indx 100.0%),  Italy (3,907), Italy_toscana (3,466)
+		addFrequent("harbour"); // 2201. 9,853 (indx 100.0%),  Canada (3,905), Canada_newfoundland-and-labrador (1,341)
+		addFrequent("franz"); // 2202. 6,898 (indx 100.0%),  Germany (3,898), Austria_lower-austria (1,399)
+		addFrequent("dolni"); // 2203. 4,202 (indx 100.0%),  Czech-republic (3,898), Czech-republic_severovychod (852)
+		addFrequent("gold"); // 2204. 12,289 (indx 100.0%),  Us (3,897), Us_california (856)
+		addFrequent("fen"); // 2205. 6,002 (indx 100.0%),  Taiwan (3,893), Taiwan_asia (3,893)
+		addFrequent("nippon"); // 2206. 3,931 (indx 100.0%),  Japan (3,892), Japan_kanto (1,467)
+		addFrequent("yard"); // 2207. 8,147 (indx 100.0%),  Us (3,891), Gb_england (1,850)
+		addFrequent("top"); // 2208. 19,451 (indx 100.0%),  Gb (3,889), Gb_england (3,362)
+		addFrequent("johann"); // 2209. 6,502 (indx 100.0%),  Germany (3,889), Germany_bayern (995)
+		addFrequent("yong"); // 2210. 4,972 (indx 100.0%),  Taiwan (3,886), Taiwan_asia (3,886)
+		addFrequent("грузии"); // 2211. 3,884 (indx 100.0%),  Georgia (3,884), Georgia_asia (3,884)
+		addFrequent("행정복지센터"); // 2212. 3,882 (indx 100.0%),  South-korea (3,882), South-korea_asia (3,882)
+		addFrequent("derriere"); // 2213. 4,163 (indx 100.0%),  France (3,880), France_great-east (2,102)
+		addFrequent("aparecida"); // 2214. 3,891 (indx 100.0%),  Brazil (3,879), Brazil_sao-paulo (1,416)
+		addFrequent("chaung"); // 2215. 3,879 (indx 100.0%),  Myanmar (3,879), Myanmar_asia (3,879)
+		addFrequent("alaska"); // 2216. 4,731 (indx 100.0%),  Us (3,878), Us_alaska (3,683)
+		addFrequent("ocean"); // 2217. 8,304 (indx 100.0%),  Us (3,877), Us_california (875)
+		addFrequent("rice"); // 2218. 7,669 (indx 100.0%),  Us (3,877), Us_minnesota (1,733)
+		addFrequent("thành"); // 2219. 4,243 (indx 100.0%),  Vietnam (3,872), Vietnam_asia (3,872)
+		addFrequent("tanjung"); // 2220. 5,468 (indx 100.0%),  Indonesia (3,871), Malaysia_asia (1,582)
+		addFrequent("rita"); // 2221. 8,838 (indx 100.0%),  Brazil (3,870), Brazil_espirito-santo (851)
+		addFrequent("orange"); // 2222. 12,607 (indx 100.0%),  Us (3,866), Us_california (1,008)
+		addFrequent("n."); // 2223. 11,428 (indx 100.0%),  Czech-republic (3,863), Czech-republic_severovychod (1,448)
+		addFrequent("leipzig"); // 2224. 3,863 (indx 100.0%),  Germany (3,863), Germany_sachsen (3,241)
+		addFrequent("дикси"); // 2225. 3,861 (indx 100.0%),  Russia (3,861), Russia_moskovskaya-oblast (1,525)
+		addFrequent("cơ"); // 2226. 3,874 (indx 100.0%),  Vietnam (3,860), Vietnam_asia (3,860)
+		addFrequent("shopping"); // 2227. 23,451 (indx 100.0%),  Brazil (3,857), Gb_england (3,069)
+		addFrequent("martino"); // 2228. 4,609 (indx 100.0%),  Italy (3,848), Italy_lombardia (669)
+		addFrequent("stores"); // 2229. 9,863 (indx 100.0%),  India (3,846), Gb_england (2,929)
+		addFrequent("sol"); // 2230. 17,896 (indx 100.0%),  Brazil (3,844), Portugal_europe (946)
+		addFrequent("tsuen"); // 2231. 3,989 (indx 100.0%),  Hong-kong (3,842), Hong-kong_asia (3,842)
+		addFrequent("futebol"); // 2232. 5,855 (indx 100.0%),  Brazil (3,841), Portugal_europe (1,761)
+		addFrequent("guadalupe"); // 2233. 8,010 (indx 100.0%),  Mexico (3,831), Peru_southamerica (599)
+		addFrequent("hauts"); // 2234. 4,160 (indx 100.0%),  France (3,821), France_great-east (536)
+		addFrequent("lande"); // 2235. 3,877 (indx 100.0%),  France (3,818), France_brittany (1,245)
+		addFrequent("горздрав"); // 2236. 3,817 (indx 100.0%),  Russia (3,817), Russia_moskovskaya-oblast (1,640)
+		addFrequent("sidi"); // 2237. 9,294 (indx 100.0%),  Morocco (3,816), Morocco_africa (3,816)
+		addFrequent("evzoni"); // 2238. 3,814 (indx 100.0%),  Greece (3,814), Greece_europe (3,814)
+		addFrequent("campos"); // 2239. 7,408 (indx 100.0%),  Brazil (3,812), Brazil_sao-paulo (1,245)
+		addFrequent("gorzdrav"); // 2240. 3,812 (indx 100.0%),  Russia (3,812), Russia_moskovskaya-oblast (1,638)
+		addFrequent("i̇stasyonu"); // 2241. 3,811 (indx 100.0%),  Turkey (3,811), Turkey_marmara (1,734)
+		addFrequent("ubnd"); // 2242. 3,830 (indx 100.0%),  Vietnam (3,809), Vietnam_asia (3,809)
+		addFrequent("zu"); // 2243. 9,675 (indx 100.0%),  Germany (3,807), Taiwan_asia (1,288)
+		addFrequent("sơn"); // 2244. 4,119 (indx 100.0%),  Vietnam (3,807), Vietnam_asia (3,807)
+		addFrequent("feld"); // 2245. 4,940 (indx 100.0%),  Germany (3,798), Germany_nordrhein-westfalen (1,857)
+		addFrequent("lapangan"); // 2246. 3,790 (indx 100.0%),  Indonesia (3,790), Indonesia_jawa-timur (1,453)
+		addFrequent("chile"); // 2247. 4,426 (indx 100.0%),  Chile (3,785), Chile_metropolitana-de-santiago (1,632)
+		addFrequent("rancho"); // 2248. 10,801 (indx 100.0%),  Mexico (3,780), Us_california (1,239)
+		addFrequent("ryokuchi"); // 2249. 3,777 (indx 100.0%),  Japan (3,777), Japan_kanto (1,663)
+		addFrequent("corso"); // 2250. 3,918 (indx 100.0%),  Italy (3,775), Italy_piemonte (961)
+		addFrequent("abarrotes"); // 2251. 3,774 (indx 100.0%),  Mexico (3,774), Mexico_san-luis-potosi (3,774)
+		addFrequent("pr"); // 2252. 8,023 (indx 100.0%),  Czech-republic (3,773), Czech-republic_jihozapad (828)
+		addFrequent("jiu"); // 2253. 4,576 (indx 100.0%),  Taiwan (3,773), Taiwan_asia (3,773)
+		addFrequent("hannover"); // 2254. 3,770 (indx 100.0%),  Germany (3,770), Germany_niedersachsen (3,234)
+		addFrequent("yun"); // 2255. 4,598 (indx 100.0%),  Taiwan (3,765), Taiwan_asia (3,765)
+		addFrequent("mdrsh"); // 2256. 4,259 (indx 100.0%),  Iran (3,761), Iran_tehran (853)
+		addFrequent("ying"); // 2257. 5,189 (indx 100.0%),  Taiwan (3,759), Taiwan_asia (3,759)
+		addFrequent("canadian"); // 2258. 5,358 (indx 100.0%),  Canada (3,755), Canada_ontario (1,657)
+		addFrequent("tong"); // 2259. 9,038 (indx 100.0%),  Taiwan (3,754), Taiwan_asia (3,754)
+		addFrequent("ra"); // 2260. 6,550 (indx 100.0%),  Japan (3,751), Japan_kanto (1,218)
+		addFrequent("kebangsaan"); // 2261. 3,773 (indx 100.0%),  Malaysia (3,750), Malaysia_asia (3,750)
+		addFrequent("simpang"); // 2262. 4,709 (indx 100.0%),  Indonesia (3,746), Malaysia_asia (752)
+		addFrequent("uk"); // 2263. 5,070 (indx 100.0%),  Gb (3,746), Gb_england (3,433)
+		addFrequent("lo"); // 2264. 17,753 (indx 100.0%),  Vietnam (3,745), Vietnam_asia (3,745)
+		addFrequent("hickory"); // 2265. 3,796 (indx 100.0%),  Us (3,741), Us_north-carolina (492)
+		addFrequent("cours"); // 2266. 7,526 (indx 100.0%),  France (3,740), Canada_quebec (3,371)
+		addFrequent("fureai"); // 2267. 3,740 (indx 100.0%),  Japan (3,740), Japan_kanto (1,586)
+		addFrequent("shri"); // 2268. 5,018 (indx 100.0%),  India (3,739), Nepal_asia (1,177)
+		addFrequent("parish"); // 2269. 10,105 (indx 100.0%),  Gb (3,738), Gb_england (2,363)
+		addFrequent("линия"); // 2270. 8,104 (indx 100.0%),  Japan (3,727), Japan_kanto (2,417)
+		addFrequent("keng"); // 2271. 5,291 (indx 100.0%),  Taiwan (3,726), Taiwan_asia (3,726)
+		addFrequent("ica"); // 2272. 3,995 (indx 100.0%),  Sweden (3,724), Sweden_vastra-gotaland (558)
+		addFrequent("devant"); // 2273. 4,399 (indx 100.0%),  France (3,720), France_great-east (2,161)
+		addFrequent("serre"); // 2274. 4,132 (indx 100.0%),  France (3,719), France_auvergne-rhone-alpes (1,188)
+		addFrequent("xa"); // 2275. 3,753 (indx 100.0%),  Vietnam (3,713), Vietnam_asia (3,713)
+		addFrequent("cypress"); // 2276. 4,306 (indx 100.0%),  Us (3,710), Us_florida (688)
+		addFrequent("sông"); // 2277. 5,136 (indx 100.0%),  Vietnam (3,703), Vietnam_asia (3,703)
+		addFrequent("zona"); // 2278. 24,191 (indx 100.0%),  Italy (3,700), Portugal_europe (1,637)
+		addFrequent("sea"); // 2279. 17,692 (indx 100.0%),  Us (3,698), Gb_england (1,803)
+		addFrequent("bhd"); // 2280. 4,347 (indx 100.0%),  Malaysia (3,695), Malaysia_asia (3,695)
+		addFrequent("passage"); // 2281. 6,539 (indx 100.0%),  France (3,692), France_auvergne-rhone-alpes (869)
+		addFrequent("vrh"); // 2282. 7,269 (indx 100.0%),  Slovenia (3,687), Slovenia_europe (3,687)
+		addFrequent("giacomo"); // 2283. 3,748 (indx 100.0%),  Italy (3,685), Italy_lombardia (620)
+		addFrequent("missouri"); // 2284. 3,685 (indx 100.0%),  Us (3,685), Us_missouri (1,567)
+		addFrequent("juarez"); // 2285. 3,938 (indx 100.0%),  Mexico (3,683), Mexico_jalisco (565)
+		addFrequent("petites"); // 2286. 3,853 (indx 100.0%),  France (3,676), France_centre-loire-valley (667)
+		addFrequent("dessus"); // 2287. 4,407 (indx 100.0%),  France (3,674), France_great-east (2,147)
+		addFrequent("gürcistan"); // 2288. 3,668 (indx 100.0%),  Georgia (3,668), Georgia_asia (3,668)
+		addFrequent("cat"); // 2289. 6,099 (indx 100.0%),  Us (3,664), Vietnam_asia (936)
+		addFrequent("jan"); // 2290. 11,337 (indx 100.0%),  Czech-republic (3,660), Belgium_flanders (784)
+		addFrequent("esperança"); // 2291. 4,094 (indx 100.0%),  Brazil (3,660), Brazil_espirito-santo (638)
+		addFrequent("mo"); // 2292. 9,415 (indx 100.0%),  Us (3,657), Us_missouri (3,518)
+		addFrequent("tér"); // 2293. 3,815 (indx 100.0%),  Hungary (3,656), Hungary_europe (3,656)
+		addFrequent("طرىق"); // 2294. 15,236 (indx 100.0%),  Egypt (3,652), Egypt_africa (3,652)
+		addFrequent("august"); // 2295. 4,225 (indx 100.0%),  Germany (3,650), Germany_nordrhein-westfalen (576)
+		addFrequent("barbers"); // 2296. 4,036 (indx 100.0%),  Gb (3,648), Gb_england (3,097)
+		addFrequent("bdeg"); // 2297. 3,645 (indx 100.0%),  Argentina (3,645), Argentina_salta (3,645)
+		addFrequent("aleja"); // 2298. 3,873 (indx 100.0%),  Poland (3,639), Poland_silesian (723)
+		addFrequent("voziera"); // 2299. 3,957 (indx 100.0%),  Belarus (3,633), Belarus_vitebsk (2,242)
+		addFrequent("paroquia"); // 2300. 3,702 (indx 100.0%),  Brazil (3,632), Brazil_sao-paulo (1,529)
+		addFrequent("ue"); // 2301. 7,560 (indx 100.0%),  Japan (3,632), Brazil_maranhao (1,925)
+		addFrequent("environmental"); // 2302. 3,629 (indx 100.0%),  Us (3,629), Us_florida (3,629)
+		addFrequent("quang"); // 2303. 3,651 (indx 100.0%),  Vietnam (3,628), Vietnam_asia (3,628)
+		addFrequent("gomes"); // 2304. 4,752 (indx 31.9%),  Brazil (3,625), Portugal_europe (965)
+		addFrequent("carmen"); // 2305. 13,568 (indx 100.0%),  Spain (3,623), Peru_southamerica (1,213)
+		addFrequent("rocco"); // 2306. 3,744 (indx 100.0%),  Italy (3,620), Italy_piemonte (840)
+		addFrequent("delaware"); // 2307. 3,659 (indx 100.0%),  Us (3,618), Us_pennsylvania (1,425)
+		addFrequent("mys"); // 2308. 3,966 (indx 100.0%),  Russia (3,616), Russia_primorskii (441)
+		addFrequent("thon"); // 2309. 4,159 (indx 100.0%),  Vietnam (3,615), Vietnam_asia (3,615)
+		addFrequent("lian"); // 2310. 4,610 (indx 100.0%),  Taiwan (3,612), Taiwan_asia (3,612)
+		addFrequent("cape"); // 2311. 11,944 (indx 100.0%),  Us (3,606), Us_massachusetts (749)
+		addFrequent("náměstí"); // 2312. 3,624 (indx 100.0%),  Czech-republic (3,601), Czech-republic_jihovychod (766)
+		addFrequent("hao"); // 2313. 4,336 (indx 100.0%),  Taiwan (3,601), Taiwan_asia (3,601)
+		addFrequent("f"); // 2314. 16,356 (indx 100.0%),  Us (3,599), Peru_southamerica (1,311)
+		addFrequent("wea"); // 2315. 3,599 (indx 100.0%),  Us (3,599), Us_florida (3,599)
+		addFrequent("virginia"); // 2316. 3,998 (indx 100.0%),  Us (3,598), Us_virginia (2,411)
+		addFrequent("r9917638"); // 2317. 3,596 (indx 100.0%),  Us (3,596), Us_florida (3,596)
+		addFrequent("nonghyup"); // 2318. 3,594 (indx 100.0%),  South-korea (3,594), South-korea_asia (3,594)
+		addFrequent("unidad"); // 2319. 12,676 (indx 100.0%),  Mexico (3,592), Ecuador_southamerica (2,516)
+		addFrequent("dinh"); // 2320. 3,609 (indx 100.0%),  Vietnam (3,592), Vietnam_asia (3,592)
+		addFrequent("sopra"); // 2321. 3,740 (indx 100.0%),  Italy (3,592), Italy_emilia-romagna (765)
+		addFrequent("магистраль"); // 2322. 3,592 (indx 100.0%),  Russia (3,592), Russia_amur (1,251)
+		addFrequent("wadi"); // 2323. 20,306 (indx 100.0%),  Yemen (3,587), Yemen_asia (3,587)
+		addFrequent("bowling"); // 2324. 7,456 (indx 100.0%),  Gb (3,585), Gb_england (2,140)
+		addFrequent("seca"); // 2325. 6,147 (indx 100.0%),  Spain (3,583), Spain_catalunya (3,031)
+		addFrequent("yeni"); // 2326. 4,511 (indx 100.0%),  Turkey (3,582), Turkey_marmara (1,018)
+		addFrequent("istasyonu"); // 2327. 3,601 (indx 100.0%),  Turkey (3,580), Turkey_marmara (1,517)
+		addFrequent("bharat"); // 2328. 3,611 (indx 100.0%),  India (3,578), India_kerala (617)
+		addFrequent("thai"); // 2329. 18,730 (indx 100.0%),  Us (3,576), Thailand_asia (3,102)
+		addFrequent("xã"); // 2330. 3,612 (indx 100.0%),  Vietnam (3,573), Vietnam_asia (3,573)
+		addFrequent("albert"); // 2331. 14,526 (indx 100.0%),  Germany (3,572), Germany_nordrhein-westfalen (713)
+		addFrequent("giorgio"); // 2332. 3,668 (indx 100.0%),  Italy (3,571), Italy_lombardia (650)
+		addFrequent("ca"); // 2333. 13,125 (indx 100.0%),  Italy (3,570), Us_california (2,587)
+		addFrequent("round"); // 2334. 6,109 (indx 100.0%),  Us (3,568), Gb_england (1,083)
+		addFrequent("para"); // 2335. 16,620 (indx 100.0%),  Brazil (3,567), Bangladesh_asia (1,386)
+		addFrequent("papa"); // 2336. 8,819 (indx 100.0%),  Us (3,566), New-zealand_australia-oceania (1,139)
+		addFrequent("luis"); // 2337. 25,533 (indx 100.0%),  Spain (3,566), Carribean-archipelago-all_centralamerica (1,710)
+		addFrequent("filho"); // 2338. 3,565 (indx 100.0%),  Brazil (3,565), Brazil_sao-paulo (1,108)
+		addFrequent("tou"); // 2339. 5,921 (indx 100.0%),  Taiwan (3,565), Taiwan_asia (3,565)
+		addFrequent("santana"); // 2340. 5,038 (indx 100.0%),  Brazil (3,564), Portugal_europe (674)
+		addFrequent("untere"); // 2341. 5,899 (indx 100.0%),  Germany (3,558), Germany_baden-wuerttemberg (1,165)
+		addFrequent("barraca"); // 2342. 4,306 (indx 100.0%),  Spain (3,557), Spain_catalunya (3,297)
+		addFrequent("esperanca"); // 2343. 3,951 (indx 100.0%),  Brazil (3,554), Brazil_espirito-santo (638)
+		addFrequent("aş"); // 2344. 4,446 (indx 100.0%),  Yemen (3,551), Yemen_asia (3,551)
+		addFrequent("abhainn"); // 2345. 5,500 (indx 100.0%),  Ireland (3,551), Ireland_europe (3,551)
+		addFrequent("kelurahan"); // 2346. 3,548 (indx 100.0%),  Indonesia (3,548), Indonesia_jawa-tengah (576)
+		addFrequent("bleu"); // 2347. 4,785 (indx 100.0%),  France (3,547), France_auvergne-rhone-alpes (547)
+		addFrequent("pierieulok"); // 2348. 3,607 (indx 1.9%),  Russia (3,547), Russia_moskovskaya-oblast (762)
+		addFrequent("mdrs"); // 2349. 9,978 (indx 100.0%),  Iraq (3,542), Iraq_asia (3,542)
+		addFrequent("एक्सप्रेसवे"); // 2350. 3,541 (indx 100.0%),  India (3,541), India_uttar-pradesh (1,372)
+		addFrequent("nuevo"); // 2351. 15,568 (indx 100.0%),  Mexico (3,540), Peru_southamerica (2,104)
+		addFrequent("'ly"); // 2352. 6,359 (indx 100.0%),  Iran (3,538), Iraq_asia (1,326)
+		addFrequent("quoc"); // 2353. 3,573 (indx 100.0%),  Vietnam (3,538), Vietnam_asia (3,538)
+		addFrequent("design"); // 2354. 14,311 (indx 100.0%),  Us (3,535), Gb_england (1,333)
+		addFrequent("grid"); // 2355. 4,390 (indx 100.0%),  Gb (3,532), Gb_england (3,113)
+		addFrequent("6th"); // 2356. 4,711 (indx 100.0%),  Us (3,527), Us_florida (516)
+		addFrequent("piliakalnis"); // 2357. 3,524 (indx 100.0%),  Lithuania (3,524), Lithuania_europe (3,524)
+		addFrequent("ντονγκ"); // 2358. 3,544 (indx 100.0%),  South-korea (3,523), South-korea_asia (3,523)
+		addFrequent("ming"); // 2359. 5,509 (indx 100.0%),  Taiwan (3,522), Taiwan_asia (3,522)
+		addFrequent("mayor"); // 2360. 5,263 (indx 100.0%),  Spain (3,521), Spain_castilla-leon (1,230)
+		addFrequent("sw"); // 2361. 6,845 (indx 20.3%),  Us (3,520), Canada_alberta (1,930)
+		addFrequent("jorge"); // 2362. 12,298 (indx 100.0%),  Brazil (3,517), Portugal_europe (1,158)
+		addFrequent("wiener"); // 2363. 4,437 (indx 100.0%),  Austria (3,516), Austria_lower-austria (3,023)
+		addFrequent("antónio"); // 2364. 4,097 (indx 100.0%),  Portugal (3,513), Portugal_europe (3,513)
+		addFrequent("akshaya"); // 2365. 3,509 (indx 100.0%),  India (3,509), India_kerala (3,393)
+		addFrequent("fields"); // 2366. 8,033 (indx 100.0%),  Us (3,497), Gb_england (3,119)
+		addFrequent("soil"); // 2367. 3,593 (indx 100.0%),  Us (3,497), Us_texas (3,497)
+		addFrequent("sanyō"); // 2368. 3,497 (indx 100.0%),  Japan (3,497), Japan_chugoku (3,497)
+		addFrequent("vien"); // 2369. 3,577 (indx 100.0%),  Vietnam (3,496), Vietnam_asia (3,496)
+		addFrequent("cortijo"); // 2370. 3,624 (indx 100.0%),  Spain (3,496), Spain_andalusia (2,962)
+		addFrequent("ho"); // 2371. 7,994 (indx 100.0%),  Vietnam (3,493), Vietnam_asia (3,493)
+		addFrequent("dispensary"); // 2372. 8,093 (indx 100.0%),  India (3,493), India_kerala (1,964)
+		addFrequent("หมู่"); // 2373. 3,493 (indx 100.0%),  Thailand (3,493), Thailand_asia (3,493)
+		addFrequent("marco"); // 2374. 8,145 (indx 100.0%),  Italy (3,492), Italy_veneto (700)
+		addFrequent("sapporo"); // 2375. 3,544 (indx 100.0%),  Japan (3,492), Japan_hokkaido (3,015)
+		addFrequent("laguna"); // 2376. 24,364 (indx 100.0%),  Spain (3,489), Peru_southamerica (3,318)
+		addFrequent("viadotto"); // 2377. 3,506 (indx 100.0%),  Italy (3,489), Italy_sicilia (1,220)
+		addFrequent("retail"); // 2378. 5,614 (indx 100.0%),  Gb (3,486), Gb_england (2,643)
+		addFrequent("masseria"); // 2379. 3,483 (indx 100.0%),  Italy (3,483), Italy_puglia (2,122)
+		addFrequent("channel"); // 2380. 9,277 (indx 100.0%),  Us (3,481), Australia-oceania_new-south-wales (1,458)
+		addFrequent("paróquia"); // 2381. 3,508 (indx 100.0%),  Brazil (3,473), Brazil_sao-paulo (1,475)
+		addFrequent("piste"); // 2382. 6,509 (indx 100.0%),  France (3,470), France_auvergne-rhone-alpes (800)
+		addFrequent("hsk"); // 2383. 3,470 (indx 100.0%),  Germany (3,470), Germany_nordrhein-westfalen (3,364)
+		addFrequent("namesti"); // 2384. 3,490 (indx 100.0%),  Czech-republic (3,463), Czech-republic_jihovychod (765)
+		addFrequent("hivatal"); // 2385. 3,582 (indx 100.0%),  Hungary (3,463), Hungary_europe (3,463)
+		addFrequent("ward"); // 2386. 12,384 (indx 100.0%),  Tanzania (3,462), Myanmar_asia (2,841)
+		addFrequent("مركز"); // 2387. 13,004 (indx 100.0%),  Iraq (3,458), Iraq_asia (3,458)
+		addFrequent("azul"); // 2388. 11,211 (indx 100.0%),  Brazil (3,458), Ecuador_southamerica (807)
+		addFrequent("вуліца"); // 2389. 3,920 (indx 5.7%),  Belarus (3,457), Belarus_gomel (925)
+		addFrequent("rur"); // 2390. 3,653 (indx 100.0%),  Colombia (3,453), Colombia_southamerica (3,453)
+		addFrequent("paseo"); // 2391. 10,175 (indx 100.0%),  Spain (3,451), Spain_andalusia (780)
+		addFrequent("op"); // 2392. 10,155 (indx 100.0%),  Gb (3,450), Gb_england (2,904)
+		addFrequent("république"); // 2393. 4,574 (indx 100.0%),  France (3,440), France_ile-de-france (711)
+		addFrequent("kodomo"); // 2394. 3,433 (indx 100.0%),  Japan (3,433), Japan_kanto (1,362)
+		addFrequent("جبل"); // 2395. 11,744 (indx 100.0%),  Yemen (3,430), Yemen_asia (3,430)
+		addFrequent("consultorio"); // 2396. 3,426 (indx 100.0%),  Mexico (3,426), Mexico_mexico (1,980)
+		addFrequent("مكتب"); // 2397. 6,186 (indx 100.0%),  Iraq (3,425), Iraq_asia (3,425)
+		addFrequent("mexico"); // 2398. 5,012 (indx 100.0%),  Mexico (3,423), Us_new-mexico (789)
+		addFrequent("hudson"); // 2399. 4,399 (indx 100.0%),  Us (3,418), Us_new-york (1,727)
+		addFrequent("communale"); // 2400. 7,623 (indx 100.0%),  France (3,415), Belgium_wallonia (3,165)
+		addFrequent("michigan"); // 2401. 3,439 (indx 100.0%),  Us (3,411), Us_michigan (2,017)
+		addFrequent("новый"); // 2402. 4,256 (indx 100.0%),  Russia (3,409), Russia_moskovskaya-oblast (220)
+		addFrequent("ghora"); // 2403. 3,805 (indx 100.0%),  Russia (3,407), Russia_khabarovsk (2,331)
+		addFrequent("docteur"); // 2404. 4,130 (indx 100.0%),  France (3,405), France_auvergne-rhone-alpes (596)
+		addFrequent("derrière"); // 2405. 3,695 (indx 100.0%),  France (3,405), France_great-east (2,031)
+		addFrequent("eaang"); // 2406. 3,402 (indx 100.0%),  Myanmar (3,402), Myanmar_asia (3,402)
+		addFrequent("carvalho"); // 2407. 4,336 (indx 100.0%),  Brazil (3,400), Brazil_sao-paulo (966)
+		addFrequent("vulitsa"); // 2408. 3,400 (indx 3.1%),  Belarus (3,400), Belarus_gomel (915)
+		addFrequent("munchen"); // 2409. 3,433 (indx 100.0%),  Germany (3,398), Germany_bayern (3,398)
+		addFrequent("к-200"); // 2410. 3,397 (indx 100.0%),  Russia (3,397), Russia_krasnodar (2,174)
+		addFrequent("klinik"); // 2411. 9,185 (indx 100.0%),  Germany (3,395), Malaysia_asia (2,733)
+		addFrequent("ninh"); // 2412. 3,478 (indx 100.0%),  Vietnam (3,395), Vietnam_asia (3,395)
+		addFrequent("non"); // 2413. 8,249 (indx 100.0%),  Vietnam (3,389), Vietnam_asia (3,389)
+		addFrequent("вайлдберриз"); // 2414. 3,637 (indx 100.0%),  Russia (3,386), Russia_moskovskaya-oblast (1,756)
+		addFrequent("pic"); // 2415. 4,905 (indx 100.0%),  France (3,382), France_occitania (1,884)
+		addFrequent("ter"); // 2416. 6,298 (indx 100.0%),  Hungary (3,381), Hungary_europe (3,381)
+		addFrequent("tâm"); // 2417. 3,429 (indx 100.0%),  Vietnam (3,381), Vietnam_asia (3,381)
+		addFrequent("köln"); // 2418. 3,377 (indx 100.0%),  Germany (3,377), Germany_nordrhein-westfalen (3,066)
+		addFrequent("presidente"); // 2419. 6,012 (indx 100.0%),  Brazil (3,375), Brazil_sao-paulo (1,068)
+		addFrequent("conservancy"); // 2420. 5,131 (indx 100.0%),  Canada (3,368), Canada_british-columbia (3,368)
+		addFrequent("social"); // 2421. 21,179 (indx 100.0%),  Brazil (3,367), Gb_england (1,738)
+		addFrequent("mary's"); // 2422. 7,806 (indx 100.0%),  Gb (3,365), Gb_england (2,792)
+		addFrequent("винлаб"); // 2423. 3,365 (indx 100.0%),  Russia (3,365), Russia_moskovskaya-oblast (1,155)
+		addFrequent("beim"); // 2424. 4,761 (indx 100.0%),  Germany (3,364), Germany_baden-wuerttemberg (1,828)
+		addFrequent("sebastião"); // 2425. 4,225 (indx 100.0%),  Brazil (3,363), Portugal_europe (798)
+		addFrequent("hà"); // 2426. 3,542 (indx 100.0%),  Vietnam (3,356), Vietnam_asia (3,356)
+		addFrequent("sak'art'velos"); // 2427. 3,351 (indx 100.0%),  Georgia (3,351), Georgia_asia (3,351)
+		addFrequent("coto"); // 2428. 4,023 (indx 100.0%),  Spain (3,349), Spain_galicia (2,155)
+		addFrequent("gls"); // 2429. 6,159 (indx 100.0%),  Hungary (3,349), Hungary_europe (3,349)
+		addFrequent("nr."); // 2430. 5,712 (indx 100.0%),  Romania (3,349), Romania_europe (3,349)
+		addFrequent("hồ"); // 2431. 3,794 (indx 100.0%),  Vietnam (3,348), Vietnam_asia (3,348)
+		addFrequent("oberer"); // 2432. 4,684 (indx 100.0%),  Germany (3,341), Germany_baden-wuerttemberg (1,402)
+		addFrequent("taw"); // 2433. 3,511 (indx 100.0%),  Myanmar (3,341), Myanmar_asia (3,341)
+		addFrequent("rou"); // 2434. 3,376 (indx 100.0%),  Taiwan (3,339), Taiwan_asia (3,339)
+		addFrequent("علی"); // 2435. 3,727 (indx 100.0%),  Iran (3,337), Iran_tehran (543)
+		addFrequent("hwy"); // 2436. 9,315 (indx 16.8%),  Australia-oceania (3,337), Australia-oceania_new-south-wales (1,699)
+		addFrequent("ejido"); // 2437. 3,737 (indx 100.0%),  Mexico (3,336), Mexico_veracruz (1,730)
+		addFrequent("farmàcia"); // 2438. 3,331 (indx 100.0%),  Spain (3,331), Spain_catalunya (3,187)
+		addFrequent("abbey"); // 2439. 4,339 (indx 100.0%),  Gb (3,330), Gb_england (2,797)
+		addFrequent("soba"); // 2440. 3,458 (indx 100.0%),  Japan (3,329), Japan_kanto (1,330)
+		addFrequent("republique"); // 2441. 3,393 (indx 100.0%),  France (3,325), France_ile-de-france (641)
+		addFrequent("tram"); // 2442. 4,868 (indx 100.0%),  Vietnam (3,323), Vietnam_asia (3,323)
+		addFrequent("budapest"); // 2443. 4,409 (indx 100.0%),  Hungary (3,320), Hungary_europe (3,320)
+		addFrequent("bwstn"); // 2444. 3,319 (indx 100.0%),  Iran (3,319), Iran_tehran (1,417)
+		addFrequent("vinlab"); // 2445. 3,310 (indx 100.0%),  Russia (3,310), Russia_moskovskaya-oblast (1,148)
+		addFrequent("cidade"); // 2446. 4,639 (indx 100.0%),  Brazil (3,307), Portugal_europe (1,018)
+		addFrequent("vittorio"); // 2447. 3,336 (indx 100.0%),  Italy (3,305), Italy_lombardia (679)
+		addFrequent("fan"); // 2448. 4,144 (indx 100.0%),  Taiwan (3,304), Taiwan_asia (3,304)
+		addFrequent("sainsbury's"); // 2449. 3,304 (indx 100.0%),  Gb (3,304), Gb_england (2,994)
+		addFrequent("протока"); // 2450. 3,625 (indx 100.0%),  Russia (3,303), Russia_khanty-mansiisk (1,402)
+		addFrequent("toulouse"); // 2451. 3,300 (indx 100.0%),  France (3,300), France_occitania (2,746)
+		addFrequent("republic"); // 2452. 7,803 (indx 100.0%),  Us (3,293), Us_pennsylvania (1,920)
+		addFrequent("lookout"); // 2453. 8,245 (indx 100.0%),  Australia-oceania (3,293), Australia-oceania_new-south-wales (1,328)
+		addFrequent("swq"); // 2454. 5,093 (indx 100.0%),  Iraq (3,291), Iraq_asia (3,291)
+		addFrequent("rota"); // 2455. 6,069 (indx 100.0%),  Portugal (3,291), Portugal_europe (3,291)
+		addFrequent("tiểu"); // 2456. 3,312 (indx 100.0%),  Vietnam (3,290), Vietnam_asia (3,290)
+		addFrequent("castell"); // 2457. 4,114 (indx 100.0%),  Spain (3,288), Spain_catalunya (2,415)
+		addFrequent("cottages"); // 2458. 4,499 (indx 100.0%),  Gb (3,286), Gb_england (2,539)
+		addFrequent("srl"); // 2459. 6,139 (indx 100.0%),  Italy (3,281), Romania_europe (1,388)
+		addFrequent("mahalle"); // 2460. 3,278 (indx 100.0%),  Turkey (3,278), Turkey_eastern-anatolia (1,814)
+		addFrequent("kepala"); // 2461. 3,436 (indx 100.0%),  Indonesia (3,276), Indonesia_kalimantan-selatan (1,265)
+		addFrequent("სკოლა"); // 2462. 3,285 (indx 100.0%),  Georgia (3,272), Georgia_asia (3,272)
+		addFrequent("royale"); // 2463. 3,272 (indx 100.0%),  Canada (3,272), Canada_ontario (3,272)
+		addFrequent("sebastiao"); // 2464. 3,964 (indx 100.0%),  Brazil (3,271), Portugal_europe (669)
+		addFrequent("tori"); // 2465. 3,843 (indx 100.0%),  Japan (3,264), Japan_kanto (1,116)
+		addFrequent("jakarta"); // 2466. 3,262 (indx 100.0%),  Indonesia (3,262), Indonesia_jakarta-raya (2,144)
+		addFrequent("северный"); // 2467. 4,111 (indx 100.0%),  Russia (3,261), Russia_moskovskaya-oblast (331)
+		addFrequent("primo"); // 2468. 3,445 (indx 100.0%),  Italy (3,255), Italy_lombardia (641)
+		addFrequent("ofisi"); // 2469. 3,255 (indx 100.0%),  Tanzania (3,255), Tanzania_lake (1,255)
+		addFrequent("marii"); // 2470. 3,531 (indx 100.0%),  Poland (3,252), Poland_masovian (458)
+		addFrequent("barat"); // 2471. 4,406 (indx 100.0%),  Indonesia (3,250), Malaysia_asia (872)
+		addFrequent("pin"); // 2472. 8,559 (indx 100.0%),  Myanmar (3,249), Myanmar_asia (3,249)
+		addFrequent("och"); // 2473. 3,641 (indx 100.0%),  Sweden (3,246), Sweden_stockholm (626)
+		addFrequent("plata"); // 2474. 5,834 (indx 100.0%),  Spain (3,244), Spain_castilla-leon (1,367)
+		addFrequent("treatment"); // 2475. 8,286 (indx 100.0%),  Us (3,244), Gb_england (1,521)
+		addFrequent("pieni"); // 2476. 3,244 (indx 100.0%),  Finland (3,244), Finland_north-karelia (939)
+		addFrequent("fief"); // 2477. 3,241 (indx 100.0%),  France (3,241), France_new-aquitaine (2,575)
+		addFrequent("bang"); // 2478. 5,313 (indx 100.0%),  Thailand (3,239), Thailand_asia (3,239)
+		addFrequent("valero"); // 2479. 3,597 (indx 100.0%),  Us (3,238), Us_texas (1,450)
+		addFrequent("daero"); // 2480. 3,235 (indx 100.0%),  South-korea (3,235), South-korea_asia (3,235)
+		addFrequent("kyivstar"); // 2481. 3,235 (indx 100.0%),  Ukraine (3,235), Ukraine_rivne (518)
+		addFrequent("ni"); // 2482. 10,560 (indx 100.0%),  Philippines (3,232), Japan_kinki (1,010)
+		addFrequent("nepal"); // 2483. 3,411 (indx 100.0%),  Nepal (3,232), Nepal_asia (3,232)
+		addFrequent("khor"); // 2484. 3,670 (indx 100.0%),  Sudan (3,231), Sudan_africa (3,231)
+		addFrequent("napoli"); // 2485. 3,433 (indx 100.0%),  Italy (3,230), Italy_campania (1,934)
+		addFrequent("ronda"); // 2486. 3,518 (indx 100.0%),  Spain (3,229), Spain_catalunya (1,167)
+		addFrequent("ana"); // 2487. 15,418 (indx 100.0%),  Spain (3,228), Spain_andalusia (707)
+		addFrequent("центральный"); // 2488. 4,615 (indx 100.0%),  Russia (3,228), Russia_moskovskaya-oblast (372)
+		addFrequent("par"); // 2489. 5,055 (indx 100.0%),  France (3,226), France_ile-de-france (527)
+		addFrequent("ab"); // 2490. 9,079 (indx 100.0%),  Sweden (3,216), Panama_centralamerica (700)
+		addFrequent("almeida"); // 2491. 4,236 (indx 100.0%),  Brazil (3,216), Brazil_sao-paulo (1,039)
+		addFrequent("practice"); // 2492. 6,224 (indx 100.0%),  Gb (3,216), Gb_england (2,693)
+		addFrequent("leisure"); // 2493. 4,153 (indx 100.0%),  Gb (3,216), Gb_england (2,609)
+		addFrequent("isle"); // 2494. 6,830 (indx 100.0%),  Us (3,216), Us_michigan (2,753)
+		addFrequent("dino"); // 2495. 3,637 (indx 100.0%),  Poland (3,215), Poland_greater-poland (641)
+		addFrequent("xia"); // 2496. 4,140 (indx 100.0%),  Taiwan (3,214), Taiwan_asia (3,214)
+		addFrequent("r11558095"); // 2497. 3,514 (indx 100.0%),  Us (3,214), Us_minnesota (3,214)
+		addFrequent("timur"); // 2498. 4,549 (indx 100.0%),  Indonesia (3,214), Malaysia_asia (1,087)
+		addFrequent("phuong"); // 2499. 3,220 (indx 100.0%),  Vietnam (3,210), Vietnam_asia (3,210)
+		addFrequent("gia"); // 2500. 3,504 (indx 100.0%),  Vietnam (3,207), Vietnam_asia (3,207)
+		addFrequent("مطعم"); // 2501. 9,070 (indx 100.0%),  Iraq (3,206), Iraq_asia (3,206)
+		addFrequent("martins"); // 2502. 4,578 (indx 100.0%),  Brazil (3,204), Portugal_europe (893)
+		addFrequent("malga"); // 2503. 3,203 (indx 100.0%),  Italy (3,203), Italy_trentino-alto-adige (1,909)
+		addFrequent("tunnel"); // 2504. 25,671 (indx 100.0%),  Us (3,202), Gb_england (2,400)
+		addFrequent("baie"); // 2505. 5,647 (indx 100.0%),  Canada (3,202), Canada_quebec (2,768)
+		addFrequent("dhaka"); // 2506. 3,202 (indx 100.0%),  Bangladesh (3,202), Bangladesh_asia (3,202)
+		addFrequent("ради"); // 2507. 3,202 (indx 100.0%),  Ukraine (3,202), Ukraine_kharkiv (627)
+		addFrequent("hole"); // 2508. 9,122 (indx 100.0%),  Us (3,201), Gb_england (1,360)
+		addFrequent("i̇stanbul"); // 2509. 3,238 (indx 100.0%),  Turkey (3,201), Turkey_marmara (2,535)
+		addFrequent("mehmet"); // 2510. 3,303 (indx 100.0%),  Turkey (3,198), Turkey_marmara (1,431)
+		addFrequent("8th"); // 2511. 3,466 (indx 100.0%),  Us (3,197), Us_florida (911)
+		addFrequent("västra"); // 2512. 3,438 (indx 100.0%),  Sweden (3,195), Sweden_vastra-gotaland (609)
+		addFrequent("huai"); // 2513. 3,964 (indx 100.0%),  Thailand (3,187), Thailand_asia (3,187)
+		addFrequent("thu"); // 2514. 3,830 (indx 100.0%),  Vietnam (3,186), Vietnam_asia (3,186)
+		addFrequent("wang"); // 2515. 6,551 (indx 100.0%),  Taiwan (3,179), Taiwan_asia (3,179)
+		addFrequent("wādī"); // 2516. 9,408 (indx 100.0%),  Yemen (3,176), Yemen_asia (3,176)
+		addFrequent("sevilla"); // 2517. 3,473 (indx 100.0%),  Spain (3,174), Spain_andalusia (2,129)
+		addFrequent("well"); // 2518. 12,049 (indx 100.0%),  Gb (3,173), Gb_england (2,460)
+		addFrequent("6-chome"); // 2519. 3,171 (indx 100.0%),  Japan (3,171), Japan_hokkaido (954)
+		addFrequent("dixy"); // 2520. 3,171 (indx 100.0%),  Russia (3,171), Russia_moskovskaya-oblast (1,224)
+		addFrequent("rw"); // 2521. 3,520 (indx 100.0%),  Indonesia (3,169), Indonesia_jakarta-raya (1,767)
+		addFrequent("garcia"); // 2522. 9,962 (indx 100.0%),  Spain (3,167), Spain_andalusia (739)
+		addFrequent("abc"); // 2523. 10,431 (indx 100.0%),  Hungary (3,166), Hungary_europe (3,166)
+		addFrequent("gr"); // 2524. 10,990 (indx 100.0%),  Spain (3,165), Burundi_africa (1,936)
+		addFrequent("luigi"); // 2525. 3,236 (indx 100.0%),  Italy (3,165), Italy_lombardia (641)
+		addFrequent("jebel"); // 2526. 4,184 (indx 100.0%),  Sudan (3,164), Sudan_africa (3,164)
+		addFrequent("бульвар"); // 2527. 3,999 (indx 100.0%),  Russia (3,160), Russia_moskovskaya-oblast (1,010)
+		addFrequent("a101"); // 2528. 3,158 (indx 100.0%),  Turkey (3,158), Turkey_marmara (1,274)
+		addFrequent("thi"); // 2529. 3,540 (indx 100.0%),  Vietnam (3,155), Vietnam_asia (3,155)
+		addFrequent("council"); // 2530. 10,066 (indx 100.0%),  Philippines (3,153), Gb_england (1,339)
+		addFrequent("dresden"); // 2531. 3,196 (indx 100.0%),  Germany (3,151), Germany_sachsen (3,135)
+		addFrequent("weiher"); // 2532. 3,881 (indx 100.0%),  Germany (3,145), Germany_bayern (1,682)
+		addFrequent("yin"); // 2533. 5,148 (indx 100.0%),  Taiwan (3,142), Taiwan_asia (3,142)
+		addFrequent("hidalgo"); // 2534. 3,666 (indx 100.0%),  Mexico (3,135), Mexico_jalisco (524)
+		addFrequent("dello"); // 2535. 3,216 (indx 100.0%),  Italy (3,133), Italy_lombardia (463)
+		addFrequent("farmácia"); // 2536. 5,873 (indx 100.0%),  Brazil (3,131), Portugal_europe (2,299)
+		addFrequent("baden"); // 2537. 4,750 (indx 100.0%),  Germany (3,130), Germany_baden-wuerttemberg (2,901)
+		addFrequent("volga"); // 2538. 3,159 (indx 100.0%),  Russia (3,130), Russia_tver (654)
+		addFrequent("ż"); // 2539. 3,126 (indx 100.0%),  Poland (3,126), Poland_greater-poland (3,126)
+		addFrequent("tres"); // 2540. 12,769 (indx 100.0%),  Spain (3,125), Spain_castilla-leon (569)
+		addFrequent("méxico"); // 2541. 3,431 (indx 100.0%),  Mexico (3,125), Mexico_mexico (691)
+		addFrequent("protoka"); // 2542. 3,238 (indx 100.0%),  Russia (3,125), Russia_khanty-mansiisk (1,382)
+		addFrequent("roca"); // 2543. 6,766 (indx 100.0%),  Spain (3,123), Spain_catalunya (2,197)
+		addFrequent("reino"); // 2544. 6,931 (indx 100.0%),  Brazil (3,122), Brazil_sao-paulo (1,107)
+		addFrequent("taung"); // 2545. 3,191 (indx 100.0%),  Myanmar (3,120), Myanmar_asia (3,120)
+		addFrequent("ام"); // 2546. 9,604 (indx 100.0%),  Saudi-arabia (3,119), Saudi-arabia_asia (3,119)
+		addFrequent("thanda"); // 2547. 3,129 (indx 100.0%),  India (3,119), India_telangana (2,853)
+		addFrequent("play"); // 2548. 8,503 (indx 100.0%),  Gb (3,112), Gb_england (2,637)
+		addFrequent("amur"); // 2549. 3,358 (indx 100.0%),  Russia (3,108), Russia_amur (1,363)
+		addFrequent("limited"); // 2550. 16,070 (indx 100.0%),  Bangladesh (3,106), Bangladesh_asia (3,106)
+		addFrequent("draw"); // 2551. 3,179 (indx 100.0%),  Us (3,106), Us_texas (1,695)
+		addFrequent("lady"); // 2552. 10,114 (indx 100.0%),  Us (3,105), Gb_england (1,389)
+		addFrequent("nagy"); // 2553. 3,751 (indx 100.0%),  Hungary (3,105), Hungary_europe (3,105)
+		addFrequent("barn"); // 2554. 5,779 (indx 100.0%),  Gb (3,102), Gb_england (2,909)
+		addFrequent("morrisons"); // 2555. 3,155 (indx 100.0%),  Gb (3,101), Gb_england (2,578)
+		addFrequent("unter"); // 2556. 5,088 (indx 100.0%),  Germany (3,100), Germany_baden-wuerttemberg (772)
+		addFrequent("koulu"); // 2557. 3,096 (indx 100.0%),  Finland (3,096), Finland_uusimaa (976)
+		addFrequent("shwe"); // 2558. 3,096 (indx 100.0%),  Myanmar (3,096), Myanmar_asia (3,096)
+		addFrequent("frontera"); // 2559. 4,193 (indx 100.0%),  Spain (3,095), Spain_catalunya (1,526)
+		addFrequent("área"); // 2560. 10,554 (indx 100.0%),  Brazil (3,092), Brazil_sao-paulo (1,092)
+		addFrequent("tieu"); // 2561. 3,112 (indx 100.0%),  Vietnam (3,091), Vietnam_asia (3,091)
+		addFrequent("chung"); // 2562. 5,480 (indx 100.0%),  Hong-kong (3,087), Hong-kong_asia (3,087)
+		addFrequent("miami"); // 2563. 3,224 (indx 100.0%),  Us (3,086), Us_florida (1,893)
+		addFrequent("doctor"); // 2564. 8,881 (indx 100.0%),  Argentina (3,085), Argentina_buenos-aires (1,078)
+		addFrequent("allée"); // 2565. 3,449 (indx 14.8%),  France (3,084), France_ile-de-france (650)
+		addFrequent("restoran"); // 2566. 6,923 (indx 100.0%),  Malaysia (3,083), Malaysia_asia (3,083)
+		addFrequent("crossroad"); // 2567. 3,209 (indx 100.0%),  South-korea (3,083), South-korea_asia (3,083)
+		addFrequent("vor"); // 2568. 3,641 (indx 100.0%),  Germany (3,079), Germany_hessen (686)
+		addFrequent("agia"); // 2569. 3,374 (indx 100.0%),  Greece (3,078), Greece_europe (3,078)
+		addFrequent("tōkyō"); // 2570. 3,076 (indx 100.0%),  Japan (3,076), Japan_kanto (2,740)
+		addFrequent("basisschool"); // 2571. 4,570 (indx 100.0%),  Netherlands (3,075), Belgium_flanders (1,495)
+		addFrequent("ciudad"); // 2572. 11,599 (indx 100.0%),  Spain (3,073), Argentina_buenos-aires (1,296)
+		addFrequent("shou"); // 2573. 3,152 (indx 100.0%),  Taiwan (3,072), Taiwan_asia (3,072)
+		addFrequent("woodland"); // 2574. 5,266 (indx 100.0%),  Us (3,071), Gb_england (1,156)
+		addFrequent("praha"); // 2575. 3,093 (indx 100.0%),  Czech-republic (3,071), Czech-republic_praha (2,352)
+		addFrequent("thar"); // 2576. 3,163 (indx 100.0%),  Myanmar (3,071), Myanmar_asia (3,071)
+		addFrequent("rudolf"); // 2577. 4,093 (indx 100.0%),  Germany (3,069), Germany_bayern (429)
+		addFrequent("dhzo"); // 2578. 3,069 (indx 100.0%),  Slovakia (3,069), Slovakia_europe (3,069)
+		addFrequent("oknoname"); // 2579. 3,068 (indx 100.0%),  Us (3,068), Us_oklahoma (3,068)
+		addFrequent("miao"); // 2580. 3,404 (indx 100.0%),  Taiwan (3,067), Taiwan_asia (3,067)
+		addFrequent("alla"); // 2581. 3,432 (indx 100.0%),  Italy (3,066), Italy_veneto (567)
+		addFrequent("wnw"); // 2582. 3,226 (indx 100.0%),  Netherlands (3,065), Netherlands_overijssel (1,790)
+		addFrequent("östra"); // 2583. 3,428 (indx 100.0%),  Sweden (3,063), Sweden_skane (540)
+		addFrequent("nguyễn"); // 2584. 3,072 (indx 100.0%),  Vietnam (3,061), Vietnam_asia (3,061)
+		addFrequent("scoala"); // 2585. 3,391 (indx 100.0%),  Romania (3,061), Romania_europe (3,061)
+		addFrequent("telephone"); // 2586. 4,340 (indx 100.0%),  Gb (3,060), Gb_england (1,738)
+		addFrequent("khola"); // 2587. 3,375 (indx 100.0%),  Nepal (3,059), Nepal_asia (3,059)
+		addFrequent("trạm"); // 2588. 3,073 (indx 100.0%),  Vietnam (3,058), Vietnam_asia (3,058)
+		addFrequent("dona"); // 2589. 10,162 (indx 100.0%),  Brazil (3,054), Portugal_europe (779)
+		addFrequent("roque"); // 2590. 10,503 (indx 100.0%),  Spain (3,053), Spain_canarias (820)
+		addFrequent("capital"); // 2591. 6,727 (indx 100.0%),  Us (3,053), China_hebei (720)
+		addFrequent("vastra"); // 2592. 3,211 (indx 100.0%),  Sweden (3,053), Sweden_vastra-gotaland (568)
+		addFrequent("fa"); // 2593. 4,671 (indx 100.0%),  Taiwan (3,051), Taiwan_asia (3,051)
+		addFrequent("mixta"); // 2594. 3,525 (indx 100.0%),  Colombia (3,051), Colombia_southamerica (3,051)
+		addFrequent("eus"); // 2595. 3,177 (indx 100.0%),  France (3,050), France_brittany (1,370)
+		addFrequent("bosc"); // 2596. 4,230 (indx 100.0%),  Spain (3,047), Spain_catalunya (2,829)
+		addFrequent("freguesia"); // 2597. 3,343 (indx 100.0%),  Portugal (3,043), Portugal_europe (3,043)
+		addFrequent("gateway"); // 2598. 4,525 (indx 100.0%),  Us (3,041), Us_california (529)
+		addFrequent("saaristomeren"); // 2599. 3,035 (indx 100.0%),  Finland (3,035), Finland_southwest-finland (2,049)
+		addFrequent("kata"); // 2600. 4,285 (indx 100.0%),  Tanzania (3,034), Tanzania_lake (777)
+		addFrequent("garcía"); // 2601. 5,968 (indx 100.0%),  Spain (3,034), Spain_andalusia (773)
+		addFrequent("japan"); // 2602. 3,521 (indx 100.0%),  Japan (3,031), Japan_kanto (887)
+		addFrequent("theodor"); // 2603. 3,326 (indx 100.0%),  Germany (3,030), Germany_nordrhein-westfalen (688)
+		addFrequent("alpes"); // 2604. 3,834 (indx 100.0%),  France (3,029), France_auvergne-rhone-alpes (1,929)
+		addFrequent("castelo"); // 2605. 7,137 (indx 100.0%),  Portugal (3,027), Portugal_europe (3,027)
+		addFrequent("mayo"); // 2606. 9,037 (indx 100.0%),  Argentina (3,021), Argentina_buenos-aires (996)
+		addFrequent("hóa"); // 2607. 3,028 (indx 100.0%),  Vietnam (3,018), Vietnam_asia (3,018)
+		addFrequent("desert"); // 2608. 4,668 (indx 100.0%),  Us (3,013), Us_arizona (1,082)
+		addFrequent("três"); // 2609. 3,043 (indx 100.0%),  Brazil (3,006), Brazil_sao-paulo (406)
+		addFrequent("r."); // 2610. 13,525 (indx 100.0%),  Portugal (3,005), Portugal_europe (3,005)
+		addFrequent("skov"); // 2611. 3,005 (indx 100.0%),  Denmark (3,005), Denmark_central-region (1,066)
+		addFrequent("koln"); // 2612. 3,005 (indx 100.0%),  Germany (3,005), Germany_nordrhein-westfalen (2,695)
+		addFrequent("ci"); // 2613. 4,477 (indx 100.0%),  Taiwan (3,002), Taiwan_asia (3,002)
+	}
+	
+	// Calculated using index_words_dashboard.html sorted by Top in Region! 
+	private void addCalculatedAddrFrequentWords() {
+		addFrequent("henrique"); // 696. 11,967 (indx 100.0%),  Brazil (9,975), Brazil_sao-paulo (2,459)
+		addFrequent("barros"); // 697. 11,825 (indx 100.0%),  Brazil (9,965), Brazil_sao-paulo (3,392)
+		addFrequent("martin"); // 698. 42,859 (indx 100.0%),  Us (9,950), Peru_southamerica (1,918)
+		addFrequent("falls"); // 699. 11,479 (indx 100.0%),  Us (9,947), Us_texas (1,601)
+		addFrequent("10th"); // 700. 12,198 (indx 100.0%),  Us (9,939), Us_florida (967)
+		addFrequent("mendes"); // 701. 12,333 (indx 100.0%),  Brazil (9,919), Brazil_sao-paulo (2,691)
+		addFrequent("woodland"); // 702. 12,011 (indx 100.0%),  Us (9,909), Gb_england (1,240)
+		addFrequent("квартал"); // 703. 11,357 (indx 100.0%),  Russia (9,904), Russia_moskovskaya-oblast (3,671)
+		addFrequent("timur"); // 704. 11,345 (indx 100.0%),  Indonesia (9,903), Indonesia_jawa-timur (2,405)
+		addFrequent("dona"); // 705. 15,364 (indx 100.0%),  Brazil (9,884), Portugal_europe (2,974)
+		addFrequent("cardoso"); // 706. 11,109 (indx 100.0%),  Brazil (9,850), Brazil_sao-paulo (2,394)
+		addFrequent("wén"); // 707. 9,849 (indx 100.0%),  China (9,849), China_guangdong (1,211)
+		addFrequent("triq"); // 708. 9,843 (indx 100.0%),  Malta (9,843), Malta_europe (9,843)
+		addFrequent("غربی"); // 709. 9,898 (indx 100.0%),  Iran (9,837), Iran_tehran (2,794)
+		addFrequent("boa"); // 710. 11,646 (indx 100.0%),  Brazil (9,829), Brazil_bahia (1,731)
+		addFrequent("vale"); // 711. 19,056 (indx 100.0%),  Portugal (9,818), Portugal_europe (9,818)
+		addFrequent("kvartal"); // 712. 10,895 (indx 100.0%),  Russia (9,814), Russia_moskovskaya-oblast (3,656)
+		addFrequent("freitas"); // 713. 11,475 (indx 100.0%),  Brazil (9,803), Brazil_sao-paulo (2,359)
+		addFrequent("pass"); // 714. 12,850 (indx 100.0%),  Us (9,789), Us_texas (2,090)
+		addFrequent("vargas"); // 715. 12,378 (indx 100.0%),  Brazil (9,771), Brazil_rio-grande-do-sul (1,642)
+		addFrequent("nunes"); // 716. 11,303 (indx 100.0%),  Brazil (9,740), Brazil_sao-paulo (2,060)
+		addFrequent("ponte"); // 717. 25,928 (indx 100.0%),  Italy (9,720), Portugal_europe (4,991)
+		addFrequent("شرقی"); // 718. 9,768 (indx 100.0%),  Iran (9,703), Iran_tehran (2,737)
+		addFrequent("heinrich"); // 719. 10,266 (indx 100.0%),  Germany (9,691), Germany_nordrhein-westfalen (2,314)
+		addFrequent("qū"); // 720. 9,687 (indx 47.8%),  China (9,687), China_guangdong (1,441)
+		addFrequent("ರಸ್ತೆ"); // 721. 9,680 (indx 100.0%),  India (9,680), India_karnataka (9,595)
+		addFrequent("si"); // 722. 25,429 (indx 55.6%),  Taiwan (9,653), Taiwan_asia (9,653)
+		addFrequent("madero"); // 723. 9,723 (indx 100.0%),  Mexico (9,639), Mexico_veracruz (1,415)
+		addFrequent("summit"); // 724. 10,398 (indx 100.0%),  Us (9,628), Us_california (913)
+		addFrequent("2-ia"); // 725. 10,561 (indx 100.0%),  Russia (9,615), Russia_moskovskaya-oblast (1,299)
+		addFrequent("cross"); // 726. 25,971 (indx 100.0%),  Us (9,594), India_karnataka (5,000)
+		addFrequent("pres"); // 727. 10,785 (indx 100.0%),  France (9,556), France_auvergne-rhone-alpes (1,384)
+		addFrequent("four"); // 728. 13,147 (indx 100.0%),  France (9,555), France_auvergne-rhone-alpes (2,395)
+		addFrequent("d"); // 729. 35,061 (indx 62.5%),  Brazil (9,537), Carribean-archipelago-all_centralamerica (1,745)
+		addFrequent("nove"); // 730. 10,370 (indx 100.0%),  Brazil (9,536), Brazil_sao-paulo (1,736)
+		addFrequent("trinta"); // 731. 9,524 (indx 100.0%),  Brazil (9,524), Brazil_goias (1,730)
+		addFrequent("cầu"); // 732. 9,620 (indx 100.0%),  Vietnam (9,515), Vietnam_asia (9,515)
+		addFrequent("general"); // 733. 50,240 (indx 100.0%),  Mexico (9,500), Argentina_buenos-aires (3,278)
+		addFrequent("quail"); // 734. 9,701 (indx 100.0%),  Us (9,487), Us_california (1,200)
+		addFrequent("enrico"); // 735. 9,536 (indx 100.0%),  Italy (9,486), Italy_lombardia (2,206)
+		addFrequent("neto"); // 736. 10,036 (indx 100.0%),  Brazil (9,485), Brazil_sao-paulo (2,662)
+		addFrequent("gaulle"); // 737. 9,916 (indx 100.0%),  France (9,484), France_brittany (1,204)
+		addFrequent("chapelle"); // 738. 10,756 (indx 100.0%),  France (9,439), France_auvergne-rhone-alpes (1,825)
+		addFrequent("mosque"); // 739. 9,829 (indx 100.0%),  Egypt (9,437), Egypt_africa (9,437)
+		addFrequent("поселение"); // 740. 9,905 (indx 100.0%),  Russia (9,432), Russia_tatarstan (960)
+		addFrequent("projetada"); // 741. 9,434 (indx 100.0%),  Brazil (9,420), Brazil_sao-paulo (2,362)
+		addFrequent("karl"); // 742. 12,150 (indx 100.0%),  Germany (9,414), Germany_baden-wuerttemberg (1,454)
+		addFrequent("corso"); // 743. 9,496 (indx 100.0%),  Italy (9,405), Italy_piemonte (1,457)
+		addFrequent("bīn"); // 744. 9,393 (indx 100.0%),  China (9,393), China_guangdong (888)
+		addFrequent("silveira"); // 745. 10,064 (indx 100.0%),  Brazil (9,374), Brazil_sao-paulo (2,172)
+		addFrequent("septiembre"); // 746. 11,053 (indx 100.0%),  Mexico (9,371), Mexico_puebla (1,567)
+		addFrequent("quang"); // 747. 9,423 (indx 100.0%),  Vietnam (9,358), Vietnam_asia (9,358)
+		addFrequent("service"); // 748. 16,783 (indx 57.4%),  Us (9,346), Canada_british-columbia (2,422)
+		addFrequent("house"); // 749. 17,656 (indx 47.4%),  Us (9,327), Gb_england (4,311)
+		addFrequent("colony"); // 750. 16,280 (indx 100.0%),  India (9,311), Pakistan_asia (2,678)
+		addFrequent("alessandro"); // 751. 9,329 (indx 100.0%),  Italy (9,303), Italy_lombardia (2,937)
+		addFrequent("docteur"); // 752. 10,448 (indx 100.0%),  France (9,283), France_new-aquitaine (1,095)
+		addFrequent("xiao"); // 753. 16,243 (indx 80.1%),  China (9,280), Taiwan_asia (4,837)
+		addFrequent("yi"); // 754. 13,463 (indx 63.6%),  Taiwan (9,277), Taiwan_asia (9,277)
+		addFrequent("lin"); // 755. 14,508 (indx 100.0%),  Taiwan (9,275), Taiwan_asia (9,275)
+		addFrequent("indah"); // 756. 15,245 (indx 100.0%),  Indonesia (9,273), Malaysia_asia (5,972)
+		addFrequent("osiedle"); // 757. 9,292 (indx 4.8%),  Poland (9,265), Poland_lesser-poland (1,900)
+		addFrequent("général"); // 758. 9,957 (indx 100.0%),  France (9,260), France_great-east (1,411)
+		addFrequent("طرىق"); // 759. 30,564 (indx 100.0%),  Bahrain (9,259), Bahrain_asia (9,259)
+		addFrequent("thanh"); // 760. 9,274 (indx 100.0%),  Vietnam (9,231), Vietnam_asia (9,231)
+		addFrequent("friedrich"); // 761. 9,953 (indx 100.0%),  Germany (9,227), Germany_nordrhein-westfalen (1,452)
+		addFrequent("iglesia"); // 762. 10,028 (indx 100.0%),  Spain (9,222), Spain_castilla-leon (4,740)
+		addFrequent("dit"); // 763. 9,380 (indx 100.0%),  France (9,221), France_centre-loire-valley (1,922)
+		addFrequent("access"); // 764. 18,746 (indx 100.0%),  Us (9,211), Australia-oceania_new-south-wales (1,538)
+		addFrequent("primo"); // 765. 11,230 (indx 100.0%),  Italy (9,209), Italy_sardegna (2,357)
+		addFrequent("احمد"); // 766. 15,070 (indx 100.0%),  Egypt (9,203), Egypt_africa (9,203)
+		addFrequent("barat"); // 767. 9,942 (indx 100.0%),  Indonesia (9,199), Indonesia_jakarta-raya (2,212)
+		addFrequent("moraes"); // 768. 9,186 (indx 100.0%),  Brazil (9,186), Brazil_sao-paulo (4,059)
+		addFrequent("wilhelm"); // 769. 9,784 (indx 100.0%),  Germany (9,176), Germany_nordrhein-westfalen (1,854)
+		addFrequent("lavoir"); // 770. 9,256 (indx 100.0%),  France (9,157), France_auvergne-rhone-alpes (1,688)
+		addFrequent("leite"); // 771. 10,199 (indx 100.0%),  Brazil (9,152), Brazil_sao-paulo (3,019)
+		addFrequent("lópez"); // 772. 15,120 (indx 100.0%),  Mexico (9,116), Mexico_veracruz (1,161)
+		addFrequent("nascimento"); // 773. 9,462 (indx 100.0%),  Brazil (9,113), Brazil_sao-paulo (2,042)
+		addFrequent("guglielmo"); // 774. 9,139 (indx 100.0%),  Italy (9,113), Italy_lombardia (2,212)
+		addFrequent("novembre"); // 775. 12,110 (indx 100.0%),  Italy (9,109), Italy_lombardia (2,716)
+		addFrequent("mydn"); // 776. 9,299 (indx 100.0%),  Iran (9,096), Iran_esfahan (1,639)
+		addFrequent("haven"); // 777. 10,376 (indx 100.0%),  Us (9,088), Us_texas (944)
+		addFrequent("of"); // 778. 17,867 (indx 18.0%),  Us (9,080), Us_wisconsin (1,054)
+		addFrequent("lín"); // 779. 9,105 (indx 100.0%),  China (9,072), China_jiangsu (891)
+		addFrequent("jiàn"); // 780. 9,055 (indx 100.0%),  China (9,055), China_jiangsu (923)
+		addFrequent("adolfo"); // 781. 14,850 (indx 100.0%),  Mexico (9,041), Mexico_veracruz (1,453)
+		addFrequent("cypress"); // 782. 10,027 (indx 100.0%),  Us (9,039), Us_florida (1,605)
+		addFrequent("statale"); // 783. 9,040 (indx 100.0%),  Italy (9,029), Italy_lombardia (1,222)
+		addFrequent("central"); // 784. 28,416 (indx 100.0%),  Us (9,028), Portugal_europe (2,212)
+		addFrequent("pike"); // 785. 9,302 (indx 100.0%),  Us (9,027), Us_pennsylvania (1,816)
+		addFrequent("ahmed"); // 786. 11,951 (indx 100.0%),  Egypt (9,012), Egypt_africa (9,012)
+		addFrequent("chez"); // 787. 9,405 (indx 100.0%),  France (9,010), France_new-aquitaine (5,744)
+		addFrequent("madison"); // 788. 9,160 (indx 100.0%),  Us (8,999), Us_arkansas (1,114)
+		addFrequent("ming"); // 789. 11,182 (indx 100.0%),  Taiwan (8,993), Taiwan_asia (8,993)
+		addFrequent("paolo"); // 790. 9,052 (indx 100.0%),  Italy (8,989), Italy_lombardia (2,085)
+		addFrequent("mário"); // 791. 10,194 (indx 100.0%),  Brazil (8,983), Brazil_sao-paulo (2,796)
+		addFrequent("lê"); // 792. 8,999 (indx 100.0%),  Vietnam (8,974), Vietnam_asia (8,974)
+		addFrequent("pointe"); // 793. 11,127 (indx 100.0%),  Us (8,943), Us_florida (967)
+		addFrequent("parc"); // 794. 12,718 (indx 100.0%),  France (8,937), France_brittany (1,225)
+		addFrequent("kampung"); // 795. 11,375 (indx 100.0%),  Malaysia (8,931), Malaysia_asia (8,931)
+		addFrequent("marie"); // 796. 17,219 (indx 100.0%),  France (8,919), France_brittany (1,594)
+		addFrequent("monteiro"); // 797. 10,115 (indx 100.0%),  Brazil (8,879), Brazil_sao-paulo (2,620)
+		addFrequent("garibaldi"); // 798. 9,985 (indx 100.0%),  Italy (8,874), Italy_lombardia (1,830)
+		addFrequent("per"); // 799. 10,077 (indx 100.0%),  Italy (8,871), Italy_lombardia (3,045)
+		addFrequent("machi"); // 800. 8,908 (indx 1.5%),  Japan (8,866), Japan_kinki (3,589)
+		addFrequent("maggio"); // 801. 8,873 (indx 100.0%),  Italy (8,862), Italy_lombardia (2,485)
+		addFrequent("poplar"); // 802. 10,956 (indx 100.0%),  Us (8,845), Gb_england (1,160)
+		addFrequent("lĭ"); // 803. 8,832 (indx 52.5%),  China (8,832), China_jiangsu (1,107)
+		addFrequent("bento"); // 804. 11,305 (indx 100.0%),  Brazil (8,829), Portugal_europe (2,387)
+		addFrequent("fuente"); // 805. 11,675 (indx 100.0%),  Spain (8,822), Spain_castilla-leon (3,055)
+		addFrequent("lopez"); // 806. 16,010 (indx 100.0%),  Mexico (8,805), Mexico_veracruz (1,114)
+		addFrequent("haute"); // 807. 9,555 (indx 100.0%),  France (8,790), France_occitania (1,752)
+		addFrequent("bst"); // 808. 8,837 (indx 100.0%),  Iran (8,771), Iran_esfahan (1,024)
+		addFrequent("doctor"); // 809. 25,876 (indx 100.0%),  Spain (8,758), Spain_andalusia (1,871)
+		addFrequent("alfredo"); // 810. 14,734 (indx 100.0%),  Brazil (8,758), Brazil_sao-paulo (2,244)
+		addFrequent("alberto"); // 811. 19,308 (indx 100.0%),  Brazil (8,733), Brazil_sao-paulo (2,651)
+		addFrequent("guadalupe"); // 812. 10,395 (indx 100.0%),  Mexico (8,714), Mexico_veracruz (815)
+		addFrequent("prés"); // 813. 9,883 (indx 100.0%),  France (8,712), France_auvergne-rhone-alpes (1,269)
+		addFrequent("cour"); // 814. 10,986 (indx 100.0%),  France (8,701), France_hauts-de-france (1,558)
+		addFrequent("paula"); // 815. 9,792 (indx 100.0%),  Brazil (8,696), Brazil_sao-paulo (2,793)
+		addFrequent("market"); // 816. 14,834 (indx 82.4%),  Us (8,684), Us_texas (3,544)
+		addFrequent("zaragoza"); // 817. 9,881 (indx 100.0%),  Mexico (8,676), Mexico_puebla (1,389)
+		addFrequent("bis"); // 818. 13,464 (indx 100.0%),  Colombia (8,666), Colombia_southamerica (8,666)
+		addFrequent("j"); // 819. 16,673 (indx 58.8%),  Us (8,653), Us_texas (789)
+		addFrequent("chiesa"); // 820. 8,843 (indx 53.7%),  Italy (8,608), Italy_lombardia (1,655)
+		addFrequent("union"); // 821. 16,040 (indx 85.6%),  Us (8,576), Peru_southamerica (1,075)
+		addFrequent("franklin"); // 822. 10,598 (indx 100.0%),  Us (8,558), Us_pennsylvania (861)
+		addFrequent("quinta"); // 823. 14,819 (indx 100.0%),  Portugal (8,552), Portugal_europe (8,552)
+		addFrequent("jules"); // 824. 10,022 (indx 100.0%),  France (8,552), France_hauts-de-france (1,145)
+		addFrequent("rondo"); // 825. 8,638 (indx 100.0%),  Poland (8,538), Poland_masovian (1,323)
+		addFrequent("schulstraße"); // 826. 9,028 (indx 100.0%),  Germany (8,506), Germany_bayern (1,460)
+		addFrequent("phan"); // 827. 8,688 (indx 100.0%),  Vietnam (8,495), Vietnam_asia (8,495)
+		addFrequent("huáng"); // 828. 8,463 (indx 100.0%),  China (8,463), China_jiangsu (1,063)
+		addFrequent("coelho"); // 829. 10,221 (indx 100.0%),  Brazil (8,461), Portugal_europe (1,658)
+		addFrequent("găng"); // 830. 8,454 (indx 100.0%),  China (8,454), China_guangdong (1,693)
+		addFrequent("сельское"); // 831. 8,907 (indx 100.0%),  Russia (8,447), Russia_tatarstan (932)
+		addFrequent("chapel"); // 832. 14,597 (indx 100.0%),  Us (8,444), Gb_england (4,128)
+		addFrequent("hall"); // 833. 17,897 (indx 56.3%),  Us (8,434), Gb_england (5,967)
+		addFrequent("tiān"); // 834. 8,425 (indx 100.0%),  China (8,425), China_sichuan (954)
+		addFrequent("jones"); // 835. 9,895 (indx 100.0%),  Us (8,391), Us_georgia (709)
+		addFrequent("borges"); // 836. 9,393 (indx 100.0%),  Brazil (8,387), Brazil_minas-gerais (1,659)
+		addFrequent("jīng"); // 837. 8,383 (indx 100.0%),  China (8,383), China_jiangsu (1,298)
+		addFrequent("d'eau"); // 838. 9,137 (indx 100.0%),  France (8,368), France_new-aquitaine (1,559)
+		addFrequent("te"); // 839. 10,771 (indx 11.9%),  New-zealand (8,367), New-zealand_australia-oceania (8,367)
+		addFrequent("zhōu"); // 840. 8,362 (indx 60.3%),  China (8,362), China_jiangsu (1,064)
+		addFrequent("bu"); // 841. 13,281 (indx 100.0%),  Taiwan (8,358), Taiwan_asia (8,358)
+		addFrequent("fratelli"); // 842. 8,359 (indx 100.0%),  Italy (8,347), Italy_lombardia (2,209)
+		addFrequent("thomas"); // 843. 17,919 (indx 100.0%),  Us (8,344), Gb_england (923)
+		addFrequent("siniri"); // 844. 8,387 (indx 100.0%),  Turkey (8,343), Turkey_central-anatolia (2,327)
+		addFrequent("táng"); // 845. 8,338 (indx 100.0%),  China (8,338), China_guangdong (1,569)
+		addFrequent("cesare"); // 846. 8,324 (indx 100.0%),  Italy (8,324), Italy_lombardia (2,029)
+		addFrequent("schulstrasse"); // 847. 9,411 (indx 100.0%),  Germany (8,323), Germany_bayern (1,455)
+		addFrequent("vei"); // 848. 8,324 (indx 100.0%),  Norway (8,305), Norway_akershus (1,618)
+		addFrequent("shrqy"); // 849. 8,334 (indx 100.0%),  Iran (8,294), Iran_tehran (2,075)
+		addFrequent("neves"); // 850. 9,645 (indx 100.0%),  Brazil (8,291), Brazil_sao-paulo (1,590)
+		addFrequent("grby"); // 851. 8,359 (indx 100.0%),  Iran (8,287), Iran_tehran (2,097)
+		addFrequent("harbor"); // 852. 8,310 (indx 100.0%),  Us (8,283), Us_florida (992)
+		addFrequent("ana"); // 853. 16,471 (indx 100.0%),  Brazil (8,277), Brazil_sao-paulo (2,066)
+		addFrequent("simpang"); // 854. 10,758 (indx 100.0%),  Brunei (8,240), Brunei_asia (8,240)
+		addFrequent("françois"); // 855. 9,939 (indx 100.0%),  France (8,177), France_brittany (1,255)
+		addFrequent("khu"); // 856. 8,565 (indx 100.0%),  Vietnam (8,158), Vietnam_asia (8,158)
+		addFrequent("barrio"); // 857. 19,330 (indx 100.0%),  Spain (8,152), Spain_cantabria (3,085)
+		addFrequent("magnolia"); // 858. 10,344 (indx 100.0%),  Us (8,110), Us_texas (919)
+		addFrequent("montée"); // 859. 9,758 (indx 100.0%),  France (8,107), France_auvergne-rhone-alpes (4,798)
+		addFrequent("1nong"); // 860. 8,140 (indx 100.0%),  Taiwan (8,102), Taiwan_asia (8,102)
+		addFrequent("llh"); // 861. 8,669 (indx 100.0%),  Iran (8,092), Iran_tehran (1,429)
+		addFrequent("vi"); // 862. 13,248 (indx 100.0%),  Indonesia (8,071), Indonesia_jakarta-raya (2,035)
+		addFrequent("مسجد"); // 863. 10,027 (indx 100.0%),  Egypt (8,066), Egypt_africa (8,066)
+		addFrequent("aprile"); // 864. 8,064 (indx 100.0%),  Italy (8,064), Italy_lombardia (2,808)
+		addFrequent("municipal"); // 865. 13,814 (indx 46.5%),  Brazil (8,062), Brazil_sao-paulo (4,682)
+		addFrequent("montee"); // 866. 9,666 (indx 100.0%),  France (8,055), France_auvergne-rhone-alpes (4,760)
+		addFrequent("lì"); // 867. 8,038 (indx 100.0%),  China (8,038), China_guangdong (1,356)
+		addFrequent("cárdenas"); // 868. 8,258 (indx 100.0%),  Mexico (8,030), Mexico_veracruz (1,023)
+		addFrequent("marconi"); // 869. 8,229 (indx 100.0%),  Italy (8,017), Italy_lombardia (2,008)
+		addFrequent("locust"); // 870. 8,014 (indx 100.0%),  Us (7,987), Us_pennsylvania (1,079)
+		addFrequent("köz"); // 871. 8,046 (indx 100.0%),  Hungary (7,975), Hungary_europe (7,975)
+		addFrequent("sul"); // 872. 9,885 (indx 100.0%),  Brazil (7,957), Brazil_sao-paulo (1,272)
+		addFrequent("sector"); // 873. 22,460 (indx 100.0%),  Carribean-archipelago-all (7,957), Carribean-archipelago-all_centralamerica (7,957)
+		addFrequent("tran"); // 874. 7,976 (indx 100.0%),  Vietnam (7,955), Vietnam_asia (7,955)
+		addFrequent("ruisseau"); // 875. 8,705 (indx 37.4%),  France (7,929), France_occitania (2,811)
+		addFrequent("گلستان"); // 876. 8,058 (indx 100.0%),  Iran (7,918), Iran_tehran (1,496)
+		addFrequent("ash"); // 877. 16,053 (indx 100.0%),  Us (7,892), Yemen_asia (2,729)
+		addFrequent("trung"); // 878. 7,991 (indx 100.0%),  Vietnam (7,880), Vietnam_asia (7,880)
+		addFrequent("mont"); // 879. 10,779 (indx 100.0%),  France (7,875), France_auvergne-rhone-alpes (1,764)
+		addFrequent("1-ia"); // 880. 8,731 (indx 100.0%),  Russia (7,875), Russia_moskovskaya-oblast (1,151)
+		addFrequent("yŏng"); // 881. 7,866 (indx 100.0%),  China (7,866), China_guangdong (1,648)
+		addFrequent("cote"); // 882. 9,415 (indx 100.0%),  France (7,862), France_auvergne-rhone-alpes (1,810)
+		addFrequent("шоссе"); // 883. 9,471 (indx 100.0%),  Russia (7,855), Russia_moskovskaya-oblast (2,532)
+		addFrequent("bidea"); // 884. 11,141 (indx 100.0%),  France (7,855), France_new-aquitaine (7,855)
+		addFrequent("koz"); // 885. 7,965 (indx 100.0%),  Hungary (7,850), Hungary_europe (7,850)
+		addFrequent("shèng"); // 886. 7,837 (indx 100.0%),  China (7,837), China_guangdong (1,145)
+		addFrequent("tiao"); // 887. 8,201 (indx 100.0%),  Japan (7,836), Japan_hokkaido (7,572)
+		addFrequent("campo"); // 888. 22,230 (indx 100.0%),  Brazil (7,834), Portugal_europe (2,485)
+		addFrequent("pinheiro"); // 889. 10,376 (indx 100.0%),  Brazil (7,823), Portugal_europe (2,446)
+		addFrequent("دوم"); // 890. 7,886 (indx 100.0%),  Iran (7,795), Iran_tehran (2,693)
+		addFrequent("yang"); // 891. 16,557 (indx 71.2%),  China (7,789), Taiwan_asia (6,860)
+		addFrequent("12th"); // 892. 9,297 (indx 100.0%),  Us (7,775), Us_florida (917)
+		addFrequent("upper"); // 893. 17,223 (indx 100.0%),  Us (7,762), Gb_england (2,396)
+		addFrequent("station"); // 894. 24,020 (indx 54.4%),  Us (7,746), Gb_england (5,658)
+		addFrequent("trần"); // 895. 7,764 (indx 100.0%),  Vietnam (7,745), Vietnam_asia (7,745)
+		addFrequent("andré"); // 896. 13,429 (indx 100.0%),  France (7,713), Brazil_sao-paulo (1,269)
+		addFrequent("rw"); // 897. 7,761 (indx 100.0%),  Indonesia (7,696), Indonesia_jakarta-raya (2,813)
+		addFrequent("bourg"); // 898. 7,957 (indx 100.0%),  France (7,694), France_new-aquitaine (1,669)
+		addFrequent("araújo"); // 899. 8,390 (indx 100.0%),  Brazil (7,689), Brazil_sao-paulo (1,516)
+		addFrequent("shuĭ"); // 900. 7,688 (indx 50.3%),  China (7,688), China_guangdong (1,157)
+		addFrequent("cūn"); // 901. 7,682 (indx 51.1%),  China (7,682), China_guangdong (1,873)
+		addFrequent("santana"); // 902. 9,490 (indx 100.0%),  Brazil (7,678), Brazil_sao-paulo (1,377)
+		addFrequent("koshiesi"); // 903. 7,660 (indx 100.0%),  Kazakhstan (7,660), Kazakhstan_asia (7,660)
+		addFrequent("golden"); // 904. 9,433 (indx 100.0%),  Us (7,656), Us_california (1,271)
+		addFrequent("porto"); // 905. 12,786 (indx 100.0%),  Brazil (7,637), Portugal_europe (1,889)
+		addFrequent("prefeito"); // 906. 7,635 (indx 100.0%),  Brazil (7,635), Brazil_sao-paulo (1,610)
+		addFrequent("f"); // 907. 21,164 (indx 100.0%),  Brazil (7,631), Carribean-archipelago-all_centralamerica (1,044)
+		addFrequent("independencia"); // 908. 12,148 (indx 100.0%),  Mexico (7,624), Mexico_oaxaca (1,288)
+		addFrequent("tài"); // 909. 7,906 (indx 100.0%),  China (7,616), China_jiangsu (1,276)
+		addFrequent("bin"); // 910. 18,529 (indx 100.0%),  Saudi-arabia (7,606), Saudi-arabia_asia (7,606)
+		addFrequent("علی"); // 911. 7,862 (indx 100.0%),  Iran (7,594), Iran_tehran (1,637)
+		addFrequent("lián"); // 912. 7,588 (indx 100.0%),  China (7,588), China_guangdong (1,419)
+		addFrequent("royal"); // 913. 11,251 (indx 100.0%),  Us (7,581), Us_texas (1,060)
+		addFrequent("roberto"); // 914. 12,132 (indx 100.0%),  Brazil (7,572), Brazil_sao-paulo (2,968)
+		addFrequent("dai"); // 915. 10,908 (indx 27.4%),  Japan (7,571), Japan_kinki (4,490)
+		addFrequent("rise"); // 916. 13,550 (indx 100.0%),  Gb (7,570), Gb_england (6,816)
+		addFrequent("cardenas"); // 917. 7,906 (indx 100.0%),  Mexico (7,561), Mexico_veracruz (969)
+		addFrequent("2nong"); // 918. 7,589 (indx 100.0%),  Taiwan (7,556), Taiwan_asia (7,556)
+		addFrequent("memorial"); // 919. 8,653 (indx 35.3%),  Us (7,547), Us_texas (555)
+		addFrequent("val"); // 920. 14,594 (indx 100.0%),  France (7,547), France_normandy (1,542)
+		addFrequent("tercera"); // 921. 8,298 (indx 100.0%),  Mexico (7,545), Mexico_mexico (1,382)
+		addFrequent("bairro"); // 922. 10,905 (indx 100.0%),  Portugal (7,540), Portugal_europe (7,540)
+		addFrequent("lázaro"); // 923. 9,419 (indx 100.0%),  Mexico (7,539), Mexico_veracruz (1,005)
+		addFrequent("obere"); // 924. 11,023 (indx 100.0%),  Germany (7,536), Germany_baden-wuerttemberg (2,206)
+		addFrequent("xia"); // 925. 12,333 (indx 100.0%),  China (7,533), Taiwan_asia (2,271)
+		addFrequent("cau"); // 926. 7,659 (indx 100.0%),  Vietnam (7,529), Vietnam_asia (7,529)
+		addFrequent("sycamore"); // 927. 9,360 (indx 100.0%),  Us (7,526), Gb_england (1,310)
+		addFrequent("exd"); // 928. 7,540 (indx 100.0%),  Us (7,518), Us_pennsylvania (1,185)
+		addFrequent("circuit"); // 929. 8,838 (indx 100.0%),  Australia-oceania (7,504), Australia-oceania_victoria (2,386)
+		addFrequent("assis"); // 930. 7,895 (indx 100.0%),  Brazil (7,497), Brazil_sao-paulo (1,490)
+		addFrequent("private"); // 931. 9,382 (indx 100.0%),  Us (7,491), Us_texas (3,721)
+		addFrequent("sehit"); // 932. 7,950 (indx 100.0%),  Turkey (7,464), Turkey_marmara (3,251)
+		addFrequent("yè"); // 933. 7,453 (indx 62.0%),  China (7,453), China_guangdong (1,924)
+		addFrequent("şehit"); // 934. 7,968 (indx 100.0%),  Turkey (7,452), Turkey_marmara (3,228)
+		addFrequent("chăng"); // 935. 7,450 (indx 55.8%),  China (7,450), China_guangdong (943)
+		addFrequent("julio"); // 936. 21,350 (indx 100.0%),  Brazil (7,416), Brazil_sao-paulo (2,112)
+		addFrequent("development"); // 937. 8,259 (indx 100.0%),  Us (7,411), Us_oregon (3,613)
+		addFrequent("míng"); // 938. 7,404 (indx 100.0%),  China (7,404), China_guangdong (1,151)
+		addFrequent("francois"); // 939. 9,171 (indx 100.0%),  France (7,391), France_new-aquitaine (941)
+		addFrequent("brasil"); // 940. 9,923 (indx 100.0%),  Brazil (7,369), Brazil_sao-paulo (1,465)
+		addFrequent("traverse"); // 941. 7,965 (indx 100.0%),  France (7,351), France_provence-alpes-cote-d-azur (4,255)
+		addFrequent("aleja"); // 942. 7,975 (indx 100.0%),  Poland (7,327), Poland_masovian (2,277)
+		addFrequent("ring"); // 943. 16,634 (indx 100.0%),  Germany (7,321), Germany_niedersachsen (1,305)
+		addFrequent("rocky"); // 944. 8,002 (indx 100.0%),  Us (7,319), Us_north-carolina (617)
+		addFrequent("andre"); // 945. 13,762 (indx 100.0%),  France (7,317), Brazil_sao-paulo (1,379)
+		addFrequent("shang"); // 946. 12,313 (indx 100.0%),  China (7,315), Taiwan_asia (2,579)
+		addFrequent("serra"); // 947. 13,840 (indx 100.0%),  Brazil (7,314), Portugal_europe (2,517)
+		addFrequent("rt"); // 948. 8,360 (indx 100.0%),  Indonesia (7,313), Indonesia_jakarta-raya (5,187)
+		addFrequent("basse"); // 949. 8,327 (indx 100.0%),  France (7,307), France_pays-de-la-loire (1,351)
+		addFrequent("industrial"); // 950. 15,740 (indx 100.0%),  Us (7,305), Portugal_europe (805)
+		addFrequent("mile"); // 951. 9,411 (indx 100.0%),  Us (7,303), Us_michigan (1,934)
+		addFrequent("star"); // 952. 8,046 (indx 100.0%),  Us (7,302), Us_texas (1,091)
+		addFrequent("côte"); // 953. 8,450 (indx 100.0%),  France (7,298), France_auvergne-rhone-alpes (1,616)
+		addFrequent("papa"); // 954. 9,935 (indx 100.0%),  Italy (7,291), Italy_lombardia (2,841)
+		addFrequent("city"); // 955. 13,152 (indx 40.4%),  Us (7,288), Pakistan_asia (543)
+		addFrequent("reis"); // 956. 11,124 (indx 100.0%),  Brazil (7,268), Portugal_europe (1,986)
+		addFrequent("gartenstraße"); // 957. 7,506 (indx 100.0%),  Germany (7,247), Germany_bayern (1,208)
+		addFrequent("lower"); // 958. 16,646 (indx 100.0%),  Us (7,245), Gb_england (3,357)
+		addFrequent("retorno"); // 959. 8,115 (indx 100.0%),  Mexico (7,243), Mexico_mexico (1,805)
+		addFrequent("taman"); // 960. 12,799 (indx 100.0%),  Malaysia (7,241), Malaysia_asia (7,241)
+		addFrequent("liu"); // 961. 16,881 (indx 100.0%),  Taiwan (7,231), Taiwan_asia (7,231)
+		addFrequent("tōng"); // 962. 7,218 (indx 100.0%),  China (7,218), China_jiangsu (1,198)
+		addFrequent("hu"); // 963. 13,739 (indx 67.1%),  Taiwan (7,202), Taiwan_asia (7,202)
+		addFrequent("vincenzo"); // 964. 7,258 (indx 100.0%),  Italy (7,200), Italy_sicilia (1,285)
+		addFrequent("martiri"); // 965. 7,209 (indx 100.0%),  Italy (7,182), Italy_lombardia (1,623)
+		addFrequent("'ly"); // 966. 8,563 (indx 100.0%),  Iran (7,176), Iran_tehran (1,376)
+		addFrequent("rang"); // 967. 7,469 (indx 100.0%),  Canada (7,174), Canada_quebec (7,066)
+		addFrequent("stradela"); // 968. 8,249 (indx 100.0%),  Moldova (7,167), Moldova_europe (7,167)
+		addFrequent("engenheiro"); // 969. 9,920 (indx 100.0%),  Brazil (7,154), Portugal_europe (2,622)
+		addFrequent("dinh"); // 970. 7,170 (indx 100.0%),  Vietnam (7,152), Vietnam_asia (7,152)
+		addFrequent("gasse"); // 971. 14,077 (indx 100.0%),  Austria (7,148), Austria_lower-austria (5,159)
+		addFrequent("fernando"); // 972. 19,466 (indx 100.0%),  Brazil (7,138), Portugal_europe (2,417)
+		addFrequent("bahnhofstraße"); // 973. 8,029 (indx 100.0%),  Germany (7,129), Germany_bayern (1,277)
+		addFrequent("lazaro"); // 974. 9,382 (indx 100.0%),  Mexico (7,128), Mexico_veracruz (953)
+		addFrequent("afonso"); // 975. 10,216 (indx 100.0%),  Brazil (7,104), Portugal_europe (2,949)
+		addFrequent("noviembre"); // 976. 8,458 (indx 100.0%),  Mexico (7,101), Mexico_veracruz (1,249)
+		addFrequent("qián"); // 977. 7,099 (indx 100.0%),  China (7,099), China_guangdong (1,191)
+		addFrequent("jian"); // 978. 10,832 (indx 100.0%),  Taiwan (7,092), Taiwan_asia (7,092)
+		addFrequent("azevedo"); // 979. 8,347 (indx 100.0%),  Brazil (7,087), Brazil_sao-paulo (2,104)
+		addFrequent("baile"); // 980. 8,342 (indx 100.0%),  Ireland (7,086), Ireland_europe (7,086)
+		addFrequent("gartenstrasse"); // 981. 7,715 (indx 100.0%),  Germany (7,084), Germany_bayern (1,204)
+		addFrequent("linha"); // 982. 7,372 (indx 100.0%),  Brazil (7,063), Brazil_santa-catarina (3,051)
+		addFrequent("bulvarı"); // 983. 7,117 (indx 100.0%),  Turkey (7,063), Turkey_marmara (1,556)
+		addFrequent("mas"); // 984. 13,137 (indx 100.0%),  France (7,056), France_occitania (4,347)
+		addFrequent("bank"); // 985. 11,928 (indx 55.9%),  Gb (7,051), Gb_england (6,136)
+		addFrequent("guo"); // 986. 9,971 (indx 100.0%),  Taiwan (7,038), Taiwan_asia (7,038)
+		addFrequent("alto"); // 987. 22,389 (indx 100.0%),  Brazil (7,031), Portugal_europe (4,174)
+		addFrequent("george"); // 988. 17,303 (indx 100.0%),  Us (7,028), Romania_europe (2,314)
+		addFrequent("bergstraße"); // 989. 7,389 (indx 100.0%),  Germany (7,018), Germany_bayern (1,451)
+		addFrequent("nishi"); // 990. 7,014 (indx 100.0%),  Japan (7,014), Japan_hokkaido (3,388)
+		addFrequent("yu"); // 991. 14,754 (indx 75.1%),  China (7,007), Taiwan_asia (5,925)
+		addFrequent("junior"); // 992. 8,607 (indx 100.0%),  Brazil (7,005), Brazil_sao-paulo (2,763)
+		addFrequent("huā"); // 993. 7,004 (indx 100.0%),  China (7,004), China_jiangsu (959)
+		addFrequent("victor"); // 994. 15,173 (indx 100.0%),  France (6,994), France_ile-de-france (818)
+		addFrequent("fonseca"); // 995. 8,285 (indx 100.0%),  Brazil (6,988), Brazil_sao-paulo (1,682)
+		addFrequent("sandy"); // 996. 9,087 (indx 100.0%),  Us (6,984), Gb_england (1,165)
+		addFrequent("pvt"); // 997. 6,982 (indx 100.0%),  Us (6,982), Us_texas (4,263)
+		addFrequent("wild"); // 998. 7,661 (indx 100.0%),  Us (6,966), Us_texas (759)
+		addFrequent("փողոց"); // 999. 7,278 (indx 100.0%),  Armenia (6,929), Armenia_asia (6,929)
+		addFrequent("glstn"); // 1000. 7,054 (indx 100.0%),  Iran (6,927), Iran_tehran (1,194)
+		addFrequent("piazzale"); // 1001. 6,999 (indx 100.0%),  Italy (6,914), Italy_lombardia (1,322)
+		addFrequent("bahnhofstrasse"); // 1002. 8,670 (indx 100.0%),  Germany (6,897), Germany_bayern (1,269)
+		addFrequent("bergstrasse"); // 1003. 7,752 (indx 100.0%),  Germany (6,886), Germany_bayern (1,446)
+		addFrequent("pires"); // 1004. 8,082 (indx 100.0%),  Brazil (6,871), Brazil_sao-paulo (2,496)
+		addFrequent("college"); // 1005. 12,013 (indx 100.0%),  Us (6,860), Gb_england (1,080)
+		addFrequent("sierra"); // 1006. 18,114 (indx 100.0%),  Mexico (6,852), Us_california (1,827)
+		addFrequent("sobrinho"); // 1007. 6,846 (indx 100.0%),  Brazil (6,846), Brazil_sao-paulo (1,827)
+		addFrequent("hermann"); // 1008. 7,528 (indx 100.0%),  Germany (6,827), Germany_nordrhein-westfalen (1,387)
+		addFrequent("mary"); // 1009. 9,324 (indx 100.0%),  Us (6,821), Gb_england (612)
+		addFrequent("horse"); // 1010. 7,767 (indx 100.0%),  Us (6,815), Us_california (713)
+		addFrequent("utara"); // 1011. 7,524 (indx 100.0%),  Indonesia (6,811), Indonesia_jawa-timur (1,899)
+		addFrequent("заселак"); // 1012. 6,941 (indx 100.0%),  Serbia (6,807), Serbia_europe (6,807)
+		addFrequent("zasielak"); // 1013. 6,939 (indx 100.0%),  Serbia (6,805), Serbia_europe (6,805)
+		addFrequent("gate"); // 1014. 22,035 (indx 100.0%),  Us (6,799), Gb_england (3,849)
+		addFrequent("eduardo"); // 1015. 13,089 (indx 100.0%),  Brazil (6,789), Brazil_sao-paulo (2,066)
+		addFrequent("quai"); // 1016. 7,870 (indx 100.0%),  France (6,789), France_auvergne-rhone-alpes (811)
+		addFrequent("stade"); // 1017. 7,185 (indx 100.0%),  France (6,771), France_new-aquitaine (1,070)
+		addFrequent("dōri"); // 1018. 6,763 (indx 100.0%),  Japan (6,763), Japan_kanto (3,039)
+		addFrequent("dante"); // 1019. 7,625 (indx 100.0%),  Italy (6,761), Italy_lombardia (1,659)
+		addFrequent("communale"); // 1020. 7,013 (indx 100.0%),  France (6,740), France_pays-de-la-loire (1,719)
+		addFrequent("garcia"); // 1021. 21,051 (indx 100.0%),  Brazil (6,732), Brazil_sao-paulo (3,013)
+		addFrequent("fù"); // 1022. 6,729 (indx 100.0%),  China (6,729), China_guangdong (974)
+		addFrequent("tang"); // 1023. 8,493 (indx 100.0%),  China (6,717), China_zhejiang (1,360)
+		addFrequent("kita"); // 1024. 6,838 (indx 100.0%),  Japan (6,715), Japan_hokkaido (2,989)
+		addFrequent("to"); // 1025. 25,679 (indx 100.0%),  Us (6,714), Us_texas (3,314)
+		addFrequent("peak"); // 1026. 8,114 (indx 100.0%),  Us (6,712), Us_california (1,288)
+		addFrequent("carranza"); // 1027. 6,912 (indx 100.0%),  Mexico (6,707), Mexico_veracruz (1,161)
+		addFrequent("shossie"); // 1028. 6,886 (indx 100.0%),  Russia (6,701), Russia_moskovskaya-oblast (2,025)
+		addFrequent("dwm"); // 1029. 6,730 (indx 100.0%),  Iran (6,676), Iran_tehran (2,091)
+		addFrequent("field"); // 1030. 11,430 (indx 54.9%),  Us (6,653), Gb_england (3,767)
+		addFrequent("mă"); // 1031. 6,650 (indx 100.0%),  China (6,650), China_jiangsu (760)
+		addFrequent("ferenc"); // 1032. 6,999 (indx 100.0%),  Hungary (6,643), Hungary_europe (6,643)
+		addFrequent("r"); // 1033. 17,864 (indx 100.0%),  Us (6,641), Portugal_europe (2,783)
+		addFrequent("4-chome"); // 1034. 6,639 (indx 100.0%),  Japan (6,639), Japan_kinki (1,689)
+		addFrequent("provincial"); // 1035. 9,480 (indx 100.0%),  Argentina (6,624), Argentina_buenos-aires (1,209)
+		addFrequent("broadway"); // 1036. 7,989 (indx 100.0%),  Us (6,624), Gb_england (884)
+		addFrequent("baru"); // 1037. 8,989 (indx 100.0%),  Indonesia (6,618), Malaysia_asia (2,358)
+		addFrequent("angelo"); // 1038. 10,719 (indx 100.0%),  Brazil (6,607), Brazil_sao-paulo (2,655)
+		addFrequent("wang"); // 1039. 9,999 (indx 100.0%),  China (6,599), Taiwan_asia (1,654)
+		addFrequent("kone"); // 1040. 6,690 (indx 100.0%),  Myanmar (6,592), Myanmar_asia (6,592)
+		addFrequent("maurice"); // 1041. 7,814 (indx 100.0%),  France (6,591), France_ile-de-france (863)
+		addFrequent("guān"); // 1042. 6,575 (indx 100.0%),  China (6,575), China_guangdong (809)
+		addFrequent("sousa"); // 1043. 10,573 (indx 100.0%),  Brazil (6,569), Portugal_europe (3,706)
+		addFrequent("moura"); // 1044. 7,874 (indx 100.0%),  Brazil (6,568), Brazil_sao-paulo (1,530)
+		addFrequent("yán"); // 1045. 6,563 (indx 100.0%),  China (6,563), China_jiangsu (919)
+		addFrequent("tour"); // 1046. 7,294 (indx 100.0%),  France (6,555), France_auvergne-rhone-alpes (1,394)
+		addFrequent("passatge"); // 1047. 6,707 (indx 100.0%),  Spain (6,554), Spain_catalunya (5,869)
+		addFrequent("beaver"); // 1048. 7,048 (indx 100.0%),  Us (6,533), Us_pennsylvania (619)
+		addFrequent("cité"); // 1049. 10,191 (indx 100.0%),  France (6,522), Algeria_africa (1,379)
+		addFrequent("joseph"); // 1050. 16,284 (indx 100.0%),  France (6,513), Belgium_wallonia (1,234)
+		addFrequent("tan"); // 1051. 14,597 (indx 100.0%),  Vietnam (6,509), Vietnam_asia (6,509)
+		addFrequent("croft"); // 1052. 6,762 (indx 100.0%),  Gb (6,499), Gb_england (6,170)
+		addFrequent("hillside"); // 1053. 8,845 (indx 100.0%),  Us (6,498), Gb_england (1,198)
+		addFrequent("carducci"); // 1054. 6,498 (indx 100.0%),  Italy (6,498), Italy_lombardia (1,759)
+		addFrequent("mazzini"); // 1055. 6,497 (indx 100.0%),  Italy (6,478), Italy_lombardia (1,561)
+		addFrequent("jin"); // 1056. 13,094 (indx 72.4%),  Taiwan (6,477), Taiwan_asia (6,477)
+		addFrequent("mayor"); // 1057. 8,078 (indx 100.0%),  Spain (6,458), Spain_castilla-leon (2,777)
+		addFrequent("chase"); // 1058. 9,168 (indx 100.0%),  Us (6,456), Gb_england (2,007)
+		addFrequent("michel"); // 1059. 8,077 (indx 100.0%),  France (6,456), France_brittany (765)
+		addFrequent("lagoa"); // 1060. 8,033 (indx 100.0%),  Brazil (6,440), Brazil_bahia (2,499)
+		addFrequent("qing"); // 1061. 10,645 (indx 100.0%),  Taiwan (6,438), Taiwan_asia (6,438)
+		addFrequent("marechal"); // 1062. 13,400 (indx 100.0%),  Brazil (6,435), Brazil_sao-paulo (1,302)
+		addFrequent("nogueira"); // 1063. 7,564 (indx 100.0%),  Brazil (6,429), Brazil_sao-paulo (2,214)
+		addFrequent("yì"); // 1064. 6,429 (indx 100.0%),  China (6,429), China_guangdong (682)
+		addFrequent("leaf"); // 1065. 6,651 (indx 100.0%),  Us (6,410), Us_texas (764)
+		addFrequent("st."); // 1066. 26,779 (indx 100.0%),  Germany (6,388), Gb_england (4,486)
+		addFrequent("متری"); // 1067. 6,413 (indx 100.0%),  Iran (6,381), Iran_tehran (1,476)
+		addFrequent("alter"); // 1068. 7,381 (indx 100.0%),  Germany (6,379), Germany_niedersachsen (1,313)
+		addFrequent("conceição"); // 1069. 7,790 (indx 100.0%),  Brazil (6,372), Brazil_sao-paulo (1,462)
+		addFrequent("luís"); // 1070. 9,871 (indx 100.0%),  Brazil (6,366), Portugal_europe (3,167)
+		addFrequent("en"); // 1071. 10,721 (indx 12.9%),  France (6,358), France_auvergne-rhone-alpes (978)
+		addFrequent("zhang"); // 1072. 9,829 (indx 100.0%),  China (6,354), Taiwan_asia (3,425)
+		addFrequent("guimaraes"); // 1073. 6,807 (indx 100.0%),  Brazil (6,351), Brazil_sao-paulo (1,381)
+		addFrequent("heroes"); // 1074. 7,324 (indx 100.0%),  Mexico (6,349), Mexico_veracruz (1,000)
+		addFrequent("héng"); // 1075. 6,314 (indx 100.0%),  China (6,314), China_guangdong (2,564)
+		addFrequent("bell"); // 1076. 8,799 (indx 100.0%),  Us (6,313), Gb_england (991)
+		addFrequent("untere"); // 1077. 9,428 (indx 100.0%),  Germany (6,307), Germany_baden-wuerttemberg (1,838)
+		addFrequent("ibn"); // 1078. 16,903 (indx 100.0%),  Egypt (6,297), Egypt_africa (6,297)
+		addFrequent("miranda"); // 1079. 9,539 (indx 100.0%),  Brazil (6,285), Brazil_sao-paulo (1,348)
+		addFrequent("maréchal"); // 1080. 6,556 (indx 100.0%),  France (6,278), France_new-aquitaine (846)
+		addFrequent("bom"); // 1081. 7,075 (indx 100.0%),  Brazil (6,272), Brazil_sao-paulo (741)
+		addFrequent("shè"); // 1082. 6,269 (indx 69.1%),  China (6,269), China_jiangsu (1,071)
+		addFrequent("selatan"); // 1083. 7,138 (indx 100.0%),  Indonesia (6,262), Indonesia_jawa-timur (1,489)
+		addFrequent("yún"); // 1084. 6,260 (indx 100.0%),  China (6,260), China_guangdong (877)
+		addFrequent("cite"); // 1085. 9,615 (indx 100.0%),  France (6,238), France_hauts-de-france (1,252)
+		addFrequent("nolu"); // 1086. 6,235 (indx 100.0%),  Turkey (6,235), Turkey_black-sea (2,914)
+		addFrequent("hans"); // 1087. 8,357 (indx 100.0%),  Germany (6,234), Germany_bayern (1,609)
+		addFrequent("tower"); // 1088. 8,539 (indx 100.0%),  Us (6,226), Gb_england (865)
+		addFrequent("heritage"); // 1089. 7,338 (indx 100.0%),  Us (6,226), Us_texas (498)
+		addFrequent("ave"); // 1090. 12,182 (indx 30.2%),  Us (6,221), Carribean-archipelago-all_centralamerica (1,951)
+		addFrequent("palm"); // 1091. 8,496 (indx 100.0%),  Us (6,215), Us_florida (2,576)
+		addFrequent("conceicao"); // 1092. 7,620 (indx 100.0%),  Brazil (6,204), Brazil_sao-paulo (1,426)
+		addFrequent("микрорайон"); // 1093. 8,572 (indx 100.0%),  Russia (6,200), Kazakhstan_asia (1,439)
+		addFrequent("yaek"); // 1094. 6,200 (indx 100.0%),  Thailand (6,200), Thailand_asia (6,200)
+		addFrequent("hoa"); // 1095. 6,331 (indx 100.0%),  Vietnam (6,199), Vietnam_asia (6,199)
+		addFrequent("rén"); // 1096. 6,199 (indx 100.0%),  China (6,199), China_guangdong (1,013)
+		addFrequent("correia"); // 1097. 9,014 (indx 100.0%),  Brazil (6,198), Portugal_europe (2,672)
+		addFrequent("yíng"); // 1098. 6,190 (indx 100.0%),  China (6,190), China_jiangsu (758)
+		addFrequent("daero"); // 1099. 6,189 (indx 100.0%),  South-korea (6,189), South-korea_asia (6,189)
+		addFrequent("roche"); // 1100. 6,826 (indx 100.0%),  France (6,180), France_auvergne-rhone-alpes (1,606)
+		addFrequent("shr'"); // 1101. 25,336 (indx 14.1%),  Algeria (6,165), Algeria_africa (6,165)
+		addFrequent("reforma"); // 1102. 6,371 (indx 100.0%),  Mexico (6,150), Mexico_puebla (1,141)
+		addFrequent("higashi"); // 1103. 6,144 (indx 100.0%),  Japan (6,144), Japan_hokkaido (2,935)
+		addFrequent("st"); // 1104. 18,508 (indx 12.4%),  Russia (6,143), Russia_moskovskaya-oblast (1,556)
+		addFrequent("lakes"); // 1105. 6,722 (indx 100.0%),  Us (6,140), Us_florida (1,119)
+		addFrequent("colonia"); // 1106. 14,136 (indx 100.0%),  Mexico (6,135), Mexico_distrito-federal (2,222)
+		addFrequent("grands"); // 1107. 6,729 (indx 100.0%),  France (6,125), France_auvergne-rhone-alpes (1,140)
+		addFrequent("yuàn"); // 1108. 6,123 (indx 56.6%),  China (6,123), China_guangdong (1,289)
+		addFrequent("qi"); // 1109. 13,457 (indx 100.0%),  Taiwan (6,106), Taiwan_asia (6,106)
+		addFrequent("transversal"); // 1110. 10,261 (indx 100.0%),  Colombia (6,102), Colombia_southamerica (6,102)
+		addFrequent("lieu"); // 1111. 6,532 (indx 100.0%),  France (6,097), France_centre-loire-valley (1,583)
+		addFrequent("put"); // 1112. 11,389 (indx 100.0%),  Serbia (6,090), Serbia_europe (6,090)
+		addFrequent("huì"); // 1113. 6,088 (indx 100.0%),  China (6,088), China_guangdong (1,035)
+		addFrequent("vej"); // 1114. 6,083 (indx 100.0%),  Denmark (6,083), Denmark_central-region (1,523)
+		addFrequent("vii"); // 1115. 7,106 (indx 100.0%),  Indonesia (6,081), Indonesia_jakarta-raya (1,521)
+		addFrequent("jĭng"); // 1116. 6,033 (indx 100.0%),  China (6,033), China_guangdong (1,017)
+		addFrequent("leclerc"); // 1117. 6,368 (indx 100.0%),  France (6,012), France_hauts-de-france (908)
+		addFrequent("tai"); // 1118. 15,928 (indx 100.0%),  Taiwan (6,007), Taiwan_asia (6,007)
+		addFrequent("zhu"); // 1119. 11,582 (indx 100.0%),  Taiwan (5,997), Taiwan_asia (5,997)
+		addFrequent("otto"); // 1120. 8,504 (indx 100.0%),  Germany (5,994), Germany_nordrhein-westfalen (1,074)
+		addFrequent("uliza"); // 1121. 9,826 (indx 100.0%),  Russia (5,989), Moldova_europe (1,839)
+		addFrequent("ст"); // 1122. 10,841 (indx 100.0%),  Russia (5,987), Russia_moskovskaya-oblast (1,501)
+		addFrequent("port"); // 1123. 13,760 (indx 100.0%),  France (5,951), France_new-aquitaine (1,130)
+		addFrequent("aldo"); // 1124. 6,876 (indx 100.0%),  Italy (5,949), Italy_lombardia (1,288)
+		addFrequent("سوم"); // 1125. 5,990 (indx 100.0%),  Iran (5,936), Iran_tehran (1,898)
+		addFrequent("zhī"); // 1126. 5,932 (indx 100.0%),  China (5,932), China_chongqing (1,091)
+		addFrequent("проспект"); // 1127. 9,585 (indx 100.0%),  Russia (5,931), Russia_leningradskaya (1,118)
+		addFrequent("chenes"); // 1128. 6,327 (indx 100.0%),  France (5,916), France_new-aquitaine (1,166)
+		addFrequent("emanuele"); // 1129. 5,915 (indx 100.0%),  Italy (5,915), Italy_sicilia (944)
+		addFrequent("h"); // 1130. 16,907 (indx 100.0%),  Us (5,910), Azerbaijan_asia (1,139)
+		addFrequent("mikroraion"); // 1131. 7,813 (indx 100.0%),  Russia (5,907), Kazakhstan_asia (1,205)
+		addFrequent("m"); // 1132. 18,093 (indx 100.0%),  Us (5,899), Azerbaijan_asia (2,445)
+		addFrequent("kings"); // 1133. 8,538 (indx 100.0%),  Us (5,896), Gb_england (1,737)
+		addFrequent("chênes"); // 1134. 6,328 (indx 100.0%),  France (5,887), France_new-aquitaine (1,152)
+		addFrequent("casal"); // 1135. 6,690 (indx 100.0%),  Portugal (5,883), Portugal_europe (5,883)
+		addFrequent("cerro"); // 1136. 15,880 (indx 100.0%),  Mexico (5,878), Chile_metropolitana-de-santiago (1,021)
+		addFrequent("camargo"); // 1137. 6,187 (indx 100.0%),  Brazil (5,877), Brazil_sao-paulo (4,331)
+		addFrequent("aparecida"); // 1138. 5,879 (indx 100.0%),  Brazil (5,864), Brazil_sao-paulo (2,630)
+		addFrequent("end"); // 1139. 16,975 (indx 100.0%),  Gb (5,863), Gb_england (5,598)
+		addFrequent("beech"); // 1140. 9,151 (indx 100.0%),  Us (5,862), Gb_england (2,408)
+		addFrequent("lộ"); // 1141. 6,103 (indx 100.0%),  Vietnam (5,853), Vietnam_asia (5,853)
+		addFrequent("phu"); // 1142. 6,054 (indx 100.0%),  Vietnam (5,851), Vietnam_asia (5,851)
+		addFrequent("capitão"); // 1143. 6,992 (indx 100.0%),  Brazil (5,850), Brazil_sao-paulo (1,839)
+		addFrequent("france"); // 1144. 6,482 (indx 100.0%),  France (5,849), France_ile-de-france (1,206)
+		addFrequent("mariano"); // 1145. 14,209 (indx 100.0%),  Mexico (5,844), Brazil_sao-paulo (975)
+		addFrequent("k"); // 1146. 23,848 (indx 100.0%),  Czech-republic (5,837), Myanmar_asia (2,260)
+		addFrequent("victoria"); // 1147. 19,762 (indx 100.0%),  Mexico (5,825), Gb_england (2,825)
+		addFrequent("shàng"); // 1148. 5,819 (indx 100.0%),  China (5,819), China_guangdong (930)
+		addFrequent("g"); // 1149. 16,905 (indx 69.9%),  Brazil (5,816), Carribean-archipelago-all_centralamerica (790)
+		addFrequent("على"); // 1150. 9,589 (indx 100.0%),  Egypt (5,814), Egypt_africa (5,814)
+		addFrequent("bóthar"); // 1151. 7,268 (indx 100.0%),  Ireland (5,812), Ireland_europe (5,812)
+		addFrequent("tian"); // 1152. 15,475 (indx 100.0%),  Japan (5,807), Taiwan_asia (5,194)
+		addFrequent("rené"); // 1153. 7,317 (indx 100.0%),  France (5,806), France_brittany (871)
+		addFrequent("correa"); // 1154. 6,922 (indx 100.0%),  Brazil (5,805), Brazil_sao-paulo (1,762)
+		addFrequent("bellevue"); // 1155. 8,009 (indx 100.0%),  France (5,802), France_auvergne-rhone-alpes (952)
+		addFrequent("حسین"); // 1156. 5,881 (indx 100.0%),  Iran (5,797), Iran_tehran (1,015)
+		addFrequent("guăng"); // 1157. 5,792 (indx 100.0%),  China (5,792), China_guangdong (1,250)
+		addFrequent("matteotti"); // 1158. 5,802 (indx 100.0%),  Italy (5,791), Italy_lombardia (1,418)
+		addFrequent("xiāng"); // 1159. 5,789 (indx 100.0%),  China (5,789), China_hunan (696)
+		addFrequent("gŭ"); // 1160. 5,787 (indx 100.0%),  China (5,787), China_beijing (776)
+		addFrequent("puerto"); // 1161. 15,885 (indx 100.0%),  Mexico (5,776), Colombia_southamerica (859)
+		addFrequent("guimarães"); // 1162. 6,265 (indx 100.0%),  Brazil (5,771), Brazil_sao-paulo (1,377)
+		addFrequent("verdi"); // 1163. 6,052 (indx 100.0%),  Italy (5,751), Italy_lombardia (1,709)
+		addFrequent("duarte"); // 1164. 9,200 (indx 100.0%),  Brazil (5,741), Portugal_europe (1,792)
+		addFrequent("alten"); // 1165. 5,859 (indx 100.0%),  Germany (5,737), Germany_nordrhein-westfalen (1,359)
+		addFrequent("virgen"); // 1166. 8,436 (indx 100.0%),  Spain (5,736), Spain_andalusia (2,148)
+		addFrequent("carneiro"); // 1167. 7,837 (indx 100.0%),  Brazil (5,731), Portugal_europe (2,080)
+		addFrequent("júlio"); // 1168. 6,771 (indx 100.0%),  Brazil (5,720), Brazil_sao-paulo (1,636)
+		addFrequent("vallée"); // 1169. 6,430 (indx 100.0%),  France (5,720), France_normandy (908)
+		addFrequent("ali"); // 1170. 19,255 (indx 100.0%),  Egypt (5,713), Egypt_africa (5,713)
+		addFrequent("escola"); // 1171. 6,616 (indx 76.3%),  Portugal (5,702), Portugal_europe (5,702)
+		addFrequent("l'etang"); // 1172. 5,977 (indx 100.0%),  France (5,701), France_auvergne-rhone-alpes (953)
+		addFrequent("vecchia"); // 1173. 5,826 (indx 100.0%),  Italy (5,692), Italy_lombardia (749)
+		addFrequent("neuve"); // 1174. 6,223 (indx 100.0%),  France (5,691), France_pays-de-la-loire (824)
+		addFrequent("ernst"); // 1175. 6,100 (indx 100.0%),  Germany (5,689), Germany_nordrhein-westfalen (705)
+		addFrequent("vallee"); // 1176. 6,310 (indx 100.0%),  France (5,682), France_normandy (913)
+		addFrequent("amaral"); // 1177. 6,298 (indx 100.0%),  Brazil (5,680), Brazil_sao-paulo (1,917)
+		addFrequent("castello"); // 1178. 6,195 (indx 100.0%),  Italy (5,677), Italy_lombardia (1,076)
+		addFrequent("caetano"); // 1179. 6,392 (indx 100.0%),  Brazil (5,677), Brazil_sao-paulo (1,743)
+		addFrequent("fazenda"); // 1180. 5,774 (indx 32.9%),  Brazil (5,671), Brazil_bahia (1,421)
+		addFrequent("جنوبی"); // 1181. 5,698 (indx 100.0%),  Iran (5,671), Iran_tehran (865)
+		addFrequent("mahallesi"); // 1182. 5,887 (indx 100.0%),  Turkey (5,663), Turkey_marmara (1,075)
+		addFrequent("sous"); // 1183. 8,012 (indx 100.0%),  France (5,657), France_auvergne-rhone-alpes (1,557)
+		addFrequent("садова"); // 1184. 5,887 (indx 100.0%),  Ukraine (5,647), Ukraine_kyiv (1,087)
+		addFrequent("شمالی"); // 1185. 5,702 (indx 100.0%),  Iran (5,641), Iran_razavi-khorasan (1,049)
+		addFrequent("candido"); // 1186. 6,660 (indx 100.0%),  Brazil (5,634), Brazil_sao-paulo (1,422)
+		addFrequent("cikmazi"); // 1187. 5,630 (indx 100.0%),  Turkey (5,630), Turkey_marmara (5,014)
+		addFrequent("diagonal"); // 1188. 9,519 (indx 100.0%),  Colombia (5,622), Colombia_southamerica (5,622)
+		addFrequent("fire"); // 1189. 8,155 (indx 66.4%),  Us (5,622), Canada_ontario (1,071)
+		addFrequent("bel"); // 1190. 6,881 (indx 100.0%),  France (5,618), France_brittany (1,026)
+		addFrequent("hof"); // 1191. 7,772 (indx 100.0%),  Germany (5,615), Germany_nordrhein-westfalen (1,244)
+		addFrequent("к"); // 1192. 6,226 (indx 100.0%),  Russia (5,614), Russia_orenburg (701)
+		addFrequent("çıkmazı"); // 1193. 5,614 (indx 100.0%),  Turkey (5,614), Turkey_marmara (4,995)
+		addFrequent("shì"); // 1194. 5,603 (indx 58.9%),  China (5,603), China_jiangsu (688)
+		addFrequent("abreu"); // 1195. 6,662 (indx 100.0%),  Brazil (5,599), Brazil_sao-paulo (1,523)
+		addFrequent("capitao"); // 1196. 6,762 (indx 100.0%),  Brazil (5,591), Brazil_sao-paulo (1,740)
+		addFrequent("airport"); // 1197. 7,786 (indx 100.0%),  Us (5,588), Us_texas (328)
+		addFrequent("albert"); // 1198. 18,605 (indx 100.0%),  France (5,588), Gb_england (1,377)
+		addFrequent("aeyk"); // 1199. 5,574 (indx 100.0%),  Thailand (5,574), Thailand_asia (5,574)
+		addFrequent("parque"); // 1200. 17,138 (indx 100.0%),  Brazil (5,573), Portugal_europe (1,741)
+		addFrequent("رضا"); // 1201. 6,098 (indx 100.0%),  Iran (5,561), Iran_razavi-khorasan (1,388)
+		addFrequent("igreja"); // 1202. 8,209 (indx 100.0%),  Portugal (5,558), Portugal_europe (5,558)
+		addFrequent("frazione"); // 1203. 5,554 (indx 100.0%),  Italy (5,554), Italy_piemonte (2,836)
+		addFrequent("jō"); // 1204. 5,554 (indx 100.0%),  Japan (5,554), Japan_hokkaido (4,814)
+		addFrequent("and"); // 1205. 9,392 (indx 100.0%),  Us (5,553), Gb_england (768)
+		addFrequent("loma"); // 1206. 11,041 (indx 100.0%),  Mexico (5,552), Mexico_jalisco (1,095)
+		addFrequent("و"); // 1207. 6,700 (indx 100.0%),  Iran (5,550), Iran_tehran (1,721)
+		addFrequent("virginia"); // 1208. 6,856 (indx 100.0%),  Us (5,550), Us_virginia (563)
+		addFrequent("parade"); // 1209. 9,298 (indx 100.0%),  Australia-oceania (5,542), Gb_england (2,460)
+		addFrequent("plac"); // 1210. 5,740 (indx 100.0%),  Poland (5,537), Poland_lower-silesian (730)
+		addFrequent("ivy"); // 1211. 6,799 (indx 100.0%),  Us (5,536), Gb_england (804)
+		addFrequent("sadova"); // 1212. 6,050 (indx 100.0%),  Ukraine (5,536), Ukraine_kyiv (1,113)
+		addFrequent("alexandre"); // 1213. 9,501 (indx 100.0%),  Brazil (5,525), Brazil_sao-paulo (1,577)
+		addFrequent("can"); // 1214. 7,668 (indx 100.0%),  Spain (5,521), Spain_catalunya (4,135)
+		addFrequent("rd"); // 1215. 23,247 (indx 21.4%),  Iran (5,519), Pakistan_asia (3,686)
+		addFrequent("аллея"); // 1216. 6,275 (indx 100.0%),  Russia (5,515), Russia_leningradskaya (1,285)
+		addFrequent("guilherme"); // 1217. 6,075 (indx 100.0%),  Brazil (5,510), Brazil_sao-paulo (1,492)
+		addFrequent("ma"); // 1218. 13,172 (indx 100.0%),  China (5,508), Myanmar_asia (2,688)
+		addFrequent("moro"); // 1219. 6,369 (indx 100.0%),  Italy (5,507), Italy_lombardia (1,292)
+		addFrequent("combe"); // 1220. 6,142 (indx 100.0%),  France (5,503), France_auvergne-rhone-alpes (1,930)
+		addFrequent("quarenta"); // 1221. 5,500 (indx 100.0%),  Brazil (5,500), Brazil_goias (1,186)
+		addFrequent("quốc"); // 1222. 5,641 (indx 100.0%),  Vietnam (5,498), Vietnam_asia (5,498)
+		addFrequent("l'étang"); // 1223. 5,677 (indx 100.0%),  France (5,492), France_auvergne-rhone-alpes (943)
+		addFrequent("mc"); // 1224. 6,235 (indx 100.0%),  Us (5,482), Us_texas (487)
+		addFrequent("mén"); // 1225. 5,480 (indx 100.0%),  China (5,480), China_beijing (762)
+		addFrequent("tou"); // 1226. 8,345 (indx 100.0%),  China (5,479), Taiwan_asia (2,569)
+		addFrequent("لاله"); // 1227. 5,512 (indx 100.0%),  Iran (5,477), Iran_tehran (1,107)
+		addFrequent("cento"); // 1228. 5,628 (indx 100.0%),  Brazil (5,475), Brazil_goias (1,176)
+		addFrequent("max"); // 1229. 7,346 (indx 100.0%),  Germany (5,472), Germany_bayern (1,311)
+		addFrequent("cavour"); // 1230. 5,500 (indx 100.0%),  Italy (5,471), Italy_lombardia (1,295)
+		addFrequent("castle"); // 1231. 11,144 (indx 100.0%),  Us (5,464), Gb_england (2,477)
+		addFrequent("limite"); // 1232. 6,334 (indx 100.0%),  Argentina (5,450), Argentina_santa-fe (1,240)
+		addFrequent("rita"); // 1233. 9,237 (indx 100.0%),  Brazil (5,437), Brazil_minas-gerais (962)
+		addFrequent("veneto"); // 1234. 5,477 (indx 100.0%),  Italy (5,435), Italy_lombardia (1,264)
+		addFrequent("زاده"); // 1235. 5,463 (indx 100.0%),  Iran (5,427), Iran_tehran (1,116)
+		addFrequent("guāng"); // 1236. 5,417 (indx 100.0%),  China (5,417), China_guangdong (742)
+		addFrequent("niños"); // 1237. 5,447 (indx 100.0%),  Mexico (5,416), Mexico_veracruz (918)
+		addFrequent("mesa"); // 1238. 6,528 (indx 100.0%),  Us (5,414), Us_california (1,463)
+		addFrequent("back"); // 1239. 10,197 (indx 100.0%),  Gb (5,408), Gb_england (5,124)
+		addFrequent("hinter"); // 1240. 6,037 (indx 100.0%),  Germany (5,400), Germany_niedersachsen (1,301)
+		addFrequent("ilce"); // 1241. 5,407 (indx 100.0%),  Turkey (5,391), Turkey_marmara (1,328)
+		addFrequent("cascina"); // 1242. 5,378 (indx 100.0%),  Italy (5,378), Italy_lombardia (3,215)
+		addFrequent("jing"); // 1243. 11,274 (indx 73.8%),  Taiwan (5,372), Taiwan_asia (5,372)
+		addFrequent("purok"); // 1244. 5,360 (indx 100.0%),  Philippines (5,360), Philippines_davao-region (2,268)
+		addFrequent("ling"); // 1245. 8,105 (indx 100.0%),  China (5,353), Taiwan_asia (2,017)
+		addFrequent("boundary"); // 1246. 15,015 (indx 100.0%),  China (5,352), Colombia_southamerica (986)
+		addFrequent("minami"); // 1247. 5,327 (indx 100.0%),  Japan (5,327), Japan_kinki (1,729)
+		addFrequent("tavares"); // 1248. 6,480 (indx 100.0%),  Brazil (5,319), Brazil_sao-paulo (1,244)
+		addFrequent("alighieri"); // 1249. 5,374 (indx 100.0%),  Italy (5,314), Italy_lombardia (1,364)
+		addFrequent("فرعی"); // 1250. 5,403 (indx 100.0%),  Iran (5,308), Iran_esfahan (1,825)
+		addFrequent("borgo"); // 1251. 5,383 (indx 100.0%),  Italy (5,308), Italy_veneto (1,067)
+		addFrequent("primeira"); // 1252. 5,349 (indx 100.0%),  Brazil (5,305), Brazil_pernambuco (2,154)
+		addFrequent("vert"); // 1253. 6,026 (indx 100.0%),  France (5,304), France_new-aquitaine (863)
+		addFrequent("post"); // 1254. 6,997 (indx 75.2%),  Us (5,297), Us_texas (845)
+		addFrequent("case"); // 1255. 5,730 (indx 100.0%),  Italy (5,287), Italy_emilia-romagna (1,624)
+		addFrequent("wan"); // 1256. 12,290 (indx 100.0%),  China (5,282), Taiwan_asia (3,918)
+		addFrequent("ford"); // 1257. 6,453 (indx 100.0%),  Us (5,281), Gb_england (641)
+		addFrequent("franz"); // 1258. 8,088 (indx 100.0%),  Germany (5,281), Germany_bayern (1,346)
+		addFrequent("bù"); // 1259. 5,281 (indx 100.0%),  China (5,281), China_beijing (803)
+		addFrequent("zhuāng"); // 1260. 5,274 (indx 53.9%),  China (5,274), China_beijing (1,336)
+		addFrequent("puente"); // 1261. 14,731 (indx 100.0%),  Spain (5,273), Bolivia_southamerica (1,481)
+		addFrequent("ludwig"); // 1262. 5,903 (indx 100.0%),  Germany (5,271), Germany_bayern (1,655)
+		addFrequent("pod"); // 1263. 11,711 (indx 100.0%),  Czech-republic (5,253), Slovakia_europe (1,445)
+		addFrequent("yan"); // 1264. 11,888 (indx 61.9%),  Taiwan (5,246), Taiwan_asia (5,246)
+		addFrequent("binh"); // 1265. 5,260 (indx 100.0%),  Vietnam (5,244), Vietnam_asia (5,244)
+		addFrequent("mtry"); // 1266. 5,258 (indx 100.0%),  Iran (5,228), Iran_tehran (1,201)
+		addFrequent("dé"); // 1267. 5,261 (indx 100.0%),  China (5,224), China_guangdong (930)
+		addFrequent("corner"); // 1268. 7,540 (indx 100.0%),  Us (5,223), Gb_england (1,141)
+		addFrequent("níng"); // 1269. 5,219 (indx 100.0%),  China (5,219), China_jiangsu (611)
+		addFrequent("nelson"); // 1270. 12,523 (indx 100.0%),  Brazil (5,210), Brazil_sao-paulo (1,975)
+		addFrequent("filippo"); // 1271. 5,220 (indx 100.0%),  Italy (5,210), Italy_lombardia (928)
+		addFrequent("rene"); // 1272. 7,036 (indx 100.0%),  France (5,209), France_new-aquitaine (763)
+		addFrequent("límite"); // 1273. 5,916 (indx 100.0%),  Argentina (5,208), Argentina_santa-fe (1,113)
+		addFrequent("l"); // 1274. 15,419 (indx 100.0%),  Us (5,206), Malta_europe (1,186)
+		addFrequent("ronda"); // 1275. 5,511 (indx 100.0%),  Spain (5,205), Spain_andalusia (965)
+		addFrequent("osvaldo"); // 1276. 5,666 (indx 100.0%),  Brazil (5,203), Brazil_sao-paulo (1,283)
+		addFrequent("ji"); // 1277. 12,075 (indx 69.7%),  Taiwan (5,200), Taiwan_asia (5,200)
+		addFrequent("zhèn"); // 1278. 5,188 (indx 100.0%),  China (5,188), China_jiangsu (1,052)
+		addFrequent("ninos"); // 1279. 5,232 (indx 100.0%),  Mexico (5,183), Mexico_veracruz (892)
+		addFrequent("pożarowy"); // 1280. 5,180 (indx 100.0%),  Poland (5,180), Poland_west-pomeranian (1,694)
+		addFrequent("shā"); // 1281. 5,174 (indx 100.0%),  China (5,174), China_guangdong (1,483)
+		addFrequent("mei"); // 1282. 8,027 (indx 100.0%),  Taiwan (5,169), Taiwan_asia (5,169)
+		addFrequent("pozarowy"); // 1283. 5,168 (indx 100.0%),  Poland (5,168), Poland_west-pomeranian (1,685)
+		addFrequent("lĭng"); // 1284. 5,167 (indx 100.0%),  China (5,167), China_guangdong (1,075)
+		addFrequent("allieia"); // 1285. 5,671 (indx 100.0%),  Russia (5,167), Russia_leningradskaya (1,250)
+		addFrequent("chene"); // 1286. 5,766 (indx 100.0%),  France (5,166), France_new-aquitaine (709)
+		addFrequent("дорога"); // 1287. 6,986 (indx 100.0%),  Russia (5,165), Russia_leningradskaya (897)
+		addFrequent("settembre"); // 1288. 5,169 (indx 100.0%),  Italy (5,155), Italy_lombardia (1,084)
+		addFrequent("xian"); // 1289. 11,294 (indx 66.5%),  China (5,150), Taiwan_asia (4,483)
+		addFrequent("bái"); // 1290. 5,140 (indx 100.0%),  China (5,140), China_guangdong (570)
+		addFrequent("ângelo"); // 1291. 5,416 (indx 100.0%),  Brazil (5,137), Brazil_sao-paulo (2,093)
+		addFrequent("dori"); // 1292. 5,183 (indx 100.0%),  Japan (5,130), Japan_kanto (3,080)
+		addFrequent("xià"); // 1293. 5,115 (indx 100.0%),  China (5,115), China_guangdong (920)
+		addFrequent("بهار"); // 1294. 5,249 (indx 100.0%),  Iran (5,112), Iran_tehran (863)
+		addFrequent("زنقة"); // 1295. 5,290 (indx 100.0%),  Morocco (5,107), Morocco_africa (5,107)
+		addFrequent("stanisława"); // 1296. 5,105 (indx 100.0%),  Poland (5,105), Poland_masovian (771)
+		addFrequent("yuè"); // 1297. 5,104 (indx 100.0%),  China (5,104), China_guangdong (674)
+		addFrequent("fr'y"); // 1298. 5,205 (indx 100.0%),  Iran (5,100), Iran_esfahan (1,732)
+		addFrequent("chêne"); // 1299. 5,676 (indx 100.0%),  France (5,099), France_new-aquitaine (694)
+		addFrequent("extension"); // 1300. 10,386 (indx 100.0%),  Us (5,095), Us_new-york (1,557)
+		addFrequent("swm"); // 1301. 5,129 (indx 100.0%),  Iran (5,095), Iran_tehran (1,456)
+		addFrequent("marg"); // 1302. 7,569 (indx 100.0%),  India (5,092), Nepal_asia (2,462)
+		addFrequent("elias"); // 1303. 7,433 (indx 100.0%),  Brazil (5,080), Brazil_sao-paulo (1,686)
+		addFrequent("mahalle"); // 1304. 5,087 (indx 100.0%),  Turkey (5,072), Turkey_central-anatolia (2,131)
+		addFrequent("józefa"); // 1305. 5,071 (indx 100.0%),  Poland (5,071), Poland_silesian (857)
+		addFrequent("riverside"); // 1306. 7,824 (indx 100.0%),  Us (5,064), Gb_england (977)
+		addFrequent("scenic"); // 1307. 5,722 (indx 100.0%),  Us (5,059), Us_california (432)
+		addFrequent("heol"); // 1308. 5,892 (indx 100.0%),  Gb (5,056), Gb_wales (5,056)
+		addFrequent("émile"); // 1309. 6,110 (indx 100.0%),  France (5,055), France_hauts-de-france (649)
+		addFrequent("молодёжная"); // 1310. 5,054 (indx 100.0%),  Russia (5,054), Russia_bashkiria (1,040)
+		addFrequent("zhi"); // 1311. 7,793 (indx 100.0%),  Taiwan (5,046), Taiwan_asia (5,046)
+		addFrequent("croce"); // 1312. 5,145 (indx 100.0%),  Italy (5,040), Italy_lombardia (605)
+		addFrequent("cottonwood"); // 1313. 5,212 (indx 100.0%),  Us (5,039), Us_texas (531)
+		addFrequent("emile"); // 1314. 6,669 (indx 100.0%),  France (5,035), Belgium_wallonia (704)
+		addFrequent("bernardo"); // 1315. 10,287 (indx 100.0%),  Brazil (5,033), Brazil_sao-paulo (1,102)
+		addFrequent("hai"); // 1316. 11,002 (indx 60.4%),  Taiwan (5,031), Taiwan_asia (5,031)
+		addFrequent("băo"); // 1317. 5,014 (indx 100.0%),  China (5,014), China_guangdong (982)
+		addFrequent("persiaran"); // 1318. 5,013 (indx 100.0%),  Malaysia (5,013), Malaysia_asia (5,013)
+		addFrequent("qian"); // 1319. 8,436 (indx 100.0%),  China (5,011), Taiwan_asia (1,928)
+		addFrequent("gabriel"); // 1320. 15,264 (indx 100.0%),  Brazil (5,001), Brazil_sao-paulo (1,558)
+		addFrequent("ramon"); // 1321. 13,058 (indx 100.0%),  Spain (4,997), Carribean-archipelago-all_centralamerica (1,181)
+		addFrequent("1-gil"); // 1322. 4,996 (indx 100.0%),  South-korea (4,996), South-korea_asia (4,996)
+		addFrequent("johann"); // 1323. 7,187 (indx 100.0%),  Germany (4,995), Germany_bayern (1,415)
+		addFrequent("dō"); // 1324. 4,993 (indx 100.0%),  Japan (4,993), Japan_chubu (1,762)
+		addFrequent("orange"); // 1325. 5,973 (indx 100.0%),  Us (4,992), Us_florida (1,040)
+		addFrequent("middle"); // 1326. 10,267 (indx 56.4%),  Us (4,989), China_guangdong (1,174)
+		addFrequent("calçada"); // 1327. 5,381 (indx 100.0%),  Portugal (4,985), Portugal_europe (4,985)
+		addFrequent("verte"); // 1328. 5,530 (indx 100.0%),  France (4,982), France_hauts-de-france (672)
+		addFrequent("jaya"); // 1329. 9,720 (indx 100.0%),  Malaysia (4,980), Malaysia_asia (4,980)
+		addFrequent("leonardo"); // 1330. 8,119 (indx 100.0%),  Italy (4,979), Italy_lombardia (1,057)
+		addFrequent("berg"); // 1331. 6,650 (indx 100.0%),  Germany (4,975), Germany_bayern (905)
+		addFrequent("lange"); // 1332. 6,320 (indx 100.0%),  Germany (4,970), Germany_niedersachsen (1,107)
+		addFrequent("díaz"); // 1333. 8,638 (indx 100.0%),  Mexico (4,966), Mexico_veracruz (848)
+		addFrequent("carl"); // 1334. 7,048 (indx 100.0%),  Germany (4,966), Germany_baden-wuerttemberg (968)
+		addFrequent("jozefa"); // 1335. 5,232 (indx 100.0%),  Poland (4,966), Poland_silesian (831)
+		addFrequent("cabral"); // 1336. 8,291 (indx 100.0%),  Brazil (4,965), Portugal_europe (1,795)
+		addFrequent("thi"); // 1337. 5,297 (indx 100.0%),  Vietnam (4,963), Vietnam_asia (4,963)
+		addFrequent("lago"); // 1338. 17,098 (indx 100.0%),  Mexico (4,960), Mexico_mexico (1,207)
+		addFrequent("ابى"); // 1339. 6,557 (indx 100.0%),  Saudi-arabia (4,948), Saudi-arabia_asia (4,948)
+		addFrequent("lo"); // 1340. 9,438 (indx 100.0%),  Vietnam (4,943), Vietnam_asia (4,943)
+		addFrequent("بوستان"); // 1341. 5,001 (indx 100.0%),  Iran (4,941), Iran_tehran (1,018)
+		addFrequent("foret"); // 1342. 5,309 (indx 100.0%),  France (4,931), France_new-aquitaine (839)
+		addFrequent("franco"); // 1343. 7,308 (indx 100.0%),  Brazil (4,930), Brazil_sao-paulo (2,146)
+		addFrequent("северная"); // 1344. 5,817 (indx 100.0%),  Russia (4,925), Russia_krasnodar (369)
+		addFrequent("esperanca"); // 1345. 5,972 (indx 100.0%),  Brazil (4,924), Portugal_europe (995)
+		addFrequent("barão"); // 1346. 5,197 (indx 100.0%),  Brazil (4,924), Brazil_sao-paulo (1,183)
+		addFrequent("calcada"); // 1347. 5,242 (indx 100.0%),  Portugal (4,923), Portugal_europe (4,923)
+		addFrequent("hou"); // 1348. 8,692 (indx 100.0%),  China (4,921), Taiwan_asia (3,299)
+		addFrequent("tong"); // 1349. 11,150 (indx 100.0%),  Taiwan (4,920), Taiwan_asia (4,920)
+		addFrequent("olive"); // 1350. 5,833 (indx 100.0%),  Us (4,918), Us_california (869)
+		addFrequent("major"); // 1351. 9,705 (indx 100.0%),  Brazil (4,916), Spain_catalunya (2,162)
+		addFrequent("bela"); // 1352. 8,115 (indx 100.0%),  Brazil (4,913), Portugal_europe (1,547)
+		addFrequent("hsyn"); // 1353. 5,195 (indx 100.0%),  Iran (4,912), Iran_tehran (877)
+		addFrequent("salvador"); // 1354. 16,382 (indx 100.0%),  Brazil (4,904), Brazil_sao-paulo (1,762)
+		addFrequent("stefana"); // 1355. 5,531 (indx 100.0%),  Poland (4,904), Poland_masovian (817)
+		addFrequent("grad"); // 1356. 5,482 (indx 100.0%),  Croatia (4,903), Croatia_europe (4,903)
+		addFrequent("ca'"); // 1357. 5,087 (indx 100.0%),  Italy (4,898), Italy_emilia-romagna (2,465)
+		addFrequent("nowa"); // 1358. 7,006 (indx 100.0%),  Poland (4,894), Poland_masovian (738)
+		addFrequent("pfarrer"); // 1359. 5,008 (indx 100.0%),  Germany (4,888), Germany_bayern (2,564)
+		addFrequent("fort"); // 1360. 9,553 (indx 100.0%),  Us (4,873), Us_texas (448)
+		addFrequent("air"); // 1361. 8,584 (indx 100.0%),  France (4,873), France_brittany (908)
+		addFrequent("barao"); // 1362. 5,142 (indx 100.0%),  Brazil (4,871), Brazil_sao-paulo (1,158)
+		addFrequent("huà"); // 1363. 4,871 (indx 100.0%),  China (4,871), China_guangdong (683)
+		addFrequent("row"); // 1364. 10,520 (indx 100.0%),  Gb (4,870), Gb_england (3,868)
+		addFrequent("quán"); // 1365. 5,082 (indx 100.0%),  China (4,865), China_shandong (816)
+		addFrequent("castilla"); // 1366. 6,949 (indx 100.0%),  Spain (4,864), Spain_castilla-leon (1,769)
+		addFrequent("zhèng"); // 1367. 4,862 (indx 100.0%),  China (4,862), China_guangdong (638)
+		addFrequent("mai"); // 1368. 12,537 (indx 100.0%),  France (4,848), Vietnam_asia (3,138)
+		addFrequent("giorgio"); // 1369. 4,889 (indx 100.0%),  Italy (4,845), Italy_lombardia (854)
+		addFrequent("august"); // 1370. 6,231 (indx 100.0%),  Germany (4,841), Germany_sachsen (798)
+		addFrequent("georg"); // 1371. 5,366 (indx 100.0%),  Germany (4,839), Germany_bayern (1,567)
+		addFrequent("diaz"); // 1372. 11,789 (indx 100.0%),  Mexico (4,837), Mexico_veracruz (846)
+		addFrequent("grange"); // 1373. 11,235 (indx 100.0%),  France (4,836), Gb_england (3,682)
+		addFrequent("หมู่"); // 1374. 4,829 (indx 100.0%),  Thailand (4,829), Thailand_asia (4,829)
+		addFrequent("maison"); // 1375. 5,180 (indx 65.7%),  France (4,827), France_pays-de-la-loire (831)
+		addFrequent("hope"); // 1376. 6,377 (indx 100.0%),  Us (4,824), Gb_england (540)
+		addFrequent("forêt"); // 1377. 5,205 (indx 100.0%),  France (4,824), France_new-aquitaine (821)
+		addFrequent("libertà"); // 1378. 4,824 (indx 100.0%),  Italy (4,824), Italy_lombardia (1,128)
+		addFrequent("اسٹریٹ"); // 1379. 4,821 (indx 100.0%),  Pakistan (4,821), Pakistan_asia (4,821)
+		addFrequent("kleine"); // 1380. 6,790 (indx 100.0%),  Germany (4,807), Belgium_flanders (946)
+		addFrequent("центральна"); // 1381. 5,486 (indx 100.0%),  Ukraine (4,806), Ukraine_dnipro (448)
+		addFrequent("liberta"); // 1382. 4,802 (indx 100.0%),  Italy (4,802), Italy_lombardia (1,122)
+		addFrequent("minh"); // 1383. 4,828 (indx 100.0%),  Vietnam (4,800), Vietnam_asia (4,800)
+		addFrequent("residencial"); // 1384. 8,487 (indx 100.0%),  Brazil (4,799), Brazil_sao-paulo (1,785)
+		addFrequent("verde"); // 1385. 16,856 (indx 100.0%),  Brazil (4,791), Us_california (1,349)
+		addFrequent("windsor"); // 1386. 7,299 (indx 100.0%),  Us (4,790), Gb_england (1,451)
+		addFrequent("columbia"); // 1387. 5,308 (indx 100.0%),  Us (4,785), Us_arkansas (559)
+		addFrequent("quattro"); // 1388. 4,784 (indx 100.0%),  Italy (4,784), Italy_lombardia (1,333)
+		addFrequent("ernesto"); // 1389. 8,459 (indx 100.0%),  Brazil (4,767), Brazil_sao-paulo (1,327)
+		addFrequent("alegre"); // 1390. 8,148 (indx 100.0%),  Brazil (4,766), Brazil_sao-paulo (694)
+		addFrequent("elizabeth"); // 1391. 7,515 (indx 100.0%),  Us (4,747), Gb_england (876)
+		addFrequent("کوی"); // 1392. 4,801 (indx 100.0%),  Iran (4,741), Iran_west-azarbaijan (1,355)
+		addFrequent("ai"); // 1393. 8,235 (indx 100.0%),  Taiwan (4,737), Taiwan_asia (4,737)
+		addFrequent("elk"); // 1394. 4,832 (indx 100.0%),  Us (4,735), Us_colorado (553)
+		addFrequent("martín"); // 1395. 12,532 (indx 100.0%),  Argentina (4,727), Peru_southamerica (1,306)
+		addFrequent("york"); // 1396. 7,419 (indx 100.0%),  Us (4,727), Gb_england (1,360)
+		addFrequent("tân"); // 1397. 4,883 (indx 100.0%),  Vietnam (4,725), Vietnam_asia (4,725)
+		addFrequent("novo"); // 1398. 9,711 (indx 100.0%),  Brazil (4,724), Portugal_europe (2,550)
+		addFrequent("manzoni"); // 1399. 4,732 (indx 100.0%),  Italy (4,718), Italy_lombardia (1,658)
+		addFrequent("gunung"); // 1400. 5,211 (indx 100.0%),  Indonesia (4,710), Indonesia_bali (1,122)
+		addFrequent("neuf"); // 1401. 5,046 (indx 100.0%),  France (4,701), France_auvergne-rhone-alpes (592)
+		addFrequent("william"); // 1402. 9,087 (indx 100.0%),  Us (4,696), Gb_england (929)
+		addFrequent("mills"); // 1403. 5,854 (indx 100.0%),  Us (4,693), Us_new-york (523)
+		addFrequent("bali"); // 1404. 5,482 (indx 100.0%),  France (4,690), France_pays-de-la-loire (2,735)
+		addFrequent("siqueira"); // 1405. 4,687 (indx 100.0%),  Brazil (4,687), Brazil_sao-paulo (1,559)
+		addFrequent("hampton"); // 1406. 5,726 (indx 100.0%),  Us (4,685), Gb_england (515)
+		addFrequent("onze"); // 1407. 5,271 (indx 100.0%),  Brazil (4,685), Brazil_sao-paulo (795)
+		addFrequent("hauts"); // 1408. 5,022 (indx 100.0%),  France (4,682), France_auvergne-rhone-alpes (599)
+		addFrequent("trilha"); // 1409. 4,680 (indx 100.0%),  Brazil (4,680), Brazil_rio-de-janeiro (2,018)
+		addFrequent("hohe"); // 1410. 5,018 (indx 100.0%),  Germany (4,677), Germany_nordrhein-westfalen (846)
+		addFrequent("cortile"); // 1411. 4,675 (indx 100.0%),  Italy (4,675), Italy_sicilia (4,441)
+		addFrequent("bao"); // 1412. 9,805 (indx 100.0%),  Taiwan (4,673), Taiwan_asia (4,673)
+		addFrequent("home"); // 1413. 5,750 (indx 100.0%),  Us (4,671), Gb_england (584)
+		addFrequent("maia"); // 1414. 8,032 (indx 100.0%),  Brazil (4,670), Portugal_europe (1,439)
+		addFrequent("shui"); // 1415. 9,221 (indx 67.4%),  Taiwan (4,668), Taiwan_asia (4,668)
+		addFrequent("castelo"); // 1416. 7,483 (indx 100.0%),  Brazil (4,665), Portugal_europe (2,361)
+		addFrequent("wù"); // 1417. 4,660 (indx 100.0%),  China (4,660), China_zhejiang (495)
+		addFrequent("zdh"); // 1418. 4,688 (indx 100.0%),  Iran (4,659), Iran_tehran (958)
+		addFrequent("magalhães"); // 1419. 5,562 (indx 100.0%),  Brazil (4,659), Brazil_minas-gerais (896)
+		addFrequent("tér"); // 1420. 4,928 (indx 100.0%),  Hungary (4,655), Hungary_europe (4,655)
+		addFrequent("sente"); // 1421. 4,909 (indx 100.0%),  France (4,653), France_ile-de-france (2,227)
+		addFrequent("phú"); // 1422. 4,664 (indx 100.0%),  Vietnam (4,652), Vietnam_asia (4,652)
+		addFrequent("trois"); // 1423. 5,415 (indx 100.0%),  France (4,643), France_new-aquitaine (746)
+		addFrequent("siedlung"); // 1424. 5,551 (indx 100.0%),  Germany (4,641), Germany_sachsen (939)
+		addFrequent("lac"); // 1425. 11,372 (indx 51.8%),  Canada (4,640), Canada_quebec (4,508)
+		addFrequent("gap"); // 1426. 5,867 (indx 100.0%),  Us (4,639), Us_north-carolina (695)
+		addFrequent("top"); // 1427. 6,476 (indx 100.0%),  Us (4,639), Gb_england (1,197)
+		addFrequent("chāng"); // 1428. 4,638 (indx 100.0%),  China (4,638), China_jiangxi (945)
+		addFrequent("vía"); // 1429. 16,534 (indx 100.0%),  Colombia (4,635), Colombia_southamerica (4,635)
+		addFrequent("bình"); // 1430. 4,771 (indx 100.0%),  Vietnam (4,632), Vietnam_asia (4,632)
+		addFrequent("южная"); // 1431. 5,639 (indx 100.0%),  Russia (4,631), Russia_moskovskaya-oblast (362)
+		addFrequent("mehmet"); // 1432. 5,446 (indx 100.0%),  Turkey (4,630), Turkey_marmara (1,951)
+		addFrequent("rouge"); // 1433. 5,807 (indx 100.0%),  France (4,630), France_auvergne-rhone-alpes (615)
+		addFrequent("loire"); // 1434. 4,640 (indx 100.0%),  France (4,629), France_centre-loire-valley (1,354)
+		addFrequent("ivana"); // 1435. 8,516 (indx 100.0%),  Ukraine (4,623), Croatia_europe (2,208)
+		addFrequent("w"); // 1436. 8,000 (indx 17.6%),  Iran (4,620), Iran_tehran (1,283)
+		addFrequent("plasenn"); // 1437. 4,620 (indx 100.0%),  France (4,620), France_brittany (3,375)
+		addFrequent("mars"); // 1438. 5,468 (indx 100.0%),  France (4,619), France_occitania (766)
+		addFrequent("magalhaes"); // 1439. 5,501 (indx 100.0%),  Brazil (4,618), Brazil_minas-gerais (909)
+		addFrequent("fang"); // 1440. 6,525 (indx 100.0%),  China (4,614), Taiwan_asia (1,318)
+		addFrequent("outeiro"); // 1441. 6,132 (indx 100.0%),  Portugal (4,613), Portugal_europe (4,613)
+		addFrequent("ion"); // 1442. 7,422 (indx 100.0%),  Romania (4,611), Romania_europe (4,611)
+		addFrequent("cottage"); // 1443. 5,944 (indx 100.0%),  Us (4,609), Gb_england (684)
+		addFrequent("znq"); // 1444. 5,341 (indx 100.0%),  Morocco (4,602), Morocco_africa (4,602)
+		addFrequent("forge"); // 1445. 7,415 (indx 100.0%),  France (4,602), France_new-aquitaine (793)
+		addFrequent("івана"); // 1446. 4,698 (indx 100.0%),  Ukraine (4,599), Ukraine_lviv (814)
+		addFrequent("paz"); // 1447. 15,016 (indx 100.0%),  Brazil (4,598), Portugal_europe (1,156)
+		addFrequent("matos"); // 1448. 6,869 (indx 100.0%),  Brazil (4,595), Portugal_europe (1,603)
+		addFrequent("as"); // 1449. 12,478 (indx 100.0%),  Yemen (4,585), Yemen_asia (4,585)
+		addFrequent("blanc"); // 1450. 5,428 (indx 100.0%),  France (4,583), France_auvergne-rhone-alpes (758)
+		addFrequent("marais"); // 1451. 5,409 (indx 100.0%),  France (4,581), France_hauts-de-france (1,223)
+		addFrequent("joan"); // 1452. 5,700 (indx 100.0%),  Spain (4,579), Spain_catalunya (2,621)
+		addFrequent("viii"); // 1453. 5,321 (indx 100.0%),  Indonesia (4,552), Indonesia_jakarta-raya (1,179)
+		addFrequent("xué"); // 1454. 4,546 (indx 80.0%),  China (4,546), China_jiangsu (454)
+		addFrequent("madonna"); // 1455. 4,650 (indx 100.0%),  Italy (4,540), Italy_puglia (542)
+		addFrequent("محمود"); // 1456. 6,095 (indx 100.0%),  Egypt (4,537), Egypt_africa (4,537)
+		addFrequent("salita"); // 1457. 4,801 (indx 100.0%),  Italy (4,536), Italy_liguria (1,022)
+		addFrequent("gonzález"); // 1458. 9,776 (indx 100.0%),  Mexico (4,534), Carribean-archipelago-all_centralamerica (687)
+		addFrequent("dorogha"); // 1459. 4,930 (indx 100.0%),  Russia (4,520), Russia_leningradskaya (807)
+		addFrequent("abril"); // 1460. 13,780 (indx 100.0%),  Brazil (4,518), Portugal_europe (3,978)
+		addFrequent("santiago"); // 1461. 15,906 (indx 100.0%),  Spain (4,504), Spain_galicia (1,043)
+		addFrequent("ابراهىم"); // 1462. 6,037 (indx 100.0%),  Egypt (4,503), Egypt_africa (4,503)
+		addFrequent("tengah"); // 1463. 5,149 (indx 100.0%),  Indonesia (4,502), Indonesia_jawa-tengah (1,201)
+		addFrequent("quan"); // 1464. 10,337 (indx 100.0%),  Taiwan (4,499), Taiwan_asia (4,499)
+		addFrequent("dale"); // 1465. 6,598 (indx 100.0%),  Us (4,496), Gb_england (1,433)
+		addFrequent("tinh"); // 1466. 4,596 (indx 100.0%),  Vietnam (4,495), Vietnam_asia (4,495)
+		addFrequent("norra"); // 1467. 4,739 (indx 100.0%),  Sweden (4,495), Sweden_vastra-gotaland (689)
+		addFrequent("bukit"); // 1468. 8,310 (indx 100.0%),  Malaysia (4,488), Malaysia_asia (4,488)
+		addFrequent("ter"); // 1469. 5,883 (indx 100.0%),  Hungary (4,487), Hungary_europe (4,487)
+		addFrequent("jiŭ"); // 1470. 4,486 (indx 100.0%),  China (4,486), China_guangdong (759)
+		addFrequent("xxiii"); // 1471. 7,116 (indx 100.0%),  Italy (4,470), Italy_lombardia (1,544)
+		addFrequent("faria"); // 1472. 5,375 (indx 100.0%),  Brazil (4,468), Brazil_sao-paulo (1,616)
+		addFrequent("intrarea"); // 1473. 4,461 (indx 100.0%),  Romania (4,461), Romania_europe (4,461)
+		addFrequent("secondo"); // 1474. 4,459 (indx 100.0%),  Italy (4,459), Italy_sardegna (1,540)
+		addFrequent("lán"); // 1475. 4,456 (indx 100.0%),  China (4,456), China_shandong (542)
+		addFrequent("senda"); // 1476. 7,619 (indx 100.0%),  Spain (4,450), El-salvador_centralamerica (1,553)
+		addFrequent("jì"); // 1477. 4,448 (indx 70.8%),  China (4,448), China_shandong (814)
+		addFrequent("fāng"); // 1478. 4,444 (indx 100.0%),  China (4,444), China_jiangsu (754)
+		addFrequent("ceļš"); // 1479. 4,607 (indx 100.0%),  Latvia (4,439), Latvia_europe (4,439)
+		addFrequent("cao"); // 1480. 8,712 (indx 100.0%),  Vietnam (4,436), Vietnam_asia (4,436)
+		addFrequent("esperança"); // 1481. 5,502 (indx 100.0%),  Brazil (4,435), Portugal_europe (999)
+		addFrequent("ringstraße"); // 1482. 4,565 (indx 100.0%),  Germany (4,432), Germany_bayern (1,065)
+		addFrequent("theodor"); // 1483. 4,852 (indx 100.0%),  Germany (4,422), Germany_nordrhein-westfalen (989)
+		addFrequent("júnior"); // 1484. 5,013 (indx 100.0%),  Brazil (4,422), Brazil_sao-paulo (1,772)
+		addFrequent("abi"); // 1485. 4,418 (indx 100.0%),  Saudi-arabia (4,418), Saudi-arabia_asia (4,418)
+		addFrequent("canal"); // 1486. 15,453 (indx 100.0%),  Us (4,417), Gb_england (594)
+		addFrequent("garcía"); // 1487. 11,823 (indx 100.0%),  Spain (4,416), Spain_andalusia (1,241)
+		addFrequent("ugo"); // 1488. 4,455 (indx 100.0%),  Italy (4,415), Italy_lombardia (907)
+		addFrequent("bwstn"); // 1489. 4,454 (indx 100.0%),  Iran (4,413), Iran_tehran (900)
+		addFrequent("zhàn"); // 1490. 4,410 (indx 68.0%),  China (4,410), China_guangdong (749)
+		addFrequent("marco"); // 1491. 10,355 (indx 100.0%),  Italy (4,405), Portugal_europe (980)
+		addFrequent("ჩიხი"); // 1492. 4,417 (indx 100.0%),  Georgia (4,405), Georgia_asia (4,405)
+		addFrequent("d'en"); // 1493. 7,789 (indx 100.0%),  France (4,400), France_occitania (1,838)
+		addFrequent("güterweg"); // 1494. 4,451 (indx 100.0%),  Austria (4,399), Austria_upper-austria (2,423)
+		addFrequent("cliff"); // 1495. 5,776 (indx 100.0%),  Us (4,393), Gb_england (778)
+		addFrequent("ringstrasse"); // 1496. 4,810 (indx 100.0%),  Germany (4,392), Germany_bayern (1,063)
+		addFrequent("alle"); // 1497. 6,361 (indx 100.0%),  Denmark (4,388), Denmark_capital-region (1,780)
+		addFrequent("район"); // 1498. 8,217 (indx 100.0%),  Russia (4,383), Kazakhstan_asia (494)
+		addFrequent("gonzalez"); // 1499. 10,398 (indx 100.0%),  Mexico (4,383), Carribean-archipelago-all_centralamerica (864)
+		addFrequent("thị"); // 1500. 4,398 (indx 100.0%),  Vietnam (4,379), Vietnam_asia (4,379)
+		addFrequent("pham"); // 1501. 4,377 (indx 100.0%),  Vietnam (4,366), Vietnam_asia (4,366)
+		addFrequent("hentig"); // 1502. 4,365 (indx 100.0%),  France (4,365), France_brittany (3,438)
+		addFrequent("leśna"); // 1503. 4,365 (indx 100.0%),  Poland (4,365), Poland_masovian (844)
+		addFrequent("kirchweg"); // 1504. 5,399 (indx 100.0%),  Germany (4,361), Germany_niedersachsen (1,058)
+		addFrequent("gasperi"); // 1505. 4,410 (indx 100.0%),  Italy (4,358), Italy_lombardia (1,091)
+		addFrequent("carriera"); // 1506. 4,399 (indx 100.0%),  France (4,354), France_provence-alpes-cote-d-azur (4,117)
+		addFrequent("wān"); // 1507. 4,382 (indx 100.0%),  China (4,352), China_guangdong (812)
+		addFrequent("5-chome"); // 1508. 4,352 (indx 100.0%),  Japan (4,352), Japan_kinki (1,132)
+		addFrequent("یکم"); // 1509. 4,368 (indx 100.0%),  Iran (4,351), Iran_tehran (1,890)
+		addFrequent("gaetano"); // 1510. 4,350 (indx 100.0%),  Italy (4,350), Italy_lombardia (986)
+		addFrequent("nuevo"); // 1511. 10,524 (indx 100.0%),  Mexico (4,337), Peru_southamerica (1,306)
+		addFrequent("ba"); // 1512. 16,249 (indx 100.0%),  Taiwan (4,337), Taiwan_asia (4,337)
+		addFrequent("bueno"); // 1513. 4,893 (indx 100.0%),  Brazil (4,335), Brazil_sao-paulo (2,817)
+		addFrequent("khwy"); // 1514. 4,352 (indx 100.0%),  Iran (4,330), Iran_west-azarbaijan (1,378)
+		addFrequent("pecan"); // 1515. 4,351 (indx 100.0%),  Us (4,326), Us_texas (1,684)
+		addFrequent("phạm"); // 1516. 4,324 (indx 100.0%),  Vietnam (4,324), Vietnam_asia (4,324)
+		addFrequent("dalam"); // 1517. 4,456 (indx 100.0%),  Indonesia (4,321), Indonesia_jakarta-raya (1,641)
+		addFrequent("janeiro"); // 1518. 5,704 (indx 100.0%),  Brazil (4,319), Portugal_europe (824)
+		addFrequent("warren"); // 1519. 6,023 (indx 100.0%),  Us (4,316), Gb_england (1,138)
+		addFrequent("3nong"); // 1520. 4,338 (indx 100.0%),  Taiwan (4,311), Taiwan_asia (4,311)
+		addFrequent("battisti"); // 1521. 4,309 (indx 100.0%),  Italy (4,309), Italy_lombardia (1,049)
+		addFrequent("gold"); // 1522. 4,919 (indx 100.0%),  Us (4,295), Us_california (870)
+		addFrequent("prospiekt"); // 1523. 5,190 (indx 100.0%),  Russia (4,289), Russia_leningradskaya (824)
+		addFrequent("blanche"); // 1524. 4,861 (indx 100.0%),  France (4,288), France_auvergne-rhone-alpes (698)
+		addFrequent("t"); // 1525. 8,973 (indx 100.0%),  Us (4,284), Azerbaijan_asia (995)
+		addFrequent("yú"); // 1526. 4,283 (indx 100.0%),  China (4,283), China_jiangsu (618)
+		addFrequent("восточная"); // 1527. 5,400 (indx 100.0%),  Russia (4,278), Russia_moskovskaya-oblast (301)
+		addFrequent("cottages"); // 1528. 5,010 (indx 100.0%),  Gb (4,278), Gb_england (3,432)
+		addFrequent("cels"); // 1529. 4,391 (indx 100.0%),  Latvia (4,277), Latvia_europe (4,277)
+		addFrequent("tỉnh"); // 1530. 4,383 (indx 100.0%),  Vietnam (4,277), Vietnam_asia (4,277)
+		addFrequent("edge"); // 1531. 5,345 (indx 100.0%),  Us (4,269), Gb_england (859)
+		addFrequent("vereda"); // 1532. 16,546 (indx 100.0%),  Portugal (4,266), Portugal_europe (4,266)
+		addFrequent("r."); // 1533. 12,534 (indx 100.0%),  Brazil (4,265), Portugal_europe (1,956)
+		addFrequent("nacional"); // 1534. 11,901 (indx 53.9%),  Argentina (4,257), Portugal_europe (1,459)
+		addFrequent("hoang"); // 1535. 4,266 (indx 100.0%),  Vietnam (4,256), Vietnam_asia (4,256)
+		addFrequent("centre"); // 1536. 11,517 (indx 53.9%),  France (4,254), Gb_england (1,007)
+		addFrequent("چهارم"); // 1537. 4,269 (indx 100.0%),  Iran (4,252), Iran_tehran (1,357)
+		addFrequent("władysława"); // 1538. 4,245 (indx 100.0%),  Poland (4,245), Poland_masovian (565)
+		addFrequent("sportplatz"); // 1539. 4,371 (indx 100.0%),  Germany (4,244), Germany_niedersachsen (706)
+		addFrequent("nam"); // 1540. 6,790 (indx 100.0%),  Vietnam (4,236), Vietnam_asia (4,236)
+		addFrequent("caduti"); // 1541. 4,231 (indx 100.0%),  Italy (4,231), Italy_lombardia (917)
+		addFrequent("cândido"); // 1542. 4,886 (indx 100.0%),  Brazil (4,230), Brazil_sao-paulo (1,119)
+		addFrequent("povoado"); // 1543. 4,229 (indx 100.0%),  Brazil (4,229), Brazil_maranhao (3,466)
+		addFrequent("bosque"); // 1544. 7,231 (indx 100.0%),  Mexico (4,224), Mexico_mexico (1,260)
+		addFrequent("mare"); // 1545. 14,549 (indx 100.0%),  France (4,222), Romania_europe (3,215)
+		addFrequent("flat"); // 1546. 5,691 (indx 100.0%),  Us (4,221), Us_california (843)
+		addFrequent("ying"); // 1547. 8,421 (indx 100.0%),  China (4,220), Taiwan_asia (3,409)
+		addFrequent("domaine"); // 1548. 5,651 (indx 100.0%),  France (4,218), Canada_quebec (1,023)
+		addFrequent("sari"); // 1549. 5,019 (indx 100.0%),  Indonesia (4,216), Indonesia_bali (1,230)
+		addFrequent("piave"); // 1550. 4,202 (indx 100.0%),  Italy (4,202), Italy_lombardia (1,079)
+		addFrequent("lè"); // 1551. 4,200 (indx 100.0%),  China (4,200), China_guangdong (821)
+		addFrequent("حسن"); // 1552. 9,052 (indx 100.0%),  Egypt (4,197), Egypt_africa (4,197)
+		addFrequent("cesta"); // 1553. 10,637 (indx 100.0%),  Slovenia (4,195), Slovenia_europe (4,195)
+		addFrequent("guterweg"); // 1554. 4,244 (indx 100.0%),  Austria (4,192), Austria_upper-austria (2,336)
+		addFrequent("2-gil"); // 1555. 4,189 (indx 100.0%),  South-korea (4,189), South-korea_asia (4,189)
+		addFrequent("huang"); // 1556. 4,949 (indx 100.0%),  China (4,187), Taiwan_asia (556)
+		addFrequent("bian"); // 1557. 5,649 (indx 100.0%),  China (4,178), China_xizang (876)
+		addFrequent("hoàng"); // 1558. 4,188 (indx 100.0%),  Vietnam (4,178), Vietnam_asia (4,178)
+		addFrequent("torre"); // 1559. 12,645 (indx 100.0%),  Italy (4,168), Portugal_europe (1,092)
+		addFrequent("اول"); // 1560. 4,383 (indx 100.0%),  Iran (4,167), Iran_tehran (1,057)
+		addFrequent("cours"); // 1561. 4,444 (indx 100.0%),  France (4,157), France_new-aquitaine (605)
+		addFrequent("ferme"); // 1562. 5,379 (indx 100.0%),  France (4,155), Belgium_wallonia (826)
+		addFrequent("eras"); // 1563. 4,257 (indx 100.0%),  Spain (4,148), Spain_castilla-leon (1,948)
+		addFrequent("colle"); // 1564. 4,350 (indx 100.0%),  Italy (4,145), Italy_lazio (1,131)
+		addFrequent("twp"); // 1565. 4,539 (indx 100.0%),  Us (4,135), Us_ohio (3,665)
+		addFrequent("oberer"); // 1566. 5,981 (indx 100.0%),  Germany (4,131), Germany_baden-wuerttemberg (1,804)
+		addFrequent("kiệt"); // 1567. 4,131 (indx 100.0%),  Vietnam (4,131), Vietnam_asia (4,131)
+		addFrequent("xuân"); // 1568. 4,129 (indx 100.0%),  Vietnam (4,129), Vietnam_asia (4,129)
+		addFrequent("sol"); // 1569. 17,897 (indx 100.0%),  Brazil (4,125), Portugal_europe (1,972)
+		addFrequent("jiang"); // 1570. 6,916 (indx 80.3%),  China (4,121), Taiwan_asia (2,079)
+		addFrequent("camin"); // 1571. 6,427 (indx 100.0%),  France (4,121), France_new-aquitaine (2,315)
+		addFrequent("promenade"); // 1572. 9,964 (indx 100.0%),  France (4,114), Canada_ontario (1,948)
+		addFrequent("sankt"); // 1573. 7,137 (indx 100.0%),  Germany (4,110), Germany_bayern (1,968)
+		addFrequent("mine"); // 1574. 5,714 (indx 43.8%),  Us (4,109), Us_california (869)
+		addFrequent("prado"); // 1575. 9,203 (indx 100.0%),  Brazil (4,106), Brazil_sao-paulo (2,168)
+		addFrequent("posielieniie"); // 1576. 4,100 (indx 100.0%),  Russia (4,100), Russia_tatarstan (960)
+		addFrequent("république"); // 1577. 4,251 (indx 100.0%),  France (4,098), France_occitania (637)
+		addFrequent("urbanización"); // 1578. 6,799 (indx 100.0%),  Spain (4,092), Spain_andalusia (977)
+		addFrequent("wei"); // 1579. 9,503 (indx 100.0%),  Taiwan (4,089), Taiwan_asia (4,089)
+		addFrequent("ward"); // 1580. 13,212 (indx 100.0%),  South-africa (4,086), Myanmar_asia (1,904)
+		addFrequent("općina"); // 1581. 4,462 (indx 100.0%),  Croatia (4,083), Croatia_europe (4,083)
+		addFrequent("republique"); // 1582. 4,154 (indx 100.0%),  France (4,080), France_occitania (642)
+		addFrequent("xuan"); // 1583. 5,136 (indx 100.0%),  Vietnam (4,077), Vietnam_asia (4,077)
+		addFrequent("baixo"); // 1584. 6,186 (indx 100.0%),  Portugal (4,074), Portugal_europe (4,074)
+		addFrequent("mar"); // 1585. 18,913 (indx 100.0%),  Mexico (4,068), Spain_valencia (1,067)
+		addFrequent("linda"); // 1586. 5,661 (indx 100.0%),  Us (4,068), Us_california (894)
+		addFrequent("s."); // 1587. 13,435 (indx 100.0%),  Italy (4,067), Italy_trentino-alto-adige (598)
+		addFrequent("opcina"); // 1588. 4,346 (indx 100.0%),  Croatia (4,066), Croatia_europe (4,066)
+		addFrequent("cimetière"); // 1589. 4,643 (indx 100.0%),  France (4,063), France_occitania (522)
+		addFrequent("droga"); // 1590. 5,629 (indx 100.0%),  Poland (4,061), Germany_brandenburg (1,288)
+		addFrequent("desert"); // 1591. 4,558 (indx 100.0%),  Us (4,058), Us_arizona (1,517)
+		addFrequent("alcide"); // 1592. 4,168 (indx 100.0%),  Italy (4,058), Italy_lombardia (1,028)
+		addFrequent("veg"); // 1593. 4,057 (indx 100.0%),  Norway (4,057), Norway_trondelag (1,481)
+		addFrequent("księdza"); // 1594. 4,054 (indx 100.0%),  Poland (4,054), Poland_silesian (801)
+		addFrequent("block"); // 1595. 11,520 (indx 100.0%),  Pakistan (4,052), Pakistan_asia (4,052)
+		addFrequent("sungai"); // 1596. 6,318 (indx 100.0%),  Malaysia (4,048), Malaysia_asia (4,048)
+		addFrequent("zhen"); // 1597. 8,058 (indx 100.0%),  Taiwan (4,042), Taiwan_asia (4,042)
+		addFrequent("nicola"); // 1598. 4,573 (indx 100.0%),  Italy (4,041), Italy_puglia (977)
+		addFrequent("dame"); // 1599. 5,292 (indx 62.6%),  France (4,035), France_auvergne-rhone-alpes (546)
+		addFrequent("venelle"); // 1600. 4,451 (indx 100.0%),  France (4,034), France_brittany (1,531)
+		addFrequent("ksiedza"); // 1601. 4,034 (indx 100.0%),  Poland (4,034), Poland_silesian (801)
+		addFrequent("libertad"); // 1602. 8,802 (indx 100.0%),  Mexico (4,028), Peru_southamerica (1,064)
+		addFrequent("méxico"); // 1603. 4,753 (indx 100.0%),  Mexico (4,028), Mexico_mexico (680)
+		addFrequent("nad"); // 1604. 8,334 (indx 100.0%),  Czech-republic (4,026), Czech-republic_stredni-cechy (953)
+		addFrequent("vitoria"); // 1605. 4,653 (indx 100.0%),  Brazil (4,026), Brazil_sao-paulo (697)
+		addFrequent("salvatore"); // 1606. 4,049 (indx 100.0%),  Italy (4,025), Italy_sicilia (1,594)
+		addFrequent("turkey"); // 1607. 4,111 (indx 100.0%),  Us (4,023), Us_pennsylvania (312)
+		addFrequent("ricardo"); // 1608. 11,759 (indx 100.0%),  Brazil (4,018), Brazil_sao-paulo (1,244)
+		addFrequent("ramón"); // 1609. 10,854 (indx 100.0%),  Spain (4,010), Carribean-archipelago-all_centralamerica (994)
+		addFrequent("الله"); // 1610. 8,968 (indx 100.0%),  Iran (4,008), Egypt_africa (3,453)
+		addFrequent("kŏu"); // 1611. 4,007 (indx 38.7%),  China (4,007), China_guangdong (524)
+		addFrequent("roundabout"); // 1612. 7,049 (indx 100.0%),  Gb (4,006), Gb_england (2,938)
+		addFrequent("jí"); // 1613. 4,005 (indx 100.0%),  China (4,005), China_guangdong (489)
+		addFrequent("martino"); // 1614. 4,254 (indx 100.0%),  Italy (4,000), Italy_lombardia (831)
+		addFrequent("roque"); // 1615. 10,925 (indx 100.0%),  Brazil (3,998), Brazil_sao-paulo (1,422)
+		addFrequent("bosco"); // 1616. 6,356 (indx 100.0%),  Italy (3,984), Italy_lombardia (794)
+		addFrequent("cimetiere"); // 1617. 4,528 (indx 100.0%),  France (3,980), France_great-east (508)
+		addFrequent("orlando"); // 1618. 5,098 (indx 100.0%),  Brazil (3,977), Brazil_sao-paulo (1,664)
+		addFrequent("generała"); // 1619. 3,975 (indx 100.0%),  Poland (3,975), Poland_masovian (687)
+		addFrequent("bru"); // 1620. 4,088 (indx 100.0%),  Norway (3,974), Norway_innlandet (701)
+		addFrequent("rudolf"); // 1621. 4,713 (indx 100.0%),  Germany (3,971), Germany_bayern (498)
+		addFrequent("hsn"); // 1622. 4,421 (indx 100.0%),  Iran (3,968), Iran_tehran (769)
+		addFrequent("andrews"); // 1623. 5,558 (indx 100.0%),  Us (3,968), Gb_england (728)
+		addFrequent("rocco"); // 1624. 4,022 (indx 100.0%),  Italy (3,963), Italy_lombardia (760)
+		addFrequent("seri"); // 1625. 4,332 (indx 100.0%),  Malaysia (3,956), Malaysia_asia (3,956)
+		addFrequent("زنقه"); // 1626. 4,796 (indx 100.0%),  Morocco (3,953), Morocco_africa (3,953)
+		addFrequent("luzia"); // 1627. 4,686 (indx 100.0%),  Brazil (3,932), Portugal_europe (606)
+		addFrequent("fritz"); // 1628. 4,403 (indx 100.0%),  Germany (3,931), Germany_nordrhein-westfalen (713)
+		addFrequent("josef"); // 1629. 6,597 (indx 100.0%),  Germany (3,922), Germany_bayern (1,668)
+		addFrequent("redwood"); // 1630. 4,710 (indx 100.0%),  Us (3,914), Us_california (958)
+		addFrequent("6nong"); // 1631. 3,931 (indx 100.0%),  Taiwan (3,913), Taiwan_asia (3,913)
+		addFrequent("rui"); // 1632. 6,764 (indx 100.0%),  Brazil (3,908), Taiwan_asia (2,103)
+		addFrequent("urbanizacion"); // 1633. 6,713 (indx 100.0%),  Spain (3,901), Spain_andalusia (1,011)
+		addFrequent("cooper"); // 1634. 4,780 (indx 100.0%),  Us (3,896), Gb_england (325)
+		addFrequent("lugar"); // 1635. 5,435 (indx 100.0%),  Spain (3,891), Spain_galicia (2,147)
+		addFrequent("zhāng"); // 1636. 3,871 (indx 100.0%),  China (3,871), China_jiangsu (727)
+		addFrequent("mhmd"); // 1637. 6,370 (indx 100.0%),  Iran (3,866), Iran_tehran (928)
+		addFrequent("lone"); // 1638. 4,165 (indx 100.0%),  Us (3,866), Us_texas (609)
+		addFrequent("auguste"); // 1639. 4,522 (indx 100.0%),  France (3,866), France_ile-de-france (492)
+		addFrequent("cr"); // 1640. 4,997 (indx 100.0%),  Us (3,866), Us_colorado (2,204)
+		addFrequent("pista"); // 1641. 6,240 (indx 100.0%),  Spain (3,857), Spain_galicia (1,507)
+		addFrequent("bahnhof"); // 1642. 4,110 (indx 100.0%),  Germany (3,852), Germany_niedersachsen (534)
+		addFrequent("plaine"); // 1643. 4,168 (indx 100.0%),  France (3,851), France_auvergne-rhone-alpes (777)
+		addFrequent("d'or"); // 1644. 4,553 (indx 100.0%),  France (3,850), France_auvergne-rhone-alpes (506)
+		addFrequent("kuçeya"); // 1645. 3,843 (indx 100.0%),  Turkey (3,843), Turkey_southeastern-anatolia (3,843)
+		addFrequent("sea"); // 1646. 5,948 (indx 100.0%),  Us (3,838), Us_california (782)
+		addFrequent("cd."); // 1647. 4,043 (indx 100.0%),  Turkey (3,838), Turkey_aegean (1,116)
+		addFrequent("quoc"); // 1648. 3,870 (indx 100.0%),  Vietnam (3,823), Vietnam_asia (3,823)
+		addFrequent("europa"); // 1649. 4,921 (indx 100.0%),  Italy (3,806), Italy_lombardia (1,066)
+		addFrequent("koʻchasi"); // 1650. 3,806 (indx 100.0%),  Uzbekistan (3,806), Uzbekistan_asia (3,806)
+		addFrequent("forestiere"); // 1651. 3,946 (indx 100.0%),  France (3,801), France_great-east (1,069)
+		addFrequent("berliner"); // 1652. 3,834 (indx 100.0%),  Germany (3,790), Germany_niedersachsen (711)
+		addFrequent("sint"); // 1653. 6,056 (indx 100.0%),  Belgium (3,785), Belgium_flanders (3,649)
+		addFrequent("nord"); // 1654. 12,187 (indx 100.0%),  France (3,783), Canada_quebec (1,919)
+		addFrequent("este"); // 1655. 10,778 (indx 100.0%),  Colombia (3,783), Colombia_southamerica (3,783)
+		addFrequent("privata"); // 1656. 3,815 (indx 100.0%),  Italy (3,782), Italy_lombardia (2,045)
+		addFrequent("guan"); // 1657. 7,562 (indx 100.0%),  Taiwan (3,778), Taiwan_asia (3,778)
+		addFrequent("گل"); // 1658. 3,864 (indx 100.0%),  Iran (3,777), Iran_tehran (823)
+		addFrequent("forestière"); // 1659. 3,934 (indx 100.0%),  France (3,768), France_great-east (1,078)
+		addFrequent("no"); // 1660. 22,641 (indx 46.6%),  Japan (3,768), Ecuador_southamerica (2,740)
+		addFrequent("hòu"); // 1661. 3,768 (indx 100.0%),  China (3,768), China_guangdong (560)
+		addFrequent("შესახვევი"); // 1662. 3,762 (indx 100.0%),  Georgia (3,762), Georgia_asia (3,762)
+		addFrequent("broad"); // 1663. 5,312 (indx 100.0%),  Us (3,758), Gb_england (1,239)
+		addFrequent("tái"); // 1664. 3,755 (indx 100.0%),  China (3,755), China_shandong (492)
+		addFrequent("lourenço"); // 1665. 4,701 (indx 100.0%),  Brazil (3,744), Brazil_sao-paulo (1,211)
+		addFrequent("sa"); // 1666. 11,794 (indx 100.0%),  Brazil (3,743), Spain_baleares (2,197)
+		addFrequent("austin"); // 1667. 4,635 (indx 100.0%),  Us (3,742), Us_texas (765)
+		addFrequent("lindero"); // 1668. 3,923 (indx 100.0%),  Venezuela (3,739), Venezuela_southamerica (3,739)
+		addFrequent("kē"); // 1669. 3,730 (indx 100.0%),  China (3,730), China_guangdong (722)
+		addFrequent("vitória"); // 1670. 4,179 (indx 100.0%),  Brazil (3,728), Brazil_sao-paulo (691)
+		addFrequent("chuan"); // 1671. 6,626 (indx 100.0%),  Japan (3,728), Taiwan_asia (966)
+		addFrequent("outubro"); // 1672. 5,601 (indx 100.0%),  Brazil (3,713), Portugal_europe (1,791)
+		addFrequent("leon"); // 1673. 14,102 (indx 100.0%),  France (3,711), Spain_castilla-leon (1,234)
+		addFrequent("wl"); // 1674. 3,845 (indx 100.0%),  Iran (3,707), Iran_tehran (871)
+		addFrequent("lourenco"); // 1675. 4,652 (indx 100.0%),  Brazil (3,700), Brazil_sao-paulo (1,193)
+		addFrequent("agua"); // 1676. 10,752 (indx 100.0%),  Mexico (3,699), Portugal_europe (893)
+		addFrequent("cesar"); // 1677. 6,936 (indx 100.0%),  Brazil (3,694), Brazil_sao-paulo (1,484)
+		addFrequent("cam"); // 1678. 11,927 (indx 100.0%),  Us (3,681), Carribean-archipelago-all_centralamerica (3,121)
+		addFrequent("moulins"); // 1679. 3,922 (indx 100.0%),  France (3,679), France_auvergne-rhone-alpes (675)
+		addFrequent("bulvari"); // 1680. 3,693 (indx 100.0%),  Turkey (3,671), Turkey_marmara (831)
+		addFrequent("пут"); // 1681. 4,006 (indx 100.0%),  Serbia (3,666), Serbia_europe (3,666)
+		addFrequent("ykhm"); // 1682. 3,675 (indx 100.0%),  Iran (3,658), Iran_tehran (1,450)
+		addFrequent("garenne"); // 1683. 3,700 (indx 100.0%),  France (3,652), France_new-aquitaine (796)
+		addFrequent("yao"); // 1684. 4,358 (indx 100.0%),  China (3,652), China_hebei (602)
+		addFrequent("zaułek"); // 1685. 6,432 (indx 100.0%),  Belarus (3,650), Belarus_vitebsk (903)
+		addFrequent("cima"); // 1686. 6,473 (indx 100.0%),  Portugal (3,647), Portugal_europe (3,647)
+		addFrequent("hugo"); // 1687. 8,440 (indx 100.0%),  France (3,641), Brazil_sao-paulo (476)
+		addFrequent("molodiozhnaia"); // 1688. 3,640 (indx 100.0%),  Russia (3,640), Russia_bashkiria (973)
+		addFrequent("pedra"); // 1689. 5,512 (indx 100.0%),  Brazil (3,632), Portugal_europe (1,144)
+		addFrequent("hung"); // 1690. 3,936 (indx 100.0%),  Vietnam (3,631), Vietnam_asia (3,631)
+		addFrequent("arriba"); // 1691. 5,853 (indx 100.0%),  Spain (3,630), Spain_galicia (1,944)
+		addFrequent("oxford"); // 1692. 5,464 (indx 100.0%),  Us (3,630), Gb_england (1,011)
+		addFrequent("armando"); // 1693. 7,843 (indx 100.0%),  Brazil (3,628), Brazil_sao-paulo (1,786)
+		addFrequent("chhrm"); // 1694. 3,639 (indx 100.0%),  Iran (3,628), Iran_tehran (1,048)
+		addFrequent("asri"); // 1695. 3,665 (indx 100.0%),  Indonesia (3,625), Indonesia_jawa-timur (1,029)
+		addFrequent("venticinque"); // 1696. 3,625 (indx 100.0%),  Italy (3,625), Italy_lombardia (1,302)
+		addFrequent("campground"); // 1697. 3,754 (indx 100.0%),  Us (3,622), Us_colorado (463)
+		addFrequent("thang"); // 1698. 3,755 (indx 100.0%),  Vietnam (3,618), Vietnam_asia (3,618)
+		addFrequent("zhou"); // 1699. 6,940 (indx 72.4%),  Taiwan (3,618), Taiwan_asia (3,618)
+		addFrequent("nuova"); // 1700. 3,645 (indx 100.0%),  Italy (3,615), Italy_emilia-romagna (523)
+		addFrequent("golf"); // 1701. 7,318 (indx 100.0%),  Us (3,613), Us_florida (357)
+		addFrequent("mawatha"); // 1702. 3,603 (indx 100.0%),  Sri-lanka (3,603), Sri-lanka_asia (3,603)
+		addFrequent("đình"); // 1703. 3,599 (indx 100.0%),  Vietnam (3,599), Vietnam_asia (3,599)
+		addFrequent("puy"); // 1704. 3,614 (indx 100.0%),  France (3,595), France_new-aquitaine (1,863)
+		addFrequent("shores"); // 1705. 3,740 (indx 100.0%),  Us (3,593), Us_texas (466)
+		addFrequent("ahmet"); // 1706. 4,248 (indx 100.0%),  Turkey (3,592), Turkey_marmara (1,654)
+		addFrequent("ix"); // 1707. 4,588 (indx 100.0%),  Indonesia (3,590), Indonesia_jakarta-raya (889)
+		addFrequent("nueva"); // 1708. 11,814 (indx 100.0%),  Spain (3,585), Peru_southamerica (980)
+		addFrequent("passeig"); // 1709. 3,625 (indx 100.0%),  Spain (3,579), Spain_catalunya (2,550)
+		addFrequent("source"); // 1710. 4,243 (indx 100.0%),  France (3,579), France_auvergne-rhone-alpes (710)
+		addFrequent("dam"); // 1711. 5,979 (indx 48.4%),  Us (3,576), Vietnam_asia (611)
+		addFrequent("ಅಡ್ಡ"); // 1712. 3,576 (indx 100.0%),  India (3,576), India_karnataka (3,576)
+		addFrequent("laguna"); // 1713. 9,165 (indx 100.0%),  Mexico (3,573), Us_california (577)
+		addFrequent("permai"); // 1714. 6,091 (indx 100.0%),  Indonesia (3,573), Malaysia_asia (2,506)
+		addFrequent("rong"); // 1715. 5,410 (indx 100.0%),  Taiwan (3,567), Taiwan_asia (3,567)
+		addFrequent("gō"); // 1716. 3,564 (indx 100.0%),  Japan (3,564), Japan_kanto (940)
+		addFrequent("fontana"); // 1717. 4,572 (indx 100.0%),  Italy (3,559), Italy_lombardia (557)
+		addFrequent("kilómetro"); // 1718. 7,307 (indx 100.0%),  Carribean-archipelago-all (3,557), Carribean-archipelago-all_centralamerica (3,557)
+		addFrequent("kilometro"); // 1719. 7,384 (indx 100.0%),  Carribean-archipelago-all (3,557), Carribean-archipelago-all_centralamerica (3,557)
+		addFrequent("тупик"); // 1720. 10,501 (indx 100.0%),  Russia (3,548), Georgia_asia (3,363)
+		addFrequent("volta"); // 1721. 5,082 (indx 100.0%),  Italy (3,547), Italy_lombardia (1,301)
+		addFrequent("bruyeres"); // 1722. 3,793 (indx 100.0%),  France (3,545), France_auvergne-rhone-alpes (745)
+		addFrequent("kossuth"); // 1723. 3,731 (indx 100.0%),  Hungary (3,540), Hungary_europe (3,540)
+		addFrequent("stazione"); // 1724. 3,620 (indx 100.0%),  Italy (3,539), Italy_lombardia (443)
+		addFrequent("jack"); // 1725. 4,273 (indx 100.0%),  Us (3,538), Us_texas (337)
+		addFrequent("battista"); // 1726. 3,551 (indx 100.0%),  Italy (3,538), Italy_lombardia (845)
+		addFrequent("moss"); // 1727. 5,134 (indx 100.0%),  Us (3,536), Gb_england (1,096)
+		addFrequent("wells"); // 1728. 4,500 (indx 100.0%),  Us (3,535), Gb_england (597)
+		addFrequent("franca"); // 1729. 4,368 (indx 100.0%),  Brazil (3,532), Brazil_sao-paulo (903)
+		addFrequent("praia"); // 1730. 5,574 (indx 100.0%),  Brazil (3,531), Portugal_europe (1,127)
+		addFrequent("hudson"); // 1731. 4,254 (indx 100.0%),  Us (3,531), Us_new-york (550)
+		addFrequent("wind"); // 1732. 3,561 (indx 100.0%),  Us (3,531), Us_texas (643)
+		addFrequent("josep"); // 1733. 3,617 (indx 100.0%),  Spain (3,525), Spain_catalunya (2,453)
+		addFrequent("helena"); // 1734. 4,757 (indx 100.0%),  Brazil (3,523), Brazil_sao-paulo (920)
+		addFrequent("nicolae"); // 1735. 4,640 (indx 100.0%),  Romania (3,523), Romania_europe (3,523)
+		addFrequent("emilio"); // 1736. 10,614 (indx 100.0%),  Brazil (3,522), Brazil_sao-paulo (1,095)
+		addFrequent("cuesta"); // 1737. 5,206 (indx 100.0%),  Spain (3,522), Spain_castilla-leon (890)
+		addFrequent("5nong"); // 1738. 3,541 (indx 100.0%),  Taiwan (3,522), Taiwan_asia (3,522)
+		addFrequent("bruyères"); // 1739. 3,770 (indx 100.0%),  France (3,519), France_auvergne-rhone-alpes (741)
+		addFrequent("gulch"); // 1740. 3,519 (indx 100.0%),  Us (3,519), Us_colorado (1,104)
+		addFrequent("castillo"); // 1741. 7,061 (indx 100.0%),  Spain (3,511), Spain_andalusia (715)
+		addFrequent("mühle"); // 1742. 3,914 (indx 100.0%),  Germany (3,509), Germany_nordrhein-westfalen (647)
+		addFrequent("xíng"); // 1743. 3,509 (indx 100.0%),  China (3,509), China_guangdong (481)
+		addFrequent("principal"); // 1744. 16,439 (indx 100.0%),  Portugal (3,507), Portugal_europe (3,507)
+		addFrequent("antunes"); // 1745. 4,262 (indx 100.0%),  Brazil (3,506), Brazil_sao-paulo (1,351)
+		addFrequent("jiāo"); // 1746. 3,504 (indx 100.0%),  China (3,504), China_shandong (489)
+		addFrequent("casa"); // 1747. 12,481 (indx 100.0%),  Italy (3,503), Portugal_europe (1,812)
+		addFrequent("plantation"); // 1748. 4,544 (indx 100.0%),  Us (3,503), Us_south-carolina (622)
+		addFrequent("dead"); // 1749. 3,503 (indx 100.0%),  Georgia (3,503), Georgia_asia (3,503)
+		addFrequent("sơn"); // 1750. 3,787 (indx 100.0%),  Vietnam (3,502), Vietnam_asia (3,502)
+		addFrequent("kiet"); // 1751. 3,501 (indx 100.0%),  Vietnam (3,501), Vietnam_asia (3,501)
+		addFrequent("mexico"); // 1752. 4,936 (indx 100.0%),  Mexico (3,497), Mexico_mexico (536)
+		addFrequent("minas"); // 1753. 4,656 (indx 100.0%),  Brazil (3,497), Brazil_minas-gerais (1,236)
+		addFrequent("loteamento"); // 1754. 4,093 (indx 100.0%),  Brazil (3,496), Brazil_santa-catarina (727)
+		addFrequent("عطفه"); // 1755. 3,495 (indx 100.0%),  Egypt (3,495), Egypt_africa (3,495)
+		addFrequent("parish"); // 1756. 3,824 (indx 100.0%),  Us (3,493), Us_louisiana (3,066)
+		addFrequent("grandes"); // 1757. 4,015 (indx 100.0%),  France (3,492), France_auvergne-rhone-alpes (698)
+		addFrequent("muhle"); // 1758. 3,814 (indx 100.0%),  Germany (3,489), Germany_nordrhein-westfalen (647)
+		addFrequent("you"); // 1759. 5,264 (indx 64.6%),  Taiwan (3,486), Taiwan_asia (3,486)
+		addFrequent("kou"); // 1760. 5,648 (indx 88.3%),  China (3,484), Taiwan_asia (1,584)
+		addFrequent("side"); // 1761. 7,273 (indx 100.0%),  Us (3,482), Gb_england (1,014)
+		addFrequent("jános"); // 1762. 3,725 (indx 100.0%),  Hungary (3,473), Hungary_europe (3,473)
+		addFrequent("number"); // 1763. 5,673 (indx 100.0%),  India (3,469), India_delhi (1,153)
+		addFrequent("nowy"); // 1764. 3,827 (indx 100.0%),  Poland (3,469), Poland_masovian (717)
+		addFrequent("son"); // 1765. 6,189 (indx 100.0%),  Vietnam (3,464), Vietnam_asia (3,464)
+		addFrequent("nuestra"); // 1766. 5,188 (indx 100.0%),  Spain (3,460), Spain_andalusia (1,035)
+		addFrequent("gyi"); // 1767. 3,459 (indx 100.0%),  Myanmar (3,459), Myanmar_asia (3,459)
+		addFrequent("jiu"); // 1768. 7,165 (indx 100.0%),  Taiwan (3,456), Taiwan_asia (3,456)
+		addFrequent("granges"); // 1769. 3,653 (indx 100.0%),  France (3,447), France_auvergne-rhone-alpes (1,402)
+		addFrequent("ocean"); // 1770. 4,861 (indx 100.0%),  Us (3,444), Us_florida (652)
+		addFrequent("thôn"); // 1771. 3,468 (indx 100.0%),  Vietnam (3,441), Vietnam_asia (3,441)
+		addFrequent("jiao"); // 1772. 5,995 (indx 100.0%),  Taiwan (3,441), Taiwan_asia (3,441)
+		addFrequent("1xiang"); // 1773. 3,435 (indx 100.0%),  Taiwan (3,435), Taiwan_asia (3,435)
+		addFrequent("perdana"); // 1774. 3,595 (indx 100.0%),  Malaysia (3,431), Malaysia_asia (3,431)
+		addFrequent("quarry"); // 1775. 6,005 (indx 100.0%),  Us (3,428), Gb_england (940)
+		addFrequent("thon"); // 1776. 3,606 (indx 100.0%),  Vietnam (3,428), Vietnam_asia (3,428)
+		addFrequent("soleil"); // 1777. 4,207 (indx 100.0%),  France (3,419), France_auvergne-rhone-alpes (682)
+		addFrequent("janos"); // 1778. 3,561 (indx 100.0%),  Hungary (3,418), Hungary_europe (3,418)
+		addFrequent("division"); // 1779. 6,442 (indx 100.0%),  Us (3,417), Ireland_europe (875)
+		addFrequent("dau"); // 1780. 4,047 (indx 100.0%),  France (3,417), France_provence-alpes-cote-d-azur (1,953)
+		addFrequent("buffalo"); // 1781. 3,728 (indx 100.0%),  Us (3,415), Us_texas (473)
+		addFrequent("western"); // 1782. 6,637 (indx 100.0%),  Us (3,410), Gb_england (815)
+		addFrequent("پنجم"); // 1783. 3,435 (indx 100.0%),  Iran (3,409), Iran_tehran (1,109)
+		addFrequent("zhū"); // 1784. 3,409 (indx 100.0%),  China (3,409), China_guangdong (734)
+		addFrequent("keng"); // 1785. 7,068 (indx 100.0%),  Taiwan (3,400), Taiwan_asia (3,400)
+		addFrequent("yard"); // 1786. 3,828 (indx 100.0%),  Gb (3,399), Gb_england (3,268)
+		addFrequent("león"); // 1787. 7,816 (indx 100.0%),  Spain (3,398), Spain_castilla-leon (1,313)
+		addFrequent("ronco"); // 1788. 3,499 (indx 100.0%),  Italy (3,398), Italy_sicilia (2,652)
+		addFrequent("velha"); // 1789. 6,015 (indx 100.0%),  Portugal (3,396), Portugal_europe (3,396)
+		addFrequent("vinci"); // 1790. 4,236 (indx 100.0%),  Italy (3,392), Italy_lombardia (1,007)
+		addFrequent("p"); // 1791. 9,830 (indx 60.5%),  Us (3,384), Carribean-archipelago-all_centralamerica (478)
+		addFrequent("first"); // 1792. 6,498 (indx 79.5%),  Us (3,380), Gb_england (426)
+		addFrequent("2xiang"); // 1793. 3,393 (indx 100.0%),  Taiwan (3,377), Taiwan_asia (3,377)
+		addFrequent("il"); // 1794. 6,807 (indx 100.0%),  Malta (3,373), Malta_europe (3,373)
+		addFrequent("rafael"); // 1795. 15,489 (indx 100.0%),  Brazil (3,372), Brazil_sao-paulo (1,224)
+		addFrequent("cambridge"); // 1796. 5,012 (indx 100.0%),  Us (3,371), Gb_england (952)
+		addFrequent("dian"); // 1797. 5,063 (indx 82.0%),  China (3,370), Taiwan_asia (1,441)
+		addFrequent("bó"); // 1798. 3,444 (indx 100.0%),  China (3,369), China_shandong (389)
+		addFrequent("sotto"); // 1799. 3,529 (indx 100.0%),  Italy (3,364), Italy_emilia-romagna (648)
+		addFrequent("الشىخ"); // 1800. 5,075 (indx 100.0%),  Egypt (3,355), Egypt_africa (3,355)
+		addFrequent("camillo"); // 1801. 3,373 (indx 100.0%),  Italy (3,346), Italy_lombardia (867)
+		addFrequent("great"); // 1802. 7,065 (indx 100.0%),  Us (3,345), Gb_england (2,124)
+		addFrequent("mello"); // 1803. 3,413 (indx 100.0%),  Brazil (3,344), Brazil_sao-paulo (1,493)
+		addFrequent("lesna"); // 1804. 3,344 (indx 100.0%),  Poland (3,344), Poland_masovian (841)
+		addFrequent("poste"); // 1805. 3,763 (indx 100.0%),  France (3,342), France_new-aquitaine (551)
+		addFrequent("marsh"); // 1806. 5,023 (indx 100.0%),  Us (3,340), Gb_england (1,151)
+		addFrequent("tóu"); // 1807. 3,338 (indx 100.0%),  China (3,338), China_guangdong (787)
+		addFrequent("озёрная"); // 1808. 4,229 (indx 100.0%),  Russia (3,337), Russia_moskovskaya-oblast (314)
+		addFrequent("lajos"); // 1809. 3,558 (indx 100.0%),  Hungary (3,333), Hungary_europe (3,333)
+		addFrequent("dương"); // 1810. 3,482 (indx 100.0%),  Vietnam (3,326), Vietnam_asia (3,326)
+		addFrequent("duc"); // 1811. 4,174 (indx 100.0%),  Vietnam (3,323), Vietnam_asia (3,323)
+		addFrequent("unterer"); // 1812. 4,966 (indx 100.0%),  Germany (3,322), Germany_baden-wuerttemberg (1,478)
+		addFrequent("notre"); // 1813. 4,302 (indx 64.7%),  France (3,319), France_occitania (480)
+		addFrequent("pŭ"); // 1814. 3,317 (indx 100.0%),  China (3,317), China_jiangsu (892)
+		addFrequent("bayt"); // 1815. 3,387 (indx 100.0%),  Yemen (3,314), Yemen_asia (3,314)
+		addFrequent("dry"); // 1816. 4,518 (indx 100.0%),  Us (3,312), Iran_mazandaran (352)
+		addFrequent("autovía"); // 1817. 3,506 (indx 100.0%),  Spain (3,312), Spain_galicia (806)
+		addFrequent("phong"); // 1818. 3,525 (indx 100.0%),  Vietnam (3,309), Vietnam_asia (3,309)
+		addFrequent("pablo"); // 1819. 14,117 (indx 100.0%),  Mexico (3,301), Carribean-archipelago-all_centralamerica (840)
+		addFrequent("jī"); // 1820. 3,293 (indx 100.0%),  China (3,293), China_guangdong (554)
+		addFrequent("zhì"); // 1821. 3,291 (indx 100.0%),  China (3,291), China_jiangsu (412)
+		addFrequent("chaussee"); // 1822. 6,745 (indx 100.0%),  Germany (3,286), Belgium_wallonia (1,774)
+		addFrequent("n"); // 1823. 19,591 (indx 44.2%),  Belgium (3,282), Belgium_wallonia (3,253)
+		addFrequent("por"); // 1824. 4,064 (indx 100.0%),  Spain (3,275), Spain_castilla-leon (1,335)
+		addFrequent("площадь"); // 1825. 4,347 (indx 100.0%),  Russia (3,275), Russia_moskovskaya-oblast (508)
+		addFrequent("lann"); // 1826. 3,306 (indx 100.0%),  France (3,272), France_brittany (2,931)
+		addFrequent("gamla"); // 1827. 3,760 (indx 100.0%),  Sweden (3,270), Sweden_vastra-gotaland (600)
+		addFrequent("giang"); // 1828. 3,468 (indx 100.0%),  Vietnam (3,260), Vietnam_asia (3,260)
+		addFrequent("yeni"); // 1829. 3,575 (indx 100.0%),  Turkey (3,256), Turkey_marmara (1,514)
+		addFrequent("valea"); // 1830. 3,761 (indx 100.0%),  Romania (3,246), Romania_europe (3,246)
+		addFrequent("university"); // 1831. 4,476 (indx 100.0%),  Us (3,243), Us_texas (276)
+		addFrequent("capela"); // 1832. 3,931 (indx 100.0%),  Portugal (3,241), Portugal_europe (3,241)
+		addFrequent("eugenio"); // 1833. 8,003 (indx 100.0%),  Brazil (3,230), Brazil_sao-paulo (1,059)
+		addFrequent("หมู่ที่"); // 1834. 3,230 (indx 100.0%),  Thailand (3,230), Thailand_asia (3,230)
+		addFrequent("shu"); // 1835. 5,844 (indx 100.0%),  China (3,229), Taiwan_asia (2,161)
+		addFrequent("cel"); // 1836. 5,888 (indx 100.0%),  Moldova (3,225), Moldova_europe (3,225)
+		addFrequent("السىد"); // 1837. 3,354 (indx 100.0%),  Egypt (3,223), Egypt_africa (3,223)
+		addFrequent("liao"); // 1838. 3,813 (indx 100.0%),  Taiwan (3,222), Taiwan_asia (3,222)
+		addFrequent("ancien"); // 1839. 3,460 (indx 100.0%),  France (3,217), France_occitania (1,084)
+		addFrequent("diàn"); // 1840. 3,216 (indx 58.7%),  China (3,216), China_beijing (388)
+		addFrequent("gao"); // 1841. 7,289 (indx 74.6%),  China (3,208), Taiwan_asia (2,652)
+		addFrequent("americo"); // 1842. 4,020 (indx 100.0%),  Brazil (3,206), Brazil_sao-paulo (1,117)
+		addFrequent("tu"); // 1843. 6,738 (indx 100.0%),  Vietnam (3,203), Vietnam_asia (3,203)
+		addFrequent("gōu"); // 1844. 3,202 (indx 100.0%),  China (3,202), China_beijing (1,303)
+		addFrequent("principale"); // 1845. 4,736 (indx 100.0%),  France (3,200), France_great-east (1,204)
+		addFrequent("sheikh"); // 1846. 4,488 (indx 100.0%),  Egypt (3,198), Egypt_africa (3,198)
+		addFrequent("بىت"); // 1847. 3,823 (indx 100.0%),  Yemen (3,198), Yemen_asia (3,198)
+		addFrequent("duàn"); // 1848. 3,195 (indx 100.0%),  China (3,195), China_sichuan (3,195)
+		addFrequent("lande"); // 1849. 3,259 (indx 100.0%),  France (3,194), France_brittany (1,236)
+		addFrequent("riviere"); // 1850. 5,095 (indx 100.0%),  France (3,186), Canada_quebec (1,093)
+		addFrequent("chen"); // 1851. 3,498 (indx 100.0%),  China (3,183), China_henan (405)
+		addFrequent("arroyo"); // 1852. 8,815 (indx 45.0%),  Mexico (3,181), Us_california (695)
+		addFrequent("ha"); // 1853. 8,200 (indx 100.0%),  Lesotho (3,177), Lesotho_africa (3,177)
+		addFrequent("hong"); // 1854. 7,707 (indx 100.0%),  China (3,175), Vietnam_asia (2,221)
+		addFrequent("округ"); // 1855. 4,128 (indx 100.0%),  Russia (3,172), Kazakhstan_asia (480)
+		addFrequent("поселення"); // 1856. 3,455 (indx 100.0%),  Russia (3,171), Russia_rostovskaya (475)
+		addFrequent("condominio"); // 1857. 6,869 (indx 100.0%),  Brazil (3,164), Mexico_mexico (722)
+		addFrequent("rivière"); // 1858. 6,096 (indx 100.0%),  France (3,163), Canada_quebec (1,362)
+		addFrequent("font"); // 1859. 6,169 (indx 100.0%),  Spain (3,156), Spain_catalunya (2,003)
+		addFrequent("سكه"); // 1860. 3,696 (indx 100.0%),  Oman (3,155), Oman_asia (3,155)
+		addFrequent("s"); // 1861. 14,876 (indx 37.9%),  Mexico (3,153), Azerbaijan_asia (1,983)
+		addFrequent("sá"); // 1862. 5,131 (indx 100.0%),  Brazil (3,153), Portugal_europe (1,925)
+		addFrequent("ferraz"); // 1863. 3,187 (indx 100.0%),  Brazil (3,148), Brazil_sao-paulo (1,663)
+		addFrequent("attila"); // 1864. 3,281 (indx 100.0%),  Hungary (3,148), Hungary_europe (3,148)
+		addFrequent("yí"); // 1865. 3,146 (indx 100.0%),  China (3,146), China_guangdong (564)
+		addFrequent("huy"); // 1866. 3,379 (indx 100.0%),  Vietnam (3,145), Vietnam_asia (3,145)
+		addFrequent("ffordd"); // 1867. 3,145 (indx 100.0%),  Gb (3,145), Gb_wales (3,133)
+		addFrequent("pacific"); // 1868. 4,183 (indx 100.0%),  Us (3,135), Us_california (1,041)
+		addFrequent("marii"); // 1869. 3,277 (indx 100.0%),  Poland (3,134), Poland_masovian (473)
+		addFrequent("gia"); // 1870. 3,221 (indx 100.0%),  Vietnam (3,128), Vietnam_asia (3,128)
+		addFrequent("amazonas"); // 1871. 4,558 (indx 100.0%),  Brazil (3,120), Peru_southamerica (568)
+		addFrequent("catarina"); // 1872. 4,791 (indx 100.0%),  Brazil (3,111), Portugal_europe (1,156)
+		addFrequent("pri"); // 1873. 4,314 (indx 100.0%),  Slovenia (3,110), Slovenia_europe (3,110)
+		addFrequent("xue"); // 1874. 3,820 (indx 57.5%),  Taiwan (3,109), Taiwan_asia (3,109)
+		addFrequent("amaro"); // 1875. 4,699 (indx 100.0%),  Brazil (3,105), Portugal_europe (1,100)
+		addFrequent("nong"); // 1876. 7,071 (indx 100.0%),  Thailand (3,105), Thailand_asia (3,105)
+		addFrequent("croissant"); // 1877. 3,279 (indx 100.0%),  Canada (3,097), Canada_ontario (2,010)
+		addFrequent("petőfi"); // 1878. 3,311 (indx 100.0%),  Hungary (3,093), Hungary_europe (3,093)
+		addFrequent("đức"); // 1879. 3,093 (indx 100.0%),  Vietnam (3,093), Vietnam_asia (3,093)
+		addFrequent("gazi"); // 1880. 3,206 (indx 100.0%),  Turkey (3,091), Turkey_marmara (1,457)
+		addFrequent("southern"); // 1881. 4,974 (indx 100.0%),  Us (3,084), Us_texas (336)
+		addFrequent("landes"); // 1882. 3,136 (indx 100.0%),  France (3,082), France_pays-de-la-loire (991)
+		addFrequent("ممر"); // 1883. 5,336 (indx 100.0%),  United-arab-emirates (3,081), United-arab-emirates_asia (3,081)
+		addFrequent("kim"); // 1884. 3,605 (indx 100.0%),  Vietnam (3,081), Vietnam_asia (3,081)
+		addFrequent("dì"); // 1885. 3,079 (indx 43.5%),  China (3,079), China_guangdong (636)
+		addFrequent("ribeira"); // 1886. 4,466 (indx 100.0%),  Portugal (3,076), Portugal_europe (3,076)
+		addFrequent("sargento"); // 1887. 4,946 (indx 100.0%),  Brazil (3,060), Brazil_sao-paulo (1,009)
+		addFrequent("huan"); // 1888. 4,043 (indx 100.0%),  Taiwan (3,059), Taiwan_asia (3,059)
+		addFrequent("petofi"); // 1889. 3,185 (indx 100.0%),  Hungary (3,058), Hungary_europe (3,058)
+		addFrequent("ti"); // 1890. 5,123 (indx 100.0%),  France (3,053), France_brittany (2,761)
+		addFrequent("vincent"); // 1891. 5,817 (indx 100.0%),  France (3,046), France_occitania (378)
+		addFrequent("crown"); // 1892. 4,792 (indx 100.0%),  Us (3,044), Gb_england (908)
+		addFrequent("oswaldo"); // 1893. 3,125 (indx 100.0%),  Brazil (3,033), Brazil_sao-paulo (1,354)
+		addFrequent("alla"); // 1894. 3,647 (indx 100.0%),  Italy (3,032), Italy_lombardia (1,020)
+		addFrequent("bai"); // 1895. 5,258 (indx 100.0%),  China (3,032), Taiwan_asia (1,019)
+		addFrequent("tyler"); // 1896. 3,126 (indx 100.0%),  Us (3,032), Us_texas (250)
+		addFrequent("madrid"); // 1897. 5,178 (indx 100.0%),  Spain (3,027), Spain_castilla-leon (767)
+		addFrequent("tián"); // 1898. 3,019 (indx 100.0%),  China (3,019), China_guangdong (1,059)
+		addFrequent("zu"); // 1899. 7,211 (indx 100.0%),  Taiwan (3,018), Taiwan_asia (3,018)
+		addFrequent("gue"); // 1900. 3,134 (indx 100.0%),  France (3,009), France_centre-loire-valley (557)
+		addFrequent("vor"); // 1901. 3,171 (indx 100.0%),  Germany (3,008), Germany_niedersachsen (1,097)
+		addFrequent("cuo"); // 1902. 3,608 (indx 100.0%),  Taiwan (3,006), Taiwan_asia (3,006)
+		addFrequent("michael"); // 1903. 5,667 (indx 100.0%),  Us (3,002), Germany_bayern (629)
+		addFrequent("sud"); // 1904. 10,012 (indx 100.0%),  France (2,997), Canada_quebec (1,582)
+		addFrequent("united"); // 1905. 3,043 (indx 92.5%),  Us (2,997), Us_oregon (1,773)
+		addFrequent("kang"); // 1906. 4,367 (indx 100.0%),  Taiwan (2,996), Taiwan_asia (2,996)
+		addFrequent("acceso"); // 1907. 12,019 (indx 100.0%),  Spain (2,995), Costa-rica_centralamerica (1,364)
+		addFrequent("посёлок"); // 1908. 3,150 (indx 100.0%),  Russia (2,993), Russia_moskovskaya-oblast (933)
+		addFrequent("cañada"); // 1909. 4,523 (indx 100.0%),  Spain (2,992), Spain_castilla-leon (821)
+		addFrequent("xxv"); // 1910. 3,045 (indx 100.0%),  Italy (2,980), Italy_lombardia (1,188)
+		addFrequent("kk"); // 1911. 4,295 (indx 100.0%),  Rwanda (2,976), Rwanda_africa (2,976)
+		addFrequent("3-gil"); // 1912. 2,976 (indx 100.0%),  South-korea (2,976), South-korea_asia (2,976)
+		addFrequent("chē"); // 1913. 2,974 (indx 100.0%),  China (2,974), China_guangdong (361)
+		addFrequent("peter"); // 1914. 6,827 (indx 100.0%),  Germany (2,973), Germany_bayern (787)
+		addFrequent("arruda"); // 1915. 3,000 (indx 100.0%),  Brazil (2,973), Brazil_sao-paulo (1,407)
+		addFrequent("arany"); // 1916. 3,084 (indx 100.0%),  Hungary (2,973), Hungary_europe (2,973)
+		addFrequent("three"); // 1917. 3,978 (indx 100.0%),  Us (2,971), Gb_england (360)
+		addFrequent("8nong"); // 1918. 2,981 (indx 100.0%),  Taiwan (2,971), Taiwan_asia (2,971)
+		addFrequent("цэнтральная"); // 1919. 3,326 (indx 100.0%),  Belarus (2,969), Belarus_minsk (1,309)
+		addFrequent("الحاج"); // 1920. 3,329 (indx 100.0%),  Egypt (2,967), Egypt_africa (2,967)
+		addFrequent("no."); // 1921. 3,408 (indx 100.0%),  Saudi-arabia (2,964), Saudi-arabia_asia (2,964)
+		addFrequent("tsentral'naia"); // 1922. 2,968 (indx 100.0%),  Belarus (2,958), Belarus_minsk (1,303)
+		addFrequent("tíng"); // 1923. 2,954 (indx 100.0%),  China (2,954), China_jiangsu (425)
+		addFrequent("centro"); // 1924. 9,512 (indx 100.0%),  Brazil (2,953), Portugal_europe (1,193)
+		addFrequent("thành"); // 1925. 3,139 (indx 100.0%),  Vietnam (2,951), Vietnam_asia (2,951)
+		addFrequent("palma"); // 1926. 9,190 (indx 100.0%),  Mexico (2,950), Carribean-archipelago-all_centralamerica (737)
+		addFrequent("sri"); // 1927. 4,935 (indx 100.0%),  Malaysia (2,950), Malaysia_asia (2,950)
+		addFrequent("chaung"); // 1928. 2,943 (indx 100.0%),  Myanmar (2,943), Myanmar_asia (2,943)
+		addFrequent("linh"); // 1929. 2,938 (indx 100.0%),  Vietnam (2,938), Vietnam_asia (2,938)
+		addFrequent("مصطفى"); // 1930. 3,290 (indx 100.0%),  Egypt (2,935), Egypt_africa (2,935)
+		addFrequent("truong"); // 1931. 2,949 (indx 100.0%),  Vietnam (2,935), Vietnam_asia (2,935)
+		addFrequent("autovia"); // 1932. 3,088 (indx 100.0%),  Spain (2,934), Spain_galicia (478)
+		addFrequent("knob"); // 1933. 3,006 (indx 100.0%),  Us (2,934), Us_north-carolina (522)
+		addFrequent("canada"); // 1934. 9,697 (indx 100.0%),  Spain (2,933), Portugal_europe (1,345)
+		addFrequent("wáng"); // 1935. 2,926 (indx 100.0%),  China (2,926), China_shandong (357)
+		addFrequent("józsef"); // 1936. 3,157 (indx 100.0%),  Hungary (2,925), Hungary_europe (2,925)
+		addFrequent("azul"); // 1937. 6,457 (indx 100.0%),  Brazil (2,924), Brazil_sao-paulo (472)
+		addFrequent("tanjung"); // 1938. 4,498 (indx 100.0%),  Indonesia (2,924), Malaysia_asia (1,563)
+		addFrequent("rancho"); // 1939. 6,532 (indx 100.0%),  Us (2,922), Us_california (1,629)
+		addFrequent("ouest"); // 1940. 4,792 (indx 100.0%),  Canada (2,917), Canada_quebec (2,794)
+		addFrequent("masjid"); // 1941. 4,787 (indx 38.9%),  Indonesia (2,916), Indonesia_jakarta-raya (771)
+		addFrequent("humberto"); // 1942. 5,289 (indx 100.0%),  Brazil (2,912), Portugal_europe (1,161)
+		addFrequent("hag"); // 1943. 3,138 (indx 100.0%),  Egypt (2,911), Egypt_africa (2,911)
+		addFrequent("césar"); // 1944. 5,189 (indx 100.0%),  Brazil (2,910), Brazil_sao-paulo (1,246)
+		addFrequent("szent"); // 1945. 3,036 (indx 100.0%),  Hungary (2,909), Hungary_europe (2,909)
+		addFrequent("ka"); // 1946. 6,017 (indx 100.0%),  India (2,907), India_rajasthan (2,037)
+		addFrequent("kamp"); // 1947. 3,235 (indx 100.0%),  Germany (2,904), Germany_niedersachsen (1,229)
+		addFrequent("сільське"); // 1948. 3,184 (indx 100.0%),  Russia (2,902), Russia_rostovskaya (456)
+		addFrequent("vega"); // 1949. 6,721 (indx 100.0%),  Spain (2,897), Spain_castilla-leon (681)
+		addFrequent("pin"); // 1950. 7,001 (indx 100.0%),  Myanmar (2,897), Myanmar_asia (2,897)
+		addFrequent("states"); // 1951. 2,895 (indx 100.0%),  Us (2,895), Us_oregon (1,772)
+		addFrequent("vell"); // 1952. 2,961 (indx 100.0%),  Spain (2,892), Spain_catalunya (1,342)
+		addFrequent("corte"); // 1953. 5,811 (indx 100.0%),  Italy (2,892), Us_california (1,960)
+		addFrequent("moor"); // 1954. 3,829 (indx 100.0%),  Gb (2,890), Gb_england (2,781)
+		addFrequent("jozsef"); // 1955. 2,987 (indx 100.0%),  Hungary (2,887), Hungary_europe (2,887)
+		addFrequent("morro"); // 1956. 3,455 (indx 100.0%),  Brazil (2,885), Brazil_bahia (501)
+		addFrequent("atatürk"); // 1957. 2,950 (indx 100.0%),  Turkey (2,880), Turkey_marmara (995)
+		addFrequent("gomez"); // 1958. 7,341 (indx 100.0%),  Mexico (2,878), Carribean-archipelago-all_centralamerica (844)
+		addFrequent("sitio"); // 1959. 7,296 (indx 100.0%),  Brazil (2,877), Philippines_davao-region (1,061)
+		addFrequent("piste"); // 1960. 4,853 (indx 100.0%),  France (2,873), France_provence-alpes-cote-d-azur (1,027)
+		addFrequent("ninh"); // 1961. 2,941 (indx 100.0%),  Vietnam (2,868), Vietnam_asia (2,868)
+		addFrequent("lookout"); // 1962. 3,926 (indx 100.0%),  Us (2,866), Us_california (384)
+		addFrequent("bahia"); // 1963. 5,801 (indx 100.0%),  Brazil (2,865), Brazil_minas-gerais (535)
+		addFrequent("shou"); // 1964. 3,951 (indx 100.0%),  Taiwan (2,863), Taiwan_asia (2,863)
+		addFrequent("marginal"); // 1965. 4,753 (indx 100.0%),  Brazil (2,859), Brazil_sao-paulo (1,401)
+		addFrequent("x"); // 1966. 7,407 (indx 100.0%),  Indonesia (2,859), Indonesia_jawa-timur (730)
+		addFrequent("desa"); // 1967. 5,570 (indx 100.0%),  Indonesia (2,859), Malaysia_asia (2,711)
+		addFrequent("est"); // 1968. 6,929 (indx 100.0%),  Canada (2,849), Canada_quebec (2,771)
+		addFrequent("gama"); // 1969. 5,129 (indx 100.0%),  Brazil (2,848), Portugal_europe (1,467)
+		addFrequent("7nong"); // 1970. 2,836 (indx 100.0%),  Taiwan (2,836), Taiwan_asia (2,836)
+		addFrequent("repubblica"); // 1971. 2,835 (indx 100.0%),  Italy (2,835), Italy_lombardia (598)
+		addFrequent("rotunda"); // 1972. 3,525 (indx 100.0%),  Portugal (2,834), Portugal_europe (2,834)
+		addFrequent("jan"); // 1973. 4,872 (indx 100.0%),  Netherlands (2,829), Belgium_flanders (769)
+		addFrequent("ataturk"); // 1974. 2,926 (indx 100.0%),  Turkey (2,827), Turkey_marmara (961)
+		addFrequent("molino"); // 1975. 6,745 (indx 100.0%),  Italy (2,825), Spain_castilla-leon (632)
+		addFrequent("wola"); // 1976. 2,824 (indx 100.0%),  Poland (2,824), Poland_masovian (746)
+		addFrequent("nationale"); // 1977. 4,640 (indx 100.0%),  France (2,819), France_hauts-de-france (535)
+		addFrequent("ligne"); // 1978. 3,645 (indx 100.0%),  France (2,816), France_new-aquitaine (472)
+		addFrequent("gheorghe"); // 1979. 3,487 (indx 100.0%),  Romania (2,815), Romania_europe (2,815)
+		addFrequent("الشهىد"); // 1980. 4,955 (indx 100.0%),  Egypt (2,811), Egypt_africa (2,811)
+		addFrequent("nature"); // 1981. 3,483 (indx 100.0%),  Us (2,810), Us_california (177)
+		addFrequent("kavşağı"); // 1982. 2,807 (indx 100.0%),  Turkey (2,807), Turkey_marmara (1,747)
+		addFrequent("pas"); // 1983. 3,944 (indx 100.0%),  France (2,806), France_new-aquitaine (610)
+		addFrequent("feld"); // 1984. 3,183 (indx 100.0%),  Germany (2,805), Germany_nordrhein-westfalen (1,085)
+		addFrequent("ye"); // 1985. 7,792 (indx 64.8%),  Japan (2,804), Taiwan_asia (2,073)
+		addFrequent("hòa"); // 1986. 2,801 (indx 100.0%),  Vietnam (2,801), Vietnam_asia (2,801)
+		addFrequent("dang"); // 1987. 3,482 (indx 100.0%),  Vietnam (2,800), Vietnam_asia (2,800)
+		addFrequent("qiang"); // 1988. 3,181 (indx 100.0%),  Taiwan (2,797), Taiwan_asia (2,797)
+		addFrequent("m."); // 1989. 16,064 (indx 100.0%),  Mexico (2,796), Brazil_sao-paulo (890)
+		addFrequent("paraná"); // 1990. 3,590 (indx 100.0%),  Brazil (2,796), Brazil_parana (577)
+		addFrequent("gu"); // 1991. 7,484 (indx 100.0%),  China (2,795), Taiwan_asia (2,294)
+		addFrequent("سىد"); // 1992. 2,981 (indx 100.0%),  Egypt (2,793), Egypt_africa (2,793)
+		addFrequent("parana"); // 1993. 3,619 (indx 100.0%),  Brazil (2,793), Brazil_parana (561)
+		addFrequent("gustav"); // 1994. 3,115 (indx 100.0%),  Germany (2,787), Germany_nordrhein-westfalen (573)
+		addFrequent("dezembro"); // 1995. 4,438 (indx 100.0%),  Brazil (2,782), Portugal_europe (1,656)
+		addFrequent("kóshesi"); // 1996. 2,824 (indx 100.0%),  Uzbekistan (2,781), Uzbekistan_asia (2,781)
+		addFrequent("yàn"); // 1997. 2,780 (indx 100.0%),  China (2,780), China_jiangsu (415)
+		addFrequent("dá"); // 1998. 2,838 (indx 100.0%),  China (2,773), China_guangdong (359)
+		addFrequent("ejido"); // 1999. 2,980 (indx 100.0%),  Mexico (2,772), Mexico_chihuahua (307)
+		addFrequent("deus"); // 2000. 5,709 (indx 100.0%),  Brazil (2,769), Portugal_europe (2,023)
+		addFrequent("mission"); // 2001. 3,893 (indx 100.0%),  Us (2,766), Us_california (763)
+		addFrequent("syd"); // 2002. 3,110 (indx 100.0%),  Iran (2,758), Iran_razavi-khorasan (394)
+		addFrequent("heide"); // 2003. 3,313 (indx 100.0%),  Germany (2,757), Germany_nordrhein-westfalen (1,232)
+		addFrequent("thai"); // 2004. 3,517 (indx 100.0%),  Vietnam (2,757), Vietnam_asia (2,757)
+		addFrequent("sidi"); // 2005. 5,599 (indx 100.0%),  Morocco (2,752), Morocco_africa (2,752)
+		addFrequent("condomínio"); // 2006. 2,810 (indx 100.0%),  Brazil (2,749), Brazil_distrito-federal (836)
+		addFrequent("ಮುಖ್ಯ"); // 2007. 2,749 (indx 100.0%),  India (2,749), India_karnataka (2,749)
+		addFrequent("sopra"); // 2008. 2,857 (indx 100.0%),  Italy (2,744), Italy_veneto (584)
+		addFrequent("mù"); // 2009. 2,743 (indx 100.0%),  China (2,743), China_zhejiang (269)
+		addFrequent("principala"); // 2010. 2,779 (indx 100.0%),  Romania (2,743), Romania_europe (2,743)
+		addFrequent("pozo"); // 2011. 4,378 (indx 100.0%),  Spain (2,742), Spain_castilla-leon (862)
+		addFrequent("paşa"); // 2012. 2,871 (indx 100.0%),  Turkey (2,742), Turkey_marmara (1,628)
+		addFrequent("thar"); // 2013. 2,817 (indx 100.0%),  Myanmar (2,742), Myanmar_asia (2,742)
+		addFrequent("kavsagi"); // 2014. 2,738 (indx 100.0%),  Turkey (2,738), Turkey_marmara (1,715)
+		addFrequent("ابن"); // 2015. 7,979 (indx 100.0%),  Saudi-arabia (2,736), Saudi-arabia_asia (2,736)
+		addFrequent("trilho"); // 2016. 2,875 (indx 100.0%),  Portugal (2,731), Portugal_europe (2,731)
+		addFrequent("carmen"); // 2017. 9,850 (indx 100.0%),  Spain (2,729), Spain_andalusia (791)
+		addFrequent("may"); // 2018. 4,969 (indx 100.0%),  Us (2,728), Gb_england (383)
+		addFrequent("bras"); // 2019. 4,373 (indx 100.0%),  France (2,726), France_brittany (2,376)
+		addFrequent("wĕi"); // 2020. 2,725 (indx 100.0%),  China (2,725), China_guangdong (309)
+		addFrequent("sándor"); // 2021. 3,000 (indx 100.0%),  Hungary (2,725), Hungary_europe (2,725)
+		addFrequent("ventitreesimo"); // 2022. 2,722 (indx 100.0%),  Italy (2,722), Italy_lombardia (1,125)
+		addFrequent("fosse"); // 2023. 3,926 (indx 100.0%),  France (2,714), France_centre-loire-valley (596)
+		addFrequent("mato"); // 2024. 3,424 (indx 100.0%),  Brazil (2,710), Portugal_europe (475)
+		addFrequent("temple"); // 2025. 7,648 (indx 100.0%),  India (2,708), India_kerala (1,559)
+		addFrequent("södra"); // 2026. 2,843 (indx 100.0%),  Sweden (2,706), Sweden_vastra-gotaland (466)
+		addFrequent("روڈ"); // 2027. 2,878 (indx 100.0%),  Pakistan (2,703), Pakistan_asia (2,703)
+		addFrequent("thuong"); // 2028. 2,712 (indx 100.0%),  Vietnam (2,702), Vietnam_asia (2,702)
+		addFrequent("toledo"); // 2029. 5,345 (indx 100.0%),  Brazil (2,701), Brazil_sao-paulo (1,794)
+		addFrequent("kemal"); // 2030. 2,833 (indx 100.0%),  Turkey (2,700), Turkey_marmara (1,323)
+		addFrequent("ao"); // 2031. 6,411 (indx 100.0%),  Brazil (2,697), Brazil_rio-de-janeiro (686)
+		addFrequent("cong"); // 2032. 2,854 (indx 100.0%),  Vietnam (2,696), Vietnam_asia (2,696)
+		addFrequent("alpes"); // 2033. 3,134 (indx 100.0%),  France (2,696), France_auvergne-rhone-alpes (1,210)
+		addFrequent("graf"); // 2034. 2,990 (indx 100.0%),  Germany (2,695), Germany_bayern (724)
+		addFrequent("தெரு"); // 2035. 2,689 (indx 100.0%),  India (2,689), India_tamil-nadu (2,565)
+		addFrequent("10nong"); // 2036. 2,688 (indx 100.0%),  Taiwan (2,688), Taiwan_asia (2,688)
+		addFrequent("lian"); // 2037. 5,447 (indx 100.0%),  China (2,684), Taiwan_asia (2,413)
+		addFrequent("belgrano"); // 2038. 2,734 (indx 100.0%),  Argentina (2,682), Argentina_buenos-aires (648)
+		addFrequent("za"); // 2039. 7,673 (indx 100.0%),  Czech-republic (2,680), Serbia_europe (1,196)
+		addFrequent("eira"); // 2040. 3,041 (indx 100.0%),  Portugal (2,679), Portugal_europe (2,679)
+		addFrequent("sodra"); // 2041. 2,775 (indx 100.0%),  Sweden (2,679), Sweden_vastra-gotaland (465)
+		addFrequent("progreso"); // 2042. 5,619 (indx 100.0%),  Mexico (2,678), Peru_southamerica (1,131)
+		addFrequent("terres"); // 2043. 2,817 (indx 100.0%),  France (2,678), France_auvergne-rhone-alpes (547)
+		addFrequent("رقم"); // 2044. 3,873 (indx 100.0%),  Saudi-arabia (2,675), Saudi-arabia_asia (2,675)
+		addFrequent("duy"); // 2045. 2,671 (indx 100.0%),  Vietnam (2,671), Vietnam_asia (2,671)
+		addFrequent("dűlő"); // 2046. 2,669 (indx 100.0%),  Hungary (2,669), Hungary_europe (2,669)
+		addFrequent("nilo"); // 2047. 3,518 (indx 100.0%),  Brazil (2,667), Brazil_rio-de-janeiro (476)
+		addFrequent("pasa"); // 2048. 2,805 (indx 100.0%),  Turkey (2,662), Turkey_marmara (1,597)
+		addFrequent("estate"); // 2049. 9,035 (indx 100.0%),  Gb (2,660), Gb_england (2,076)
+		addFrequent("đông"); // 2050. 2,747 (indx 100.0%),  Vietnam (2,660), Vietnam_asia (2,660)
+		addFrequent("taw"); // 2051. 2,762 (indx 100.0%),  Myanmar (2,660), Myanmar_asia (2,660)
+		addFrequent("concession"); // 2052. 2,669 (indx 100.0%),  Canada (2,659), Canada_ontario (2,505)
+		addFrequent("moinho"); // 2053. 2,860 (indx 100.0%),  Portugal (2,656), Portugal_europe (2,656)
+		addFrequent("po"); // 2054. 7,847 (indx 100.0%),  China (2,651), Hong-kong_asia (1,081)
+		addFrequent("coyote"); // 2055. 2,779 (indx 100.0%),  Us (2,650), Us_california (531)
+		addFrequent("hưng"); // 2056. 2,670 (indx 100.0%),  Vietnam (2,650), Vietnam_asia (2,650)
+		addFrequent("primrose"); // 2057. 4,103 (indx 100.0%),  Us (2,648), Gb_england (989)
+		addFrequent("ge"); // 2058. 3,316 (indx 100.0%),  China (2,647), China_hebei (503)
+		addFrequent("kent"); // 2059. 4,564 (indx 100.0%),  Us (2,645), Gb_england (678)
+		addFrequent("pioneiro"); // 2060. 2,642 (indx 100.0%),  Brazil (2,642), Brazil_parana (2,264)
+		addFrequent("milano"); // 2061. 2,966 (indx 100.0%),  Italy (2,642), Italy_lombardia (1,017)
+		addFrequent("cidade"); // 2062. 5,621 (indx 100.0%),  Portugal (2,641), Portugal_europe (2,641)
+		addFrequent("unter"); // 2063. 3,782 (indx 100.0%),  Germany (2,641), Germany_niedersachsen (573)
+		addFrequent("shēng"); // 2064. 2,641 (indx 100.0%),  China (2,641), China_guangdong (414)
+		addFrequent("beacon"); // 2065. 3,538 (indx 100.0%),  Us (2,639), Gb_england (687)
+		addFrequent("miao"); // 2066. 3,418 (indx 100.0%),  China (2,639), Taiwan_asia (635)
+		addFrequent("oude"); // 2067. 4,458 (indx 100.0%),  Netherlands (2,638), Belgium_flanders (1,725)
+		addFrequent("lodge"); // 2068. 6,096 (indx 100.0%),  Us (2,629), Gb_england (2,143)
+		addFrequent("hazel"); // 2069. 4,074 (indx 100.0%),  Us (2,628), Gb_england (981)
+		addFrequent("háng"); // 2070. 2,622 (indx 100.0%),  China (2,622), China_zhejiang (737)
+		addFrequent("ngoc"); // 2071. 2,621 (indx 100.0%),  Vietnam (2,621), Vietnam_asia (2,621)
+		addFrequent("thái"); // 2072. 2,622 (indx 100.0%),  Vietnam (2,612), Vietnam_asia (2,612)
+		addFrequent("dulo"); // 2073. 2,612 (indx 100.0%),  Hungary (2,612), Hungary_europe (2,612)
+		addFrequent("ngọc"); // 2074. 2,611 (indx 100.0%),  Vietnam (2,611), Vietnam_asia (2,611)
+		addFrequent("بلوك"); // 2075. 2,609 (indx 100.0%),  Egypt (2,609), Egypt_africa (2,609)
+		addFrequent("greenway"); // 2076. 3,879 (indx 100.0%),  Us (2,604), Gb_england (666)
+		addFrequent("nei"); // 2077. 3,893 (indx 100.0%),  Taiwan (2,603), Taiwan_asia (2,603)
+		addFrequent("xa"); // 2078. 2,791 (indx 100.0%),  Vietnam (2,603), Vietnam_asia (2,603)
+		addFrequent("ohio"); // 2079. 2,660 (indx 100.0%),  Us (2,603), Us_ohio (646)
+		addFrequent("day"); // 2080. 3,284 (indx 100.0%),  Us (2,602), Vietnam_asia (241)
+		addFrequent("sor"); // 2081. 5,937 (indx 100.0%),  Hungary (2,601), Hungary_europe (2,601)
+		addFrequent("centralna"); // 2082. 4,839 (indx 100.0%),  Ukraine (2,601), Belarus_minsk (566)
+		addFrequent("12nong"); // 2083. 2,600 (indx 100.0%),  Taiwan (2,600), Taiwan_asia (2,600)
+		addFrequent("западная"); // 2084. 3,373 (indx 100.0%),  Russia (2,598), Russia_moskovskaya-oblast (240)
+		addFrequent("sandor"); // 2085. 2,780 (indx 100.0%),  Hungary (2,598), Hungary_europe (2,598)
+		addFrequent("plan"); // 2086. 5,958 (indx 100.0%),  France (2,597), France_auvergne-rhone-alpes (956)
+		addFrequent("burgemeester"); // 2087. 3,014 (indx 100.0%),  Netherlands (2,597), Netherlands_noord-brabant (445)
+		addFrequent("6-chome"); // 2088. 2,589 (indx 100.0%),  Japan (2,589), Japan_kinki (703)
+		addFrequent("utama"); // 2089. 4,768 (indx 100.0%),  Malaysia (2,587), Malaysia_asia (2,587)
+		addFrequent("lou"); // 2090. 4,604 (indx 100.0%),  China (2,587), China_henan (819)
+		addFrequent("blanco"); // 2091. 7,377 (indx 100.0%),  Mexico (2,586), Mexico_veracruz (361)
+		addFrequent("posiolok"); // 2092. 2,605 (indx 100.0%),  Russia (2,582), Russia_moskovskaya-oblast (820)
+		addFrequent("freeway"); // 2093. 4,488 (indx 100.0%),  Us (2,580), Us_california (1,045)
+		addFrequent("alta"); // 2094. 9,898 (indx 100.0%),  Spain (2,579), Us_california (972)
+		addFrequent("milton"); // 2095. 5,995 (indx 100.0%),  Brazil (2,579), Gb_england (1,013)
+		addFrequent("rota"); // 2096. 3,094 (indx 100.0%),  France (2,579), France_auvergne-rhone-alpes (1,211)
+		addFrequent("spencer"); // 2097. 3,560 (indx 100.0%),  Us (2,578), Gb_england (526)
+		addFrequent("américo"); // 2098. 3,323 (indx 100.0%),  Brazil (2,577), Brazil_sao-paulo (979)
+		addFrequent("jìng"); // 2099. 2,577 (indx 100.0%),  China (2,577), China_guangdong (548)
+		addFrequent("paris"); // 2100. 4,290 (indx 100.0%),  France (2,574), France_ile-de-france (589)
+		addFrequent("swan"); // 2101. 4,033 (indx 100.0%),  Us (2,570), Gb_england (808)
+		addFrequent("مساكن"); // 2102. 2,570 (indx 100.0%),  Egypt (2,570), Egypt_africa (2,570)
+		addFrequent("fiume"); // 2103. 2,929 (indx 100.0%),  Italy (2,564), Italy_lombardia (444)
+		addFrequent("principală"); // 2104. 2,562 (indx 100.0%),  Romania (2,562), Romania_europe (2,562)
+		addFrequent("pau"); // 2105. 4,754 (indx 100.0%),  Brazil (2,554), Spain_catalunya (1,285)
+		addFrequent("siel'skoie"); // 2106. 2,554 (indx 100.0%),  Russia (2,554), Russia_tatarstan (932)
+		addFrequent("municipios"); // 2107. 2,552 (indx 100.0%),  Argentina (2,552), Argentina_santa-fe (1,822)
+		addFrequent("federico"); // 2108. 6,661 (indx 100.0%),  Spain (2,550), Spain_andalusia (940)
+		addFrequent("district"); // 2109. 14,959 (indx 100.0%),  Russia (2,549), Afghanistan_asia (577)
+		addFrequent("9nong"); // 2110. 2,548 (indx 100.0%),  Taiwan (2,548), Taiwan_asia (2,548)
+		addFrequent("richmond"); // 2111. 4,839 (indx 100.0%),  Us (2,547), Gb_england (1,180)
+		addFrequent("sha"); // 2112. 6,002 (indx 100.0%),  China (2,544), Taiwan_asia (1,615)
+		addFrequent("leão"); // 2113. 2,542 (indx 100.0%),  Brazil (2,542), Brazil_sao-paulo (453)
+		addFrequent("coral"); // 2114. 4,753 (indx 100.0%),  Us (2,541), Us_florida (580)
+		addFrequent("kan"); // 2115. 4,689 (indx 100.0%),  Myanmar (2,540), Myanmar_asia (2,540)
+		addFrequent("ad"); // 2116. 4,829 (indx 100.0%),  Yemen (2,530), Yemen_asia (2,530)
+		addFrequent("cruzeiro"); // 2117. 4,353 (indx 100.0%),  Brazil (2,528), Portugal_europe (1,806)
+		addFrequent("domingo"); // 2118. 9,745 (indx 100.0%),  Argentina (2,524), Argentina_buenos-aires (741)
+		addFrequent("mihály"); // 2119. 2,659 (indx 100.0%),  Hungary (2,521), Hungary_europe (2,521)
+		addFrequent("urbanização"); // 2120. 2,762 (indx 100.0%),  Portugal (2,512), Portugal_europe (2,512)
+		addFrequent("combes"); // 2121. 2,672 (indx 100.0%),  France (2,510), France_auvergne-rhone-alpes (957)
+		addFrequent("garten"); // 2122. 2,649 (indx 100.0%),  Germany (2,505), Germany_nordrhein-westfalen (560)
+		addFrequent("wéi"); // 2123. 2,503 (indx 100.0%),  China (2,503), China_guangdong (996)
+		addFrequent("uí"); // 2124. 2,761 (indx 100.0%),  Ireland (2,502), Ireland_europe (2,502)
+		addFrequent("su"); // 2125. 7,940 (indx 54.7%),  Myanmar (2,500), Myanmar_asia (2,500)
+		addFrequent("navajo"); // 2126. 2,512 (indx 100.0%),  Us (2,500), Us_arizona (1,023)
+		addFrequent("endre"); // 2127. 2,691 (indx 100.0%),  Hungary (2,497), Hungary_europe (2,497)
+		addFrequent("ngô"); // 2128. 2,497 (indx 100.0%),  Vietnam (2,497), Vietnam_asia (2,497)
+		addFrequent("pulau"); // 2129. 3,002 (indx 100.0%),  Indonesia (2,493), Indonesia_bali (642)
+		addFrequent("veracruz"); // 2130. 2,761 (indx 100.0%),  Mexico (2,487), Mexico_veracruz (740)
+		addFrequent("бульвар"); // 2131. 3,449 (indx 100.0%),  Russia (2,485), Russia_moskovskaya-oblast (698)
+		addFrequent("mead"); // 2132. 3,117 (indx 100.0%),  Gb (2,480), Gb_england (2,430)
+		addFrequent("حسىن"); // 2133. 3,325 (indx 100.0%),  Egypt (2,477), Egypt_africa (2,477)
+		addFrequent("liang"); // 2134. 2,893 (indx 100.0%),  China (2,475), China_hebei (406)
+		addFrequent("fatima"); // 2135. 4,918 (indx 100.0%),  Brazil (2,472), Portugal_europe (1,075)
+		addFrequent("octubre"); // 2136. 5,680 (indx 100.0%),  Mexico (2,462), Peru_southamerica (778)
+		addFrequent("mihaly"); // 2137. 2,522 (indx 100.0%),  Hungary (2,462), Hungary_europe (2,462)
+		addFrequent("ly"); // 2138. 4,590 (indx 100.0%),  Vietnam (2,459), Vietnam_asia (2,459)
+		addFrequent("mata"); // 2139. 6,120 (indx 100.0%),  Brazil (2,458), Portugal_europe (1,157)
+		addFrequent("4nong"); // 2140. 2,471 (indx 100.0%),  Taiwan (2,458), Taiwan_asia (2,458)
+		addFrequent("lilla"); // 2141. 2,632 (indx 100.0%),  Sweden (2,458), Sweden_vastra-gotaland (922)
+		addFrequent("auzoa"); // 2142. 2,486 (indx 100.0%),  Spain (2,456), Spain_basque-country (2,155)
+		addFrequent("urbanizacao"); // 2143. 2,730 (indx 100.0%),  Portugal (2,453), Portugal_europe (2,453)
+		addFrequent("koch"); // 2144. 2,801 (indx 100.0%),  Germany (2,449), Germany_nordrhein-westfalen (485)
+		addFrequent("zhao"); // 2145. 3,943 (indx 100.0%),  China (2,449), Taiwan_asia (842)
+		addFrequent("barn"); // 2146. 4,011 (indx 100.0%),  Us (2,445), Gb_england (1,460)
+		addFrequent("bazaar"); // 2147. 3,084 (indx 100.0%),  Pakistan (2,442), Pakistan_asia (2,442)
+		addFrequent("os"); // 2148. 3,050 (indx 100.0%),  Spain (2,442), Spain_galicia (2,393)
+		addFrequent("gata"); // 2149. 3,064 (indx 100.0%),  Sweden (2,441), Sweden_vastra-gotaland (793)
+		addFrequent("chuān"); // 2150. 2,440 (indx 100.0%),  China (2,440), China_sichuan (414)
+		addFrequent("shù"); // 2151. 2,439 (indx 100.0%),  China (2,439), China_jiangsu (416)
+		addFrequent("bourgogne"); // 2152. 2,529 (indx 100.0%),  France (2,432), France_bourgogne-franche-comte (647)
+		addFrequent("queen"); // 2153. 5,965 (indx 100.0%),  Us (2,430), Gb_england (1,337)
+		addFrequent("qìng"); // 2154. 2,427 (indx 100.0%),  China (2,427), China_guangdong (384)
+		addFrequent("isla"); // 2155. 6,788 (indx 100.0%),  Mexico (2,426), Mexico_baja-california (571)
+		addFrequent("round"); // 2156. 2,840 (indx 100.0%),  Us (2,426), Us_texas (203)
+		addFrequent("dōu"); // 2157. 2,426 (indx 100.0%),  China (2,426), China_sichuan (413)
+		addFrequent("petites"); // 2158. 2,526 (indx 100.0%),  France (2,425), France_centre-loire-valley (474)
+		addFrequent("kg"); // 2159. 2,819 (indx 100.0%),  Rwanda (2,419), Rwanda_africa (2,419)
+		addFrequent("pena"); // 2160. 8,416 (indx 100.0%),  Spain (2,415), Spain_galicia (827)
+		addFrequent("kalye"); // 2161. 2,412 (indx 100.0%),  Philippines (2,412), Philippines_metro-manila (2,313)
+		addFrequent("mil"); // 2162. 2,620 (indx 100.0%),  Brazil (2,405), Brazil_santa-catarina (1,070)
+		addFrequent("leao"); // 2163. 2,404 (indx 100.0%),  Brazil (2,404), Brazil_sao-paulo (423)
+		addFrequent("fs"); // 2164. 2,490 (indx 100.0%),  Us (2,403), Us_montana (729)
+		addFrequent("bach"); // 2165. 4,794 (indx 100.0%),  Germany (2,401), Vietnam_asia (1,046)
+		addFrequent("köçesi"); // 2166. 2,400 (indx 100.0%),  Turkmenistan (2,400), Turkmenistan_asia (2,400)
+		addFrequent("johns"); // 2167. 3,911 (indx 100.0%),  Us (2,399), Gb_england (775)
+		addFrequent("سرک"); // 2168. 2,418 (indx 100.0%),  Afghanistan (2,398), Afghanistan_asia (2,398)
+		addFrequent("lao"); // 2169. 4,386 (indx 100.0%),  China (2,396), Vietnam_asia (813)
+		addFrequent("đồng"); // 2170. 2,411 (indx 100.0%),  Vietnam (2,394), Vietnam_asia (2,394)
+		addFrequent("sanchez"); // 2171. 8,371 (indx 100.0%),  Mexico (2,393), Carribean-archipelago-all_centralamerica (1,255)
+		addFrequent("fátima"); // 2172. 4,016 (indx 100.0%),  Brazil (2,390), Portugal_europe (1,072)
+		addFrequent("زقاق"); // 2173. 3,948 (indx 100.0%),  Egypt (2,387), Egypt_africa (2,387)
+		addFrequent("junction"); // 2174. 5,390 (indx 100.0%),  Us (2,384), India_kerala (588)
+		addFrequent("świętego"); // 2175. 2,383 (indx 100.0%),  Poland (2,383), Poland_lesser-poland (550)
+		addFrequent("yóu"); // 2176. 2,382 (indx 100.0%),  China (2,382), China_zhejiang (266)
+		addFrequent("venezia"); // 2177. 2,420 (indx 100.0%),  Italy (2,379), Italy_veneto (535)
+		addFrequent("ho"); // 2178. 3,646 (indx 100.0%),  Vietnam (2,378), Vietnam_asia (2,378)
+		addFrequent("penn"); // 2179. 4,518 (indx 100.0%),  Us (2,378), France_brittany (1,894)
+		addFrequent("eski"); // 2180. 2,552 (indx 100.0%),  Turkey (2,377), Turkey_marmara (1,216)
+		addFrequent("rocher"); // 2181. 2,562 (indx 100.0%),  France (2,375), France_brittany (557)
+		addFrequent("sánchez"); // 2182. 7,249 (indx 100.0%),  Mexico (2,374), Carribean-archipelago-all_centralamerica (1,068)
+		addFrequent("woodside"); // 2183. 3,900 (indx 100.0%),  Us (2,374), Gb_england (985)
+		addFrequent("swietego"); // 2184. 2,374 (indx 100.0%),  Poland (2,374), Poland_lesser-poland (554)
+		addFrequent("johannes"); // 2185. 3,127 (indx 100.0%),  Germany (2,372), Germany_nordrhein-westfalen (531)
+		addFrequent("györgy"); // 2186. 2,516 (indx 100.0%),  Hungary (2,371), Hungary_europe (2,371)
+		addFrequent("vinh"); // 2187. 2,389 (indx 100.0%),  Vietnam (2,370), Vietnam_asia (2,370)
+		addFrequent("проектируемый"); // 2188. 2,368 (indx 100.0%),  Russia (2,368), Russia_moskovskaya-oblast (1,187)
+		addFrequent("heath"); // 2189. 4,169 (indx 100.0%),  Gb (2,367), Gb_england (2,302)
+		addFrequent("ke"); // 2190. 7,525 (indx 100.0%),  Czech-republic (2,365), Taiwan_asia (1,608)
+		addFrequent("chacara"); // 2191. 2,351 (indx 100.0%),  Brazil (2,351), Brazil_distrito-federal (1,366)
+		addFrequent("ya"); // 2192. 5,616 (indx 100.0%),  Taiwan (2,350), Taiwan_asia (2,350)
+		addFrequent("istván"); // 2193. 2,506 (indx 100.0%),  Hungary (2,349), Hungary_europe (2,349)
+		addFrequent("angeles"); // 2194. 4,699 (indx 100.0%),  Mexico (2,347), Peru_southamerica (551)
+		addFrequent("poggio"); // 2195. 2,431 (indx 100.0%),  Italy (2,346), Italy_toscana (968)
+		addFrequent("bayou"); // 2196. 2,346 (indx 100.0%),  Us (2,346), Us_louisiana (907)
+		addFrequent("pérez"); // 2197. 7,266 (indx 100.0%),  Spain (2,342), Carribean-archipelago-all_centralamerica (762)
+		addFrequent("soldier"); // 2198. 2,474 (indx 100.0%),  Pakistan (2,342), Pakistan_asia (2,342)
+		addFrequent("delaware"); // 2199. 2,384 (indx 100.0%),  Us (2,340), Us_pennsylvania (357)
+		addFrequent("mauricio"); // 2200. 2,751 (indx 100.0%),  Brazil (2,338), Brazil_sao-paulo (591)
+		addFrequent("liú"); // 2201. 2,335 (indx 100.0%),  China (2,335), China_beijing (310)
+		addFrequent("kocesi"); // 2202. 2,334 (indx 100.0%),  Turkmenistan (2,334), Turkmenistan_asia (2,334)
+		addFrequent("odvojak"); // 2203. 2,393 (indx 100.0%),  Croatia (2,331), Croatia_europe (2,331)
+		addFrequent("luong"); // 2204. 2,330 (indx 100.0%),  Vietnam (2,330), Vietnam_asia (2,330)
+		addFrequent("perez"); // 2205. 8,683 (indx 100.0%),  Spain (2,329), Carribean-archipelago-all_centralamerica (939)
+		addFrequent("gyorgy"); // 2206. 2,372 (indx 100.0%),  Hungary (2,329), Hungary_europe (2,329)
+		addFrequent("playa"); // 2207. 6,400 (indx 100.0%),  Mexico (2,328), Carribean-archipelago-all_centralamerica (546)
+		addFrequent("puebla"); // 2208. 2,977 (indx 100.0%),  Mexico (2,328), Mexico_puebla (636)
+		addFrequent("lý"); // 2209. 2,363 (indx 100.0%),  Vietnam (2,327), Vietnam_asia (2,327)
+		addFrequent("خلف"); // 2210. 2,683 (indx 100.0%),  Egypt (2,327), Egypt_africa (2,327)
+		addFrequent("проїзд"); // 2211. 4,053 (indx 100.0%),  Russia (2,326), Russia_moscow (1,152)
+		addFrequent("area"); // 2212. 10,443 (indx 26.2%),  Pakistan (2,321), Pakistan_asia (2,321)
+		addFrequent("koshesi"); // 2213. 2,342 (indx 100.0%),  Uzbekistan (2,320), Uzbekistan_asia (2,320)
+		addFrequent("dakota"); // 2214. 2,518 (indx 100.0%),  Us (2,319), Us_south-dakota (295)
+		addFrequent("alexandru"); // 2215. 3,576 (indx 100.0%),  Romania (2,319), Romania_europe (2,319)
+		addFrequent("fatih"); // 2216. 2,343 (indx 100.0%),  Turkey (2,318), Turkey_marmara (945)
+		addFrequent("drove"); // 2217. 2,331 (indx 100.0%),  Gb (2,318), Gb_england (2,283)
+		addFrequent("men"); // 2218. 5,463 (indx 100.0%),  China (2,316), Taiwan_asia (2,125)
+		addFrequent("kralja"); // 2219. 3,646 (indx 100.0%),  Serbia (2,311), Serbia_europe (2,311)
+		addFrequent("istvan"); // 2220. 2,374 (indx 100.0%),  Hungary (2,309), Hungary_europe (2,309)
+		addFrequent("11nong"); // 2221. 2,306 (indx 100.0%),  Taiwan (2,306), Taiwan_asia (2,306)
+		addFrequent("corners"); // 2222. 2,472 (indx 100.0%),  Us (2,305), Us_new-york (1,144)
+		addFrequent("chi"); // 2223. 5,803 (indx 100.0%),  Vietnam (2,303), Vietnam_asia (2,303)
+		addFrequent("bottom"); // 2224. 2,985 (indx 100.0%),  Us (2,302), Gb_england (641)
+		addFrequent("chaussée"); // 2225. 3,735 (indx 100.0%),  Belgium (2,301), Belgium_wallonia (1,875)
+		addFrequent("rákóczi"); // 2226. 2,399 (indx 100.0%),  Hungary (2,301), Hungary_europe (2,301)
+		addFrequent("tháng"); // 2227. 2,300 (indx 100.0%),  Vietnam (2,300), Vietnam_asia (2,300)
+		addFrequent("texas"); // 2228. 2,384 (indx 100.0%),  Us (2,298), Us_texas (1,074)
+		addFrequent("espirito"); // 2229. 2,956 (indx 100.0%),  Brazil (2,298), Portugal_europe (599)
+		addFrequent("mobile"); // 2230. 2,331 (indx 100.0%),  Us (2,297), Us_north-carolina (213)
+		addFrequent("terra"); // 2231. 5,362 (indx 100.0%),  Brazil (2,295), Spain_galicia (673)
+		addFrequent("mihai"); // 2232. 3,721 (indx 100.0%),  Romania (2,295), Romania_europe (2,295)
+		addFrequent("имени"); // 2233. 2,596 (indx 100.0%),  Russia (2,295), Russia_krasnodar (464)
+		addFrequent("chu"); // 2234. 3,924 (indx 100.0%),  Vietnam (2,292), Vietnam_asia (2,292)
+		addFrequent("common"); // 2235. 4,551 (indx 100.0%),  Gb (2,290), Gb_england (2,227)
+		addFrequent("huynh"); // 2236. 2,288 (indx 100.0%),  Vietnam (2,288), Vietnam_asia (2,288)
+		addFrequent("italia"); // 2237. 4,860 (indx 100.0%),  Italy (2,287), Italy_lombardia (551)
+		addFrequent("marche"); // 2238. 3,706 (indx 100.0%),  France (2,286), France_new-aquitaine (342)
+		addFrequent("cristovao"); // 2239. 2,728 (indx 100.0%),  Brazil (2,283), Brazil_sao-paulo (433)
+		addFrequent("pu"); // 2240. 4,154 (indx 100.0%),  China (2,282), China_liaoning (533)
+		addFrequent("hao"); // 2241. 3,858 (indx 100.0%),  Taiwan (2,279), Taiwan_asia (2,279)
+		addFrequent("nedre"); // 2242. 2,966 (indx 100.0%),  Norway (2,279), Norway_buskerud (306)
+		addFrequent("sanayi"); // 2243. 2,279 (indx 100.0%),  Turkey (2,279), Turkey_marmara (1,077)
+		addFrequent("rakoczi"); // 2244. 2,321 (indx 100.0%),  Hungary (2,277), Hungary_europe (2,277)
+		addFrequent("huỳnh"); // 2245. 2,277 (indx 100.0%),  Vietnam (2,277), Vietnam_asia (2,277)
+		addFrequent("ladeira"); // 2246. 4,264 (indx 100.0%),  Brazil (2,274), Portugal_europe (1,605)
+		addFrequent("raion"); // 2247. 3,279 (indx 100.0%),  Russia (2,273), Russia_rostovskaya (89)
+		addFrequent("frança"); // 2248. 2,457 (indx 100.0%),  Brazil (2,272), Brazil_sao-paulo (617)
+		addFrequent("hà"); // 2249. 2,399 (indx 100.0%),  Vietnam (2,271), Vietnam_asia (2,271)
+		addFrequent("fish"); // 2250. 2,682 (indx 100.0%),  Us (2,270), Us_new-york (232)
+		addFrequent("brasilia"); // 2251. 2,383 (indx 100.0%),  Brazil (2,270), Brazil_sao-paulo (319)
+		addFrequent("poco"); // 2252. 3,440 (indx 100.0%),  Portugal (2,269), Portugal_europe (2,269)
+		addFrequent("wellington"); // 2253. 4,895 (indx 100.0%),  Us (2,267), Gb_england (1,151)
+		addFrequent("lisboa"); // 2254. 3,183 (indx 100.0%),  Brazil (2,266), Brazil_sao-paulo (594)
+		addFrequent("link"); // 2255. 11,544 (indx 100.0%),  Australia-oceania (2,260), Ghana_africa (1,158)
+		addFrequent("viaduto"); // 2256. 2,426 (indx 100.0%),  Brazil (2,260), Brazil_sao-paulo (1,099)
+		addFrequent("ángeles"); // 2257. 3,812 (indx 100.0%),  Mexico (2,259), Peru_southamerica (336)
+		addFrequent("shāng"); // 2258. 2,257 (indx 100.0%),  China (2,257), China_guangdong (322)
+		addFrequent("rodríguez"); // 2259. 9,065 (indx 100.0%),  Mexico (2,256), Carribean-archipelago-all_centralamerica (1,162)
+		addFrequent("cameron"); // 2260. 3,445 (indx 100.0%),  Us (2,254), Us_california (213)
+		addFrequent("bethel"); // 2261. 2,367 (indx 100.0%),  Us (2,248), Us_north-carolina (196)
+		addFrequent("ca"); // 2262. 3,841 (indx 100.0%),  Italy (2,247), Italy_emilia-romagna (761)
+		addFrequent("hautes"); // 2263. 2,323 (indx 100.0%),  France (2,246), France_occitania (519)
+		addFrequent("carolina"); // 2264. 4,511 (indx 100.0%),  Us (2,242), Us_north-carolina (657)
+		addFrequent("gerais"); // 2265. 2,242 (indx 100.0%),  Brazil (2,242), Brazil_minas-gerais (503)
+		addFrequent("rice"); // 2266. 2,394 (indx 100.0%),  Us (2,241), Us_minnesota (201)
+		addFrequent("kaya"); // 2267. 5,415 (indx 100.0%),  Carribean-archipelago-all (2,239), Carribean-archipelago-all_centralamerica (2,239)
+		addFrequent("resende"); // 2268. 2,662 (indx 100.0%),  Brazil (2,236), Brazil_minas-gerais (1,343)
+		addFrequent("passo"); // 2269. 3,205 (indx 100.0%),  Italy (2,235), Brazil_rio-grande-do-sul (777)
+		addFrequent("vicinal"); // 2270. 3,155 (indx 100.0%),  Brazil (2,235), Brazil_sao-paulo (1,519)
+		addFrequent("ex"); // 2271. 3,475 (indx 100.0%),  Italy (2,234), Italy_campania (419)
+		addFrequent("markt"); // 2272. 2,961 (indx 100.0%),  Germany (2,226), Germany_nordrhein-westfalen (474)
+		addFrequent("diego"); // 2273. 8,293 (indx 100.0%),  Mexico (2,221), Carribean-archipelago-all_centralamerica (694)
+		addFrequent("autoroute"); // 2274. 5,532 (indx 100.0%),  France (2,219), Canada_quebec (809)
+		addFrequent("sultan"); // 2275. 4,740 (indx 100.0%),  Turkey (2,218), Turkey_marmara (1,156)
+		addFrequent("tri"); // 2276. 2,966 (indx 100.0%),  Vietnam (2,218), Vietnam_asia (2,218)
+		addFrequent("jovana"); // 2277. 2,590 (indx 100.0%),  Serbia (2,218), Serbia_europe (2,218)
+		addFrequent("poço"); // 2278. 3,141 (indx 100.0%),  Portugal (2,217), Portugal_europe (2,217)
+		addFrequent("jardin"); // 2279. 6,393 (indx 100.0%),  France (2,212), Mexico_guanajuato (545)
+		addFrequent("trinh"); // 2280. 2,210 (indx 100.0%),  Vietnam (2,210), Vietnam_asia (2,210)
+		addFrequent("náměstí"); // 2281. 2,219 (indx 100.0%),  Czech-republic (2,208), Czech-republic_severovychod (383)
+		addFrequent("rodriguez"); // 2282. 10,396 (indx 100.0%),  Mexico (2,205), Carribean-archipelago-all_centralamerica (1,486)
+		addFrequent("batu"); // 2283. 4,356 (indx 100.0%),  Indonesia (2,204), Malaysia_asia (2,047)
+		addFrequent("الدىن"); // 2284. 3,586 (indx 100.0%),  Egypt (2,202), Egypt_africa (2,202)
+		addFrequent("swamp"); // 2285. 2,676 (indx 100.0%),  Us (2,202), Us_south-carolina (300)
+		addFrequent("torino"); // 2286. 2,235 (indx 100.0%),  Italy (2,201), Italy_piemonte (479)
+		addFrequent("hồng"); // 2287. 2,224 (indx 100.0%),  Vietnam (2,200), Vietnam_asia (2,200)
+		addFrequent("holland"); // 2288. 3,102 (indx 100.0%),  Us (2,196), Gb_england (455)
+		addFrequent("非成熟路线"); // 2289. 2,196 (indx 100.0%),  China (2,196), China_beijing (1,995)
+		addFrequent("setia"); // 2290. 2,818 (indx 100.0%),  Malaysia (2,195), Malaysia_asia (2,195)
+		addFrequent("новый"); // 2291. 2,713 (indx 100.0%),  Russia (2,191), Russia_moskovskaya-oblast (144)
+		addFrequent("dean"); // 2292. 3,677 (indx 100.0%),  Us (2,187), Gb_england (759)
+		addFrequent("comunidad"); // 2293. 6,770 (indx 100.0%),  Chile (2,187), Chile_araucania (1,837)
+		addFrequent("lun"); // 2294. 2,727 (indx 100.0%),  Taiwan (2,187), Taiwan_asia (2,187)
+		addFrequent("bypass"); // 2295. 11,181 (indx 100.0%),  Us (2,185), Gb_england (1,128)
+		addFrequent("rivera"); // 2296. 7,389 (indx 100.0%),  Mexico (2,184), Carribean-archipelago-all_centralamerica (1,700)
+		addFrequent("espírito"); // 2297. 2,783 (indx 100.0%),  Brazil (2,184), Portugal_europe (547)
+		addFrequent("praza"); // 2298. 2,184 (indx 100.0%),  Spain (2,184), Spain_galicia (2,156)
+		addFrequent("lóu"); // 2299. 2,183 (indx 100.0%),  China (2,183), China_jiangsu (337)
+		addFrequent("errepidea"); // 2300. 3,032 (indx 100.0%),  Spain (2,183), Spain_navarra (1,546)
+		addFrequent("громада"); // 2301. 2,356 (indx 100.0%),  Ukraine (2,181), Ukraine_dnipro (126)
+		addFrequent("ss"); // 2302. 3,029 (indx 100.0%),  Malaysia (2,181), Malaysia_asia (2,181)
+		addFrequent("konrad"); // 2303. 2,351 (indx 100.0%),  Germany (2,178), Germany_bayern (454)
+		addFrequent("vo"); // 2304. 2,231 (indx 100.0%),  Vietnam (2,176), Vietnam_asia (2,176)
+		addFrequent("kuài"); // 2305. 2,170 (indx 100.0%),  China (2,170), China_jiangsu (581)
+		addFrequent("velho"); // 2306. 4,893 (indx 100.0%),  Brazil (2,168), Portugal_europe (2,122)
+		addFrequent("canto"); // 2307. 4,157 (indx 100.0%),  Portugal (2,168), Portugal_europe (2,168)
+		addFrequent("busch"); // 2308. 2,314 (indx 100.0%),  Germany (2,166), Germany_nordrhein-westfalen (729)
+		addFrequent("tiĕ"); // 2309. 2,166 (indx 100.0%),  China (2,166), China_liaoning (253)
+		addFrequent("sitesi"); // 2310. 2,213 (indx 100.0%),  Turkey (2,166), Turkey_marmara (1,156)
+		addFrequent("жилой"); // 2311. 2,253 (indx 100.0%),  Russia (2,166), Russia_moskovskaya-oblast (569)
+		addFrequent("সড়ক"); // 2312. 2,210 (indx 100.0%),  Bangladesh (2,165), Bangladesh_asia (2,165)
+		addFrequent("tho"); // 2313. 2,255 (indx 100.0%),  Vietnam (2,164), Vietnam_asia (2,164)
+		addFrequent("stanley"); // 2314. 4,406 (indx 100.0%),  Us (2,162), Gb_england (1,180)
+		addFrequent("din"); // 2315. 3,565 (indx 100.0%),  Egypt (2,162), Egypt_africa (2,162)
+		addFrequent("dallas"); // 2316. 2,303 (indx 100.0%),  Us (2,161), Us_alabama (611)
+		addFrequent("prince"); // 2317. 5,640 (indx 100.0%),  Us (2,161), Gb_england (569)
+		addFrequent("trinity"); // 2318. 3,446 (indx 100.0%),  Us (2,161), Gb_england (862)
+		addFrequent("head"); // 2319. 4,059 (indx 100.0%),  Us (2,160), Gb_england (966)
+		addFrequent("cachoeira"); // 2320. 2,159 (indx 100.0%),  Brazil (2,159), Brazil_sao-paulo (505)
+		addFrequent("kurt"); // 2321. 2,556 (indx 100.0%),  Germany (2,153), Germany_nordrhein-westfalen (439)
+		addFrequent("gali"); // 2322. 3,961 (indx 100.0%),  India (2,152), Pakistan_asia (1,723)
+		addFrequent("cnoc"); // 2323. 2,403 (indx 100.0%),  Ireland (2,152), Ireland_europe (2,152)
+		addFrequent("fundatura"); // 2324. 2,207 (indx 100.0%),  Romania (2,152), Romania_europe (2,152)
+		addFrequent("lucia"); // 2325. 7,261 (indx 100.0%),  Brazil (2,151), Brazil_sao-paulo (550)
+		addFrequent("московская"); // 2326. 2,372 (indx 100.0%),  Russia (2,151), Russia_moskovskaya-oblast (367)
+		addFrequent("công"); // 2327. 2,166 (indx 100.0%),  Vietnam (2,150), Vietnam_asia (2,150)
+		addFrequent("pso"); // 2328. 2,875 (indx 100.0%),  Us (2,147), Us_california (1,592)
+		addFrequent("poros"); // 2329. 2,179 (indx 100.0%),  Indonesia (2,147), Indonesia_sulawesi-selatan (1,025)
+		addFrequent("newton"); // 2330. 5,085 (indx 100.0%),  Us (2,146), Gb_england (1,100)
+		addFrequent("key"); // 2331. 2,379 (indx 100.0%),  Us (2,144), Us_florida (703)
+		addFrequent("16nong"); // 2332. 2,144 (indx 100.0%),  Taiwan (2,144), Taiwan_asia (2,144)
+		addFrequent("ywar"); // 2333. 2,143 (indx 100.0%),  Myanmar (2,143), Myanmar_asia (2,143)
+		addFrequent("nevez"); // 2334. 2,141 (indx 100.0%),  France (2,141), France_brittany (1,938)
+		addFrequent("constantin"); // 2335. 2,813 (indx 100.0%),  Romania (2,140), Romania_europe (2,140)
+		addFrequent("guó"); // 2336. 2,137 (indx 100.0%),  China (2,137), China_guangdong (210)
+		addFrequent("thanda"); // 2337. 2,137 (indx 100.0%),  India (2,137), India_telangana (1,873)
+		addFrequent("academy"); // 2338. 2,316 (indx 100.0%),  Us (2,136), Us_new-york (213)
+		addFrequent("sítio"); // 2339. 3,402 (indx 100.0%),  Brazil (2,135), Portugal_europe (796)
+		addFrequent("michigan"); // 2340. 2,189 (indx 100.0%),  Us (2,135), Us_michigan (564)
+		addFrequent("khurd"); // 2341. 2,330 (indx 100.0%),  India (2,133), India_madhya-pradesh (956)
+		addFrequent("chester"); // 2342. 3,339 (indx 100.0%),  Us (2,132), Gb_england (774)
+		addFrequent("chácara"); // 2343. 2,132 (indx 100.0%),  Brazil (2,132), Brazil_distrito-federal (1,390)
+		addFrequent("4-gil"); // 2344. 2,132 (indx 100.0%),  South-korea (2,132), South-korea_asia (2,132)
+		addFrequent("aire"); // 2345. 3,520 (indx 100.0%),  France (2,129), France_auvergne-rhone-alpes (261)
+		addFrequent("عمر"); // 2346. 3,861 (indx 100.0%),  Egypt (2,126), Egypt_africa (2,126)
+		addFrequent("fundătura"); // 2347. 2,187 (indx 100.0%),  Romania (2,126), Romania_europe (2,126)
+		addFrequent("at"); // 2348. 5,822 (indx 9.2%),  Us (2,123), Yemen_asia (895)
+		addFrequent("goias"); // 2349. 2,123 (indx 100.0%),  Brazil (2,123), Brazil_goias (448)
+		addFrequent("grosso"); // 2350. 2,312 (indx 100.0%),  Brazil (2,123), Brazil_sao-paulo (433)
+		addFrequent("комплекс"); // 2351. 2,218 (indx 100.0%),  Russia (2,123), Russia_moskovskaya-oblast (561)
+		addFrequent("ady"); // 2352. 2,271 (indx 100.0%),  Hungary (2,121), Hungary_europe (2,121)
+		addFrequent("kalan"); // 2353. 2,402 (indx 100.0%),  India (2,111), India_madhya-pradesh (878)
+		addFrequent("bùi"); // 2354. 2,110 (indx 100.0%),  Vietnam (2,110), Vietnam_asia (2,110)
+		addFrequent("voetweg"); // 2355. 2,108 (indx 100.0%),  Belgium (2,108), Belgium_flanders (2,070)
+		addFrequent("dr."); // 2356. 2,940 (indx 100.0%),  Austria (2,107), Austria_lower-austria (1,129)
+		addFrequent("roz"); // 2357. 2,309 (indx 100.0%),  France (2,106), France_brittany (1,707)
+		addFrequent("bui"); // 2358. 2,145 (indx 100.0%),  Vietnam (2,106), Vietnam_asia (2,106)
+		addFrequent("mendoza"); // 2359. 4,577 (indx 100.0%),  Mexico (2,105), Peru_southamerica (280)
+		addFrequent("putra"); // 2360. 2,388 (indx 100.0%),  Malaysia (2,104), Malaysia_asia (2,104)
+		addFrequent("bass"); // 2361. 2,473 (indx 100.0%),  Us (2,103), Us_florida (212)
+		addFrequent("luo"); // 2362. 3,172 (indx 100.0%),  China (2,102), Taiwan_asia (900)
+		addFrequent("sodų"); // 2363. 2,128 (indx 100.0%),  Lithuania (2,102), Lithuania_europe (2,102)
+		addFrequent("het"); // 2364. 2,548 (indx 100.0%),  Netherlands (2,100), Netherlands_gelderland (392)
+		addFrequent("sodu"); // 2365. 2,116 (indx 100.0%),  Lithuania (2,100), Lithuania_europe (2,100)
+		addFrequent("namesti"); // 2366. 2,099 (indx 100.0%),  Czech-republic (2,099), Czech-republic_severovychod (372)
+		addFrequent("água"); // 2367. 2,998 (indx 100.0%),  Brazil (2,096), Portugal_europe (852)
+		addFrequent("chak"); // 2368. 3,147 (indx 100.0%),  Pakistan (2,094), Pakistan_asia (2,094)
+		addFrequent("dello"); // 2369. 2,104 (indx 100.0%),  Italy (2,094), Italy_lombardia (322)
+		addFrequent("zona"); // 2370. 6,255 (indx 100.0%),  Guatemala (2,093), Guatemala_centralamerica (2,093)
+		addFrequent("hồ"); // 2371. 2,130 (indx 100.0%),  Vietnam (2,091), Vietnam_asia (2,091)
+		addFrequent("agiou"); // 2372. 2,957 (indx 100.0%),  Greece (2,089), Greece_europe (2,089)
+		addFrequent("pere"); // 2373. 3,923 (indx 100.0%),  Spain (2,086), Spain_catalunya (1,404)
+		addFrequent("wú"); // 2374. 2,086 (indx 100.0%),  China (2,086), China_jiangsu (492)
+		addFrequent("võ"); // 2375. 2,086 (indx 100.0%),  Vietnam (2,086), Vietnam_asia (2,086)
+		addFrequent("zhiloi"); // 2376. 2,159 (indx 100.0%),  Russia (2,085), Russia_moskovskaya-oblast (554)
+		addFrequent("sunshine"); // 2377. 2,377 (indx 100.0%),  Us (2,084), Us_florida (259)
+		addFrequent("dózsa"); // 2378. 2,178 (indx 100.0%),  Hungary (2,082), Hungary_europe (2,082)
+		addFrequent("yùn"); // 2379. 2,080 (indx 100.0%),  China (2,080), China_jiangsu (576)
+		addFrequent("komplieks"); // 2380. 2,141 (indx 100.0%),  Russia (2,078), Russia_moskovskaya-oblast (547)
+		addFrequent("gan"); // 2381. 3,426 (indx 100.0%),  China (2,076), Taiwan_asia (1,083)
+		addFrequent("song"); // 2382. 6,878 (indx 100.0%),  Taiwan (2,076), Taiwan_asia (2,076)
+		addFrequent("øvre"); // 2383. 2,075 (indx 100.0%),  Norway (2,075), Norway_vestland (381)
+		addFrequent("anton"); // 2384. 5,614 (indx 100.0%),  Germany (2,074), Germany_bayern (653)
+		addFrequent("montagne"); // 2385. 3,165 (indx 100.0%),  France (2,072), Canada_quebec (436)
+		addFrequent("tak."); // 2386. 2,070 (indx 100.0%),  Lithuania (2,070), Lithuania_europe (2,070)
+		addFrequent("jaume"); // 2387. 2,186 (indx 100.0%),  Spain (2,066), Spain_catalunya (1,170)
+		addFrequent("на"); // 2388. 2,666 (indx 100.0%),  Russia (2,065), Russia_rostovskaya (150)
+		addFrequent("cimitero"); // 2389. 2,075 (indx 100.0%),  Italy (2,065), Italy_lombardia (337)
+		addFrequent("xiu"); // 2390. 2,446 (indx 100.0%),  Taiwan (2,061), Taiwan_asia (2,061)
+		addFrequent("serre"); // 2391. 2,381 (indx 100.0%),  France (2,061), France_auvergne-rhone-alpes (671)
+		addFrequent("dozsa"); // 2392. 2,074 (indx 100.0%),  Hungary (2,060), Hungary_europe (2,060)
+		addFrequent("định"); // 2393. 2,060 (indx 100.0%),  Vietnam (2,060), Vietnam_asia (2,060)
+		addFrequent("subdistrict"); // 2394. 3,230 (indx 100.0%),  China (2,057), Thailand_asia (860)
+		addFrequent("fold"); // 2395. 2,075 (indx 100.0%),  Gb (2,057), Gb_england (2,032)
+		addFrequent("goiás"); // 2396. 2,055 (indx 100.0%),  Brazil (2,055), Brazil_goias (458)
+		addFrequent("houston"); // 2397. 2,211 (indx 100.0%),  Us (2,053), Us_texas (934)
+		addFrequent("butte"); // 2398. 3,865 (indx 100.0%),  Us (2,051), Us_oregon (462)
+		addFrequent("portela"); // 2399. 3,590 (indx 100.0%),  Portugal (2,048), Portugal_europe (2,048)
+		addFrequent("klein"); // 2400. 4,758 (indx 100.0%),  Germany (2,048), Germany_niedersachsen (531)
+		addFrequent("eki"); // 2401. 2,046 (indx 100.0%),  Japan (2,046), Japan_kanto (1,078)
+		addFrequent("αγίου"); // 2402. 2,214 (indx 100.0%),  Greece (2,045), Greece_europe (2,045)
+		addFrequent("gammel"); // 2403. 2,045 (indx 100.0%),  Denmark (2,045), Denmark_southern-region (560)
+		addFrequent("escadaria"); // 2404. 2,044 (indx 100.0%),  Brazil (2,044), Brazil_espirito-santo (1,419)
+		addFrequent("liberdade"); // 2405. 4,083 (indx 100.0%),  Portugal (2,042), Portugal_europe (2,042)
+		addFrequent("15nong"); // 2406. 2,041 (indx 100.0%),  Taiwan (2,041), Taiwan_asia (2,041)
+		addFrequent("верхняя"); // 2407. 2,281 (indx 100.0%),  Russia (2,036), Russia_moskovskaya-oblast (173)
+		addFrequent("srkh"); // 2408. 2,263 (indx 100.0%),  Afghanistan (2,035), Afghanistan_asia (2,035)
+		addFrequent("الی"); // 2409. 2,091 (indx 100.0%),  Afghanistan (2,035), Afghanistan_asia (2,035)
+		addFrequent("wa"); // 2410. 4,551 (indx 100.0%),  China (2,034), Myanmar_asia (799)
+		addFrequent("georgia"); // 2411. 2,152 (indx 100.0%),  Us (2,033), Us_georgia (315)
+		addFrequent("gateway"); // 2412. 2,490 (indx 100.0%),  Us (2,031), Us_california (197)
+		addFrequent("hmd"); // 2413. 2,694 (indx 100.0%),  Iran (2,030), Iran_tehran (512)
+		addFrequent("abaixo"); // 2414. 2,036 (indx 100.0%),  Spain (2,024), Spain_galicia (2,014)
+		addFrequent("الرحمن"); // 2415. 2,230 (indx 100.0%),  Egypt (2,022), Egypt_africa (2,022)
+		addFrequent("sevilla"); // 2416. 2,959 (indx 100.0%),  Spain (2,022), Spain_andalusia (1,156)
+		addFrequent("rhone"); // 2417. 2,106 (indx 100.0%),  France (2,021), France_auvergne-rhone-alpes (1,318)
+		addFrequent("بخش"); // 2418. 2,292 (indx 100.0%),  Iran (2,019), Iran_razavi-khorasan (164)
+		addFrequent("ju"); // 2419. 3,447 (indx 100.0%),  China (2,019), Taiwan_asia (692)
+		addFrequent("nr"); // 2420. 2,189 (indx 100.0%),  Poland (2,016), Poland_kuyavian-pomeranian (416)
+		addFrequent("valencia"); // 2421. 4,859 (indx 100.0%),  Spain (2,015), Spain_valencia (1,028)
+		addFrequent("bryn"); // 2422. 2,150 (indx 100.0%),  Gb (2,015), Gb_wales (1,966)
+		addFrequent("ولایت"); // 2423. 2,218 (indx 100.0%),  Iran (2,013), Iran_khuzestan (203)
+		addFrequent("ផ្លូវ"); // 2424. 2,013 (indx 100.0%),  Cambodia (2,013), Cambodia_asia (2,013)
+		addFrequent("ben"); // 2425. 11,525 (indx 100.0%),  Japan (2,010), Morocco_africa (1,481)
+		addFrequent("vermont"); // 2426. 2,155 (indx 100.0%),  Us (2,010), Us_vermont (1,081)
+		addFrequent("chinh"); // 2427. 2,009 (indx 100.0%),  Vietnam (2,009), Vietnam_asia (2,009)
+		addFrequent("hàn"); // 2428. 2,316 (indx 100.0%),  China (2,006), China_hubei (542)
+		addFrequent("maranhão"); // 2429. 2,003 (indx 100.0%),  Brazil (2,003), Brazil_sao-paulo (313)
+		addFrequent("pennsylvania"); // 2430. 2,026 (indx 100.0%),  Us (1,997), Us_pennsylvania (592)
+		addFrequent("pot"); // 2431. 2,487 (indx 100.0%),  Slovenia (1,995), Slovenia_europe (1,995)
+		addFrequent("mt"); // 2432. 3,421 (indx 100.0%),  Us (1,992), Australia-oceania_victoria (331)
+		addFrequent("bihan"); // 2433. 2,005 (indx 100.0%),  France (1,992), France_brittany (1,812)
+		addFrequent("bisericii"); // 2434. 2,069 (indx 100.0%),  Romania (1,990), Romania_europe (1,990)
+		addFrequent("من"); // 2435. 2,061 (indx 100.0%),  Egypt (1,987), Egypt_africa (1,987)
+		addFrequent("abbey"); // 2436. 4,328 (indx 100.0%),  Us (1,986), Gb_england (1,316)
+		addFrequent("wū"); // 2437. 1,986 (indx 100.0%),  China (1,986), China_guangdong (412)
+		addFrequent("ovre"); // 2438. 2,515 (indx 100.0%),  Norway (1,986), Norway_vestland (370)
+		addFrequent("tomaz"); // 2439. 2,044 (indx 100.0%),  Brazil (1,985), Brazil_santa-catarina (373)
+		addFrequent("aparecido"); // 2440. 1,984 (indx 100.0%),  Brazil (1,984), Brazil_sao-paulo (1,572)
+		addFrequent("chico"); // 2441. 4,210 (indx 100.0%),  Brazil (1,983), Brazil_sao-paulo (381)
+		addFrequent("marché"); // 2442. 2,436 (indx 100.0%),  France (1,977), France_auvergne-rhone-alpes (284)
+		addFrequent("кп"); // 2443. 1,975 (indx 100.0%),  Russia (1,975), Russia_moskovskaya-oblast (1,328)
+		addFrequent("västra"); // 2444. 2,182 (indx 100.0%),  Sweden (1,972), Sweden_vastra-gotaland (322)
+		addFrequent("bürgermeister"); // 2445. 1,971 (indx 100.0%),  Germany (1,971), Germany_bayern (1,003)
+		addFrequent("regione"); // 2446. 2,349 (indx 100.0%),  Italy (1,970), Italy_piemonte (1,524)
+		addFrequent("cabo"); // 2447. 6,529 (indx 100.0%),  Brazil (1,969), Portugal_europe (1,192)
+		addFrequent("سعىد"); // 2448. 3,061 (indx 100.0%),  Egypt (1,968), Egypt_africa (1,968)
+		addFrequent("vallon"); // 2449. 2,247 (indx 100.0%),  France (1,968), France_provence-alpes-cote-d-azur (656)
+		addFrequent("lancaster"); // 2450. 3,177 (indx 100.0%),  Us (1,968), Gb_england (874)
+		addFrequent("ilha"); // 2451. 2,835 (indx 100.0%),  Brazil (1,968), Portugal_europe (743)
+		addFrequent("östra"); // 2452. 2,145 (indx 100.0%),  Sweden (1,967), Sweden_skane (352)
+		addFrequent("estación"); // 2453. 3,624 (indx 100.0%),  Spain (1,966), Spain_andalusia (411)
+		addFrequent("põik"); // 2454. 1,988 (indx 100.0%),  Estonia (1,963), Estonia_europe (1,963)
+		addFrequent("burgermeister"); // 2455. 1,962 (indx 100.0%),  Germany (1,962), Germany_bayern (1,001)
+		addFrequent("azinhaga"); // 2456. 2,216 (indx 100.0%),  Portugal (1,960), Portugal_europe (1,960)
+		addFrequent("hien"); // 2457. 1,959 (indx 100.0%),  Vietnam (1,959), Vietnam_asia (1,959)
+		addFrequent("bang"); // 2458. 4,929 (indx 100.0%),  Thailand (1,958), Thailand_asia (1,958)
+		addFrequent("ostra"); // 2459. 2,114 (indx 100.0%),  Sweden (1,958), Sweden_skane (349)
+		addFrequent("community"); // 2460. 5,371 (indx 30.5%),  China (1,956), Greece_europe (599)
+		addFrequent("california"); // 2461. 3,713 (indx 100.0%),  Us (1,956), Us_california (709)
+		addFrequent("tam"); // 2462. 2,223 (indx 100.0%),  Vietnam (1,956), Vietnam_asia (1,956)
+		addFrequent("brasília"); // 2463. 1,955 (indx 100.0%),  Brazil (1,955), Brazil_sao-paulo (316)
+		addFrequent("xã"); // 2464. 2,264 (indx 100.0%),  Vietnam (1,955), Vietnam_asia (1,955)
+		addFrequent("camín"); // 2465. 1,954 (indx 100.0%),  Spain (1,954), Spain_asturias (1,607)
+		addFrequent("maranhao"); // 2466. 1,953 (indx 100.0%),  Brazil (1,953), Brazil_sao-paulo (306)
+		addFrequent("khan"); // 2467. 4,161 (indx 100.0%),  Pakistan (1,951), Pakistan_asia (1,951)
+		addFrequent("ty"); // 2468. 2,417 (indx 100.0%),  France (1,951), France_brittany (1,951)
+		addFrequent("provence"); // 2469. 1,998 (indx 100.0%),  France (1,950), France_provence-alpes-cote-d-azur (903)
+		addFrequent("estancia"); // 2470. 2,927 (indx 100.0%),  Bolivia (1,949), Bolivia_southamerica (1,949)
+		addFrequent("tsuen"); // 2471. 2,075 (indx 100.0%),  Hong-kong (1,947), Hong-kong_asia (1,947)
+		addFrequent("baloard"); // 2472. 1,946 (indx 100.0%),  France (1,946), France_provence-alpes-cote-d-azur (1,782)
+		addFrequent("beim"); // 2473. 2,292 (indx 100.0%),  Germany (1,941), Germany_baden-wuerttemberg (815)
+		addFrequent("ki"); // 2474. 3,089 (indx 100.0%),  India (1,940), India_rajasthan (1,820)
+		addFrequent("fields"); // 2475. 3,967 (indx 100.0%),  Us (1,938), Gb_england (1,752)
+		addFrequent("buckeye"); // 2476. 1,937 (indx 100.0%),  Us (1,937), Us_ohio (519)
+		addFrequent("sráid"); // 2477. 2,848 (indx 100.0%),  Ireland (1,935), Ireland_europe (1,935)
+		addFrequent("poik"); // 2478. 1,957 (indx 100.0%),  Estonia (1,932), Estonia_europe (1,932)
+		addFrequent("sawa"); // 2479. 1,947 (indx 100.0%),  Japan (1,931), Japan_hokkaido (872)
+		addFrequent("riu"); // 2480. 3,381 (indx 100.0%),  Spain (1,929), Spain_valencia (1,041)
+		addFrequent("damai"); // 2481. 3,271 (indx 100.0%),  Malaysia (1,928), Malaysia_asia (1,928)
+		addFrequent("thọ"); // 2482. 1,927 (indx 100.0%),  Vietnam (1,927), Vietnam_asia (1,927)
+		addFrequent("españa"); // 2483. 3,880 (indx 100.0%),  Spain (1,925), Spain_andalusia (382)
+		addFrequent("trong"); // 2484. 1,932 (indx 100.0%),  Vietnam (1,922), Vietnam_asia (1,922)
+		addFrequent("glebe"); // 2485. 2,670 (indx 100.0%),  Gb (1,920), Gb_england (1,324)
+		addFrequent("trg"); // 2486. 3,516 (indx 100.0%),  Croatia (1,918), Croatia_europe (1,918)
+		addFrequent("huu"); // 2487. 1,928 (indx 100.0%),  Vietnam (1,911), Vietnam_asia (1,911)
+		addFrequent("lương"); // 2488. 1,911 (indx 100.0%),  Vietnam (1,911), Vietnam_asia (1,911)
+		addFrequent("leme"); // 2489. 1,926 (indx 100.0%),  Brazil (1,907), Brazil_sao-paulo (1,570)
+		addFrequent("dog"); // 2490. 2,388 (indx 100.0%),  Us (1,906), Gb_england (204)
+		addFrequent("london"); // 2491. 3,627 (indx 100.0%),  Gb (1,906), Gb_england (1,833)
+		addFrequent("natal"); // 2492. 1,959 (indx 100.0%),  Brazil (1,906), Brazil_sao-paulo (629)
+		addFrequent("plessis"); // 2493. 2,015 (indx 100.0%),  France (1,903), France_pays-de-la-loire (726)
+		addFrequent("calea"); // 2494. 2,300 (indx 100.0%),  Romania (1,903), Romania_europe (1,903)
+		addFrequent("nsr"); // 2495. 2,062 (indx 100.0%),  Iran (1,902), Iran_tehran (389)
+		addFrequent("tha"); // 2496. 2,943 (indx 100.0%),  Myanmar (1,902), Myanmar_asia (1,902)
+		addFrequent("maja"); // 2497. 3,222 (indx 100.0%),  Poland (1,901), Serbia_europe (543)
+		addFrequent("wilderness"); // 2498. 1,963 (indx 100.0%),  Us (1,901), Us_texas (141)
+		addFrequent("estacion"); // 2499. 3,618 (indx 100.0%),  Spain (1,897), Spain_andalusia (409)
+		addFrequent("нова"); // 2500. 3,304 (indx 100.0%),  Ukraine (1,895), Serbia_europe (1,009)
+		addFrequent("سعد"); // 2501. 2,775 (indx 100.0%),  Egypt (1,892), Egypt_africa (1,892)
+		addFrequent("vuong"); // 2502. 1,892 (indx 100.0%),  Vietnam (1,892), Vietnam_asia (1,892)
+		addFrequent("grau"); // 2503. 2,374 (indx 100.0%),  Peru (1,891), Peru_southamerica (1,891)
+		addFrequent("stora"); // 2504. 2,018 (indx 100.0%),  Sweden (1,891), Sweden_vastra-gotaland (476)
+		addFrequent("lam"); // 2505. 4,204 (indx 100.0%),  Vietnam (1,890), Vietnam_asia (1,890)
+		addFrequent("vasile"); // 2506. 2,924 (indx 100.0%),  Romania (1,890), Romania_europe (1,890)
+		addFrequent("cà"); // 2507. 2,005 (indx 100.0%),  Italy (1,889), Italy_veneto (698)
+		addFrequent("sī"); // 2508. 1,888 (indx 46.9%),  China (1,888), China_jiangsu (224)
+		addFrequent("vuka"); // 2509. 1,882 (indx 100.0%),  Serbia (1,882), Serbia_europe (1,882)
+		addFrequent("malvinas"); // 2510. 2,081 (indx 100.0%),  Argentina (1,881), Argentina_buenos-aires (463)
+		addFrequent("stream"); // 2511. 2,276 (indx 100.0%),  Us (1,880), Us_texas (269)
+		addFrequent("stryd"); // 2512. 1,880 (indx 100.0%),  Gb (1,880), Gb_wales (1,866)
+		addFrequent("górna"); // 2513. 1,937 (indx 100.0%),  Poland (1,878), Poland_lesser-poland (388)
+		addFrequent("yrigoyen"); // 2514. 1,909 (indx 100.0%),  Argentina (1,877), Argentina_buenos-aires (597)
+		addFrequent("ne"); // 2515. 2,959 (indx 75.1%),  Ecuador (1,869), Ecuador_southamerica (1,869)
+		addFrequent("fresno"); // 2516. 2,485 (indx 100.0%),  Mexico (1,868), Mexico_mexico (328)
+		addFrequent("reservoir"); // 2517. 3,345 (indx 79.8%),  Us (1,868), France_auvergne-rhone-alpes (243)
+		addFrequent("barton"); // 2518. 3,215 (indx 100.0%),  Us (1,866), Gb_england (998)
+		addFrequent("isle"); // 2519. 2,086 (indx 100.0%),  Us (1,866), Us_florida (602)
+		addFrequent("vương"); // 2520. 1,865 (indx 100.0%),  Vietnam (1,865), Vietnam_asia (1,865)
+		addFrequent("bunga"); // 2521. 3,015 (indx 100.0%),  Malaysia (1,863), Malaysia_asia (1,863)
+		addFrequent("vastra"); // 2522. 1,940 (indx 100.0%),  Sweden (1,863), Sweden_skane (310)
+		addFrequent("anggerik"); // 2523. 1,861 (indx 100.0%),  Malaysia (1,861), Malaysia_asia (1,861)
+		addFrequent("espana"); // 2524. 3,663 (indx 100.0%),  Spain (1,860), Spain_andalusia (383)
+		addFrequent("see"); // 2525. 2,450 (indx 100.0%),  Germany (1,860), Germany_brandenburg (347)
+		addFrequent("florida"); // 2526. 4,842 (indx 100.0%),  Us (1,859), Us_florida (651)
+		addFrequent("دو"); // 2527. 1,890 (indx 100.0%),  Iran (1,854), Iran_esfahan (346)
+		addFrequent("parking"); // 2528. 5,008 (indx 100.0%),  Us (1,854), France_ile-de-france (523)
+		addFrequent("col"); // 2529. 3,507 (indx 100.0%),  France (1,853), France_auvergne-rhone-alpes (1,001)
+		addFrequent("khai"); // 2530. 1,972 (indx 100.0%),  Vietnam (1,853), Vietnam_asia (1,853)
+		addFrequent("mirador"); // 2531. 4,798 (indx 100.0%),  Mexico (1,851), Spain_andalusia (272)
+		addFrequent("taung"); // 2532. 1,928 (indx 100.0%),  Myanmar (1,851), Myanmar_asia (1,851)
+		addFrequent("cha"); // 2533. 3,763 (indx 100.0%),  China (1,849), Portugal_europe (615)
+		addFrequent("veiga"); // 2534. 3,940 (indx 100.0%),  Brazil (1,849), Portugal_europe (928)
+		addFrequent("റോഡ്"); // 2535. 2,099 (indx 100.0%),  India (1,849), India_kerala (1,831)
+		addFrequent("páirc"); // 2536. 2,206 (indx 100.0%),  Ireland (1,846), Ireland_europe (1,846)
+		addFrequent("justo"); // 2537. 4,630 (indx 100.0%),  Mexico (1,845), Argentina_buenos-aires (467)
+		addFrequent("laluan"); // 2538. 1,880 (indx 100.0%),  Malaysia (1,844), Malaysia_asia (1,844)
+		addFrequent("sutton"); // 2539. 3,192 (indx 100.0%),  Us (1,841), Gb_england (986)
+		addFrequent("graben"); // 2540. 2,373 (indx 100.0%),  Germany (1,841), Germany_bayern (361)
+		addFrequent("cristóvão"); // 2541. 2,202 (indx 100.0%),  Brazil (1,841), Brazil_sao-paulo (421)
+		addFrequent("señora"); // 2542. 2,541 (indx 100.0%),  Spain (1,839), Spain_andalusia (523)
+		addFrequent("jardín"); // 2543. 3,448 (indx 100.0%),  Mexico (1,838), Mexico_guanajuato (545)
+		addFrequent("hữu"); // 2544. 1,898 (indx 100.0%),  Vietnam (1,838), Vietnam_asia (1,838)
+		addFrequent("lan"); // 2545. 5,853 (indx 100.0%),  Vietnam (1,836), Vietnam_asia (1,836)
+		addFrequent("comte"); // 2546. 2,422 (indx 100.0%),  France (1,836), France_bourgogne-franche-comte (324)
+		addFrequent("kingston"); // 2547. 2,950 (indx 100.0%),  Us (1,835), Gb_england (627)
+		addFrequent("willem"); // 2548. 2,085 (indx 100.0%),  Netherlands (1,835), Netherlands_zuid-holland (396)
+		addFrequent("amaru"); // 2549. 1,975 (indx 100.0%),  Peru (1,831), Peru_southamerica (1,831)
+		addFrequent("parco"); // 2550. 1,906 (indx 100.0%),  Italy (1,829), Italy_campania (491)
+		addFrequent("22xiang"); // 2551. 1,852 (indx 100.0%),  Taiwan (1,828), Taiwan_asia (1,828)
+		addFrequent("derriere"); // 2552. 2,328 (indx 100.0%),  France (1,825), France_great-east (560)
+		addFrequent("50xiang"); // 2553. 1,841 (indx 100.0%),  Taiwan (1,824), Taiwan_asia (1,824)
+		addFrequent("gorna"); // 2554. 1,957 (indx 100.0%),  Poland (1,823), Poland_lesser-poland (381)
+		addFrequent("menez"); // 2555. 1,821 (indx 100.0%),  France (1,821), France_brittany (1,783)
+		addFrequent("18nong"); // 2556. 1,821 (indx 100.0%),  Taiwan (1,821), Taiwan_asia (1,821)
+		addFrequent("gora"); // 2557. 3,760 (indx 100.0%),  Poland (1,818), Poland_lesser-poland (442)
+		addFrequent("trang"); // 2558. 1,854 (indx 100.0%),  Vietnam (1,817), Vietnam_asia (1,817)
+		addFrequent("kp"); // 2559. 2,524 (indx 100.0%),  Russia (1,816), Russia_moskovskaya-oblast (1,214)
+		addFrequent("kirche"); // 2560. 1,851 (indx 100.0%),  Germany (1,815), Germany_niedersachsen (350)
+		addFrequent("kuchai"); // 2561. 1,925 (indx 100.0%),  Tajikistan (1,812), Tajikistan_asia (1,812)
+		addFrequent("aldeia"); // 2562. 3,433 (indx 100.0%),  Portugal (1,812), Portugal_europe (1,812)
+		addFrequent("souto"); // 2563. 3,490 (indx 100.0%),  Portugal (1,808), Portugal_europe (1,808)
+		addFrequent("francesc"); // 2564. 1,836 (indx 100.0%),  Spain (1,808), Spain_catalunya (1,230)
+		addFrequent("bulevardul"); // 2565. 2,009 (indx 100.0%),  Romania (1,807), Romania_europe (1,807)
+		addFrequent("mancha"); // 2566. 1,898 (indx 100.0%),  Spain (1,806), Spain_castilla-la-mancha (930)
+		addFrequent("shuang"); // 2567. 3,342 (indx 100.0%),  China (1,806), Taiwan_asia (1,525)
+		addFrequent("forestale"); // 2568. 1,818 (indx 100.0%),  Italy (1,804), Italy_trentino-alto-adige (1,469)
+		addFrequent("french"); // 2569. 2,467 (indx 100.0%),  Us (1,803), Us_new-york (152)
+		addFrequent("mo"); // 2570. 3,962 (indx 100.0%),  China (1,803), Vietnam_asia (575)
+		addFrequent("nouvelle"); // 2571. 2,211 (indx 100.0%),  France (1,802), France_new-aquitaine (624)
+		addFrequent("3xiang"); // 2572. 1,802 (indx 100.0%),  Taiwan (1,802), Taiwan_asia (1,802)
+		addFrequent("shaw"); // 2573. 2,922 (indx 100.0%),  Us (1,800), Gb_england (651)
+		addFrequent("federal"); // 2574. 5,008 (indx 100.0%),  Mexico (1,798), Pakistan_asia (1,327)
+		addFrequent("gamle"); // 2575. 1,797 (indx 100.0%),  Norway (1,797), Norway_akershus (296)
+		addFrequent("vihan"); // 2576. 1,795 (indx 100.0%),  France (1,795), France_brittany (1,673)
+		addFrequent("trọng"); // 2577. 1,794 (indx 100.0%),  Vietnam (1,794), Vietnam_asia (1,794)
+		addFrequent("lshhyd"); // 2578. 1,955 (indx 100.0%),  Algeria (1,792), Algeria_africa (1,792)
+		addFrequent("bà"); // 2579. 3,087 (indx 100.0%),  China (1,792), Vietnam_asia (1,295)
+		addFrequent("tunnel"); // 2580. 7,123 (indx 100.0%),  China (1,787), China_guangdong (481)
+		addFrequent("οδός"); // 2581. 1,787 (indx 100.0%),  Greece (1,787), Greece_europe (1,787)
+		addFrequent("mail"); // 2582. 1,887 (indx 100.0%),  France (1,784), France_ile-de-france (529)
+		addFrequent("mỹ"); // 2583. 1,776 (indx 100.0%),  Vietnam (1,776), Vietnam_asia (1,776)
+		addFrequent("andres"); // 2584. 6,914 (indx 100.0%),  Mexico (1,775), Peru_southamerica (793)
+		addFrequent("ceará"); // 2585. 1,774 (indx 100.0%),  Brazil (1,774), Brazil_sao-paulo (332)
+		addFrequent("cill"); // 2586. 1,906 (indx 100.0%),  Ireland (1,774), Ireland_europe (1,774)
+		addFrequent("bartolomeu"); // 2587. 2,987 (indx 100.0%),  Brazil (1,773), Portugal_europe (1,136)
+		addFrequent("shin"); // 2588. 2,395 (indx 100.0%),  Japan (1,773), Japan_kinki (548)
+		addFrequent("my"); // 2589. 1,958 (indx 100.0%),  Vietnam (1,771), Vietnam_asia (1,771)
+		addFrequent("oregon"); // 2590. 1,862 (indx 100.0%),  Us (1,771), Us_oregon (511)
+		addFrequent("alvares"); // 2591. 2,833 (indx 100.0%),  Brazil (1,771), Portugal_europe (981)
+		addFrequent("shēn"); // 2592. 1,765 (indx 100.0%),  China (1,765), China_guangdong (297)
+		addFrequent("koyu"); // 2593. 1,780 (indx 100.0%),  Turkey (1,765), Turkey_black-sea (829)
+		addFrequent("nou"); // 2594. 2,431 (indx 100.0%),  Spain (1,764), Spain_catalunya (1,030)
+		addFrequent("moinhos"); // 2595. 1,958 (indx 100.0%),  Portugal (1,763), Portugal_europe (1,763)
+		addFrequent("derrière"); // 2596. 2,240 (indx 100.0%),  France (1,762), France_great-east (554)
+		addFrequent("puć"); // 2597. 1,762 (indx 100.0%),  Germany (1,762), Germany_sachsen (1,742)
+		addFrequent("dhani"); // 2598. 1,802 (indx 100.0%),  India (1,762), India_rajasthan (1,713)
+		addFrequent("julia"); // 2599. 4,148 (indx 100.0%),  Brazil (1,760), Brazil_sao-paulo (481)
+		addFrequent("13nong"); // 2600. 1,760 (indx 100.0%),  Taiwan (1,760), Taiwan_asia (1,760)
+		addFrequent("alfonso"); // 2601. 7,065 (indx 100.0%),  Spain (1,758), Peru_southamerica (1,165)
+		addFrequent("cabeco"); // 2602. 1,938 (indx 100.0%),  Portugal (1,758), Portugal_europe (1,758)
+		addFrequent("graniczna"); // 2603. 1,878 (indx 100.0%),  Poland (1,757), Poland_masovian (406)
+		addFrequent("'t"); // 2604. 2,241 (indx 100.0%),  Netherlands (1,754), Belgium_flanders (487)
+		addFrequent("senora"); // 2605. 2,391 (indx 100.0%),  Spain (1,753), Spain_andalusia (524)
+		addFrequent("ceara"); // 2606. 1,753 (indx 100.0%),  Brazil (1,753), Brazil_sao-paulo (330)
+		addFrequent("cabeço"); // 2607. 1,920 (indx 100.0%),  Portugal (1,752), Portugal_europe (1,752)
+		addFrequent("георги"); // 2608. 1,810 (indx 100.0%),  Bulgaria (1,751), Bulgaria_europe (1,751)
+		addFrequent("جمهوری"); // 2609. 1,762 (indx 100.0%),  Iran (1,750), Iran_razavi-khorasan (248)
+		addFrequent("bus"); // 2610. 4,433 (indx 100.0%),  Us (1,746), India_andhra-pradesh (609)
+		addFrequent("trindade"); // 2611. 2,288 (indx 100.0%),  Brazil (1,744), Portugal_europe (498)
+		addFrequent("dòng"); // 2612. 1,743 (indx 100.0%),  China (1,743), China_beijing (217)
+		addFrequent("garonne"); // 2613. 1,743 (indx 100.0%),  France (1,743), France_occitania (1,281)
+		addFrequent("yr"); // 2614. 1,784 (indx 100.0%),  Gb (1,743), Gb_wales (1,733)
+		addFrequent("cementerio"); // 2615. 3,194 (indx 100.0%),  Spain (1,742), Spain_castilla-leon (564)
+		addFrequent("ct"); // 2616. 1,827 (indx 100.0%),  Us (1,742), Us_california (405)
+		addFrequent("hang"); // 2617. 4,938 (indx 100.0%),  Germany (1,741), Hong-kong_asia (748)
+		addFrequent("sent"); // 2618. 1,740 (indx 100.0%),  France (1,740), France_new-aquitaine (985)
+		addFrequent("english"); // 2619. 1,951 (indx 100.0%),  Us (1,738), Us_north-carolina (156)
+		addFrequent("rhône"); // 2620. 1,802 (indx 100.0%),  France (1,738), France_auvergne-rhone-alpes (1,104)
+		addFrequent("argentina"); // 2621. 5,070 (indx 100.0%),  Argentina (1,737), Argentina_buenos-aires (436)
+		addFrequent("ivan"); // 2622. 3,336 (indx 100.0%),  Bulgaria (1,735), Bulgaria_europe (1,735)
+		addFrequent("yŏu"); // 2623. 1,734 (indx 66.3%),  China (1,734), China_jiangsu (226)
+		addFrequent("lucio"); // 2624. 3,541 (indx 100.0%),  Brazil (1,733), Brazil_sao-paulo (437)
+		addFrequent("große"); // 2625. 1,839 (indx 100.0%),  Germany (1,733), Germany_niedersachsen (406)
+		addFrequent("municipio"); // 2626. 4,850 (indx 100.0%),  Argentina (1,730), Argentina_entre-rios (515)
+		addFrequent("napoli"); // 2627. 1,799 (indx 100.0%),  Italy (1,729), Italy_campania (379)
+		addFrequent("köyü"); // 2628. 1,760 (indx 100.0%),  Turkey (1,727), Turkey_black-sea (845)
+		addFrequent("impian"); // 2629. 1,727 (indx 100.0%),  Malaysia (1,727), Malaysia_asia (1,727)
+		addFrequent("وادى"); // 2630. 4,762 (indx 100.0%),  Saudi-arabia (1,726), Saudi-arabia_asia (1,726)
+		addFrequent("springfield"); // 2631. 3,775 (indx 100.0%),  Us (1,726), Gb_england (1,316)
+		addFrequent("barangay"); // 2632. 1,726 (indx 100.0%),  Philippines (1,726), Philippines_metro-manila (558)
+		addFrequent("fe"); // 2633. 6,605 (indx 100.0%),  Us (1,725), Argentina_santa-fe (458)
+		addFrequent("bretagne"); // 2634. 1,751 (indx 100.0%),  France (1,725), France_brittany (489)
+		addFrequent("androna"); // 2635. 1,867 (indx 100.0%),  France (1,725), France_provence-alpes-cote-d-azur (1,479)
+		addFrequent("lai"); // 2636. 4,194 (indx 100.0%),  Vietnam (1,724), Vietnam_asia (1,724)
+		addFrequent("grosse"); // 2637. 2,480 (indx 100.0%),  Germany (1,722), Germany_niedersachsen (401)
+		addFrequent("hunyadi"); // 2638. 1,762 (indx 100.0%),  Hungary (1,721), Hungary_europe (1,721)
+		addFrequent("garth"); // 2639. 1,992 (indx 100.0%),  Gb (1,719), Gb_england (1,502)
+		addFrequent("36xiang"); // 2640. 1,718 (indx 100.0%),  Taiwan (1,718), Taiwan_asia (1,718)
+		addFrequent("عزبه"); // 2641. 1,728 (indx 100.0%),  Egypt (1,717), Egypt_africa (1,717)
+		addFrequent("31xiang"); // 2642. 1,717 (indx 100.0%),  Taiwan (1,717), Taiwan_asia (1,717)
+		addFrequent("woodlands"); // 2643. 2,894 (indx 100.0%),  Gb (1,714), Gb_england (1,423)
+		addFrequent("pará"); // 2644. 1,736 (indx 100.0%),  Brazil (1,713), Brazil_sao-paulo (315)
+		addFrequent("rayon"); // 2645. 1,876 (indx 100.0%),  Mexico (1,713), Mexico_mexico (256)
+		addFrequent("edward"); // 2646. 4,437 (indx 100.0%),  Us (1,712), Gb_england (992)
+		addFrequent("sideroad"); // 2647. 1,712 (indx 100.0%),  Canada (1,712), Canada_ontario (1,712)
+		addFrequent("ermita"); // 2648. 1,978 (indx 100.0%),  Spain (1,710), Spain_castilla-leon (559)
+		addFrequent("လမ်း"); // 2649. 1,710 (indx 100.0%),  Myanmar (1,710), Myanmar_asia (1,710)
+		addFrequent("góra"); // 2650. 1,748 (indx 100.0%),  Poland (1,705), Poland_lesser-poland (342)
+		addFrequent("lạc"); // 2651. 1,705 (indx 100.0%),  Vietnam (1,705), Vietnam_asia (1,705)
+		addFrequent("conde"); // 2652. 5,322 (indx 100.0%),  Brazil (1,704), Portugal_europe (1,339)
+		addFrequent("cape"); // 2653. 2,643 (indx 100.0%),  Us (1,703), Us_california (257)
+		addFrequent("иван"); // 2654. 1,799 (indx 100.0%),  Bulgaria (1,703), Bulgaria_europe (1,703)
+		addFrequent("khlong"); // 2655. 1,713 (indx 100.0%),  Thailand (1,703), Thailand_asia (1,703)
+		addFrequent("huarahi"); // 2656. 1,702 (indx 100.0%),  New-zealand (1,702), New-zealand_australia-oceania (1,702)
+		addFrequent("han"); // 2657. 5,618 (indx 100.0%),  China (1,701), Taiwan_asia (1,393)
+		addFrequent("borgata"); // 2658. 1,701 (indx 100.0%),  Italy (1,701), Italy_piemonte (1,506)
+		addFrequent("северный"); // 2659. 1,928 (indx 100.0%),  Russia (1,700), Russia_moskovskaya-oblast (191)
+		addFrequent("ascaill"); // 2660. 1,972 (indx 100.0%),  Ireland (1,700), Ireland_europe (1,700)
+		addFrequent("wald"); // 2661. 2,108 (indx 100.0%),  Germany (1,699), Germany_bayern (288)
+		addFrequent("советская"); // 2662. 1,699 (indx 100.0%),  Russia (1,699), Russia_sverdlovsk (420)
+		addFrequent("20nong"); // 2663. 1,698 (indx 100.0%),  Taiwan (1,698), Taiwan_asia (1,698)
+		addFrequent("bebel"); // 2664. 1,705 (indx 100.0%),  Germany (1,693), Germany_sachsen (644)
+		addFrequent("جمال"); // 2665. 2,468 (indx 100.0%),  Egypt (1,690), Egypt_africa (1,690)
+		addFrequent("gran"); // 2666. 3,925 (indx 100.0%),  Spain (1,688), Spain_catalunya (315)
+		addFrequent("hacı"); // 2667. 1,816 (indx 100.0%),  Turkey (1,686), Turkey_marmara (878)
+		addFrequent("shun"); // 2668. 2,304 (indx 100.0%),  Taiwan (1,685), Taiwan_asia (1,685)
+		addFrequent("20xiang"); // 2669. 1,685 (indx 100.0%),  Taiwan (1,685), Taiwan_asia (1,685)
+		addFrequent("ioan"); // 2670. 1,930 (indx 100.0%),  Romania (1,682), Romania_europe (1,682)
+		addFrequent("южный"); // 2671. 1,946 (indx 100.0%),  Russia (1,678), Russia_moskovskaya-oblast (147)
+		addFrequent("صلاح"); // 2672. 2,032 (indx 100.0%),  Egypt (1,677), Egypt_africa (1,677)
+		addFrequent("küçəsi"); // 2673. 2,005 (indx 100.0%),  Azerbaijan (1,676), Azerbaijan_asia (1,676)
+		addFrequent("i̇lçe"); // 2674. 1,675 (indx 100.0%),  Turkey (1,675), Turkey_marmara (738)
+		addFrequent("colorado"); // 2675. 4,112 (indx 100.0%),  Us (1,674), Us_colorado (384)
+		addFrequent("goth"); // 2676. 1,746 (indx 100.0%),  Pakistan (1,674), Pakistan_asia (1,674)
+		addFrequent("11xiang"); // 2677. 1,673 (indx 100.0%),  Taiwan (1,673), Taiwan_asia (1,673)
+		addFrequent("cu"); // 2678. 2,310 (indx 100.0%),  Vietnam (1,672), Vietnam_asia (1,672)
+		addFrequent("drumul"); // 2679. 2,670 (indx 100.0%),  Romania (1,672), Romania_europe (1,672)
+		addFrequent("thượng"); // 2680. 1,684 (indx 100.0%),  Vietnam (1,671), Vietnam_asia (1,671)
+		addFrequent("16xiang"); // 2681. 1,669 (indx 100.0%),  Taiwan (1,669), Taiwan_asia (1,669)
+		addFrequent("forno"); // 2682. 2,907 (indx 100.0%),  Portugal (1,668), Portugal_europe (1,668)
+		addFrequent("jakob"); // 2683. 2,214 (indx 100.0%),  Germany (1,666), Germany_baden-wuerttemberg (398)
+		addFrequent("near"); // 2684. 2,985 (indx 100.0%),  India (1,666), Pakistan_asia (1,229)
+		addFrequent("tấn"); // 2685. 1,665 (indx 100.0%),  Vietnam (1,665), Vietnam_asia (1,665)
+		addFrequent("pulai"); // 2686. 1,684 (indx 100.0%),  Malaysia (1,661), Malaysia_asia (1,661)
+		addFrequent("oblast"); // 2687. 3,339 (indx 100.0%),  Russia (1,659), Kazakhstan_asia (115)
+		addFrequent("pen"); // 2688. 3,388 (indx 100.0%),  France (1,657), France_brittany (1,629)
+		addFrequent("calvario"); // 2689. 4,709 (indx 100.0%),  Spain (1,656), Portugal_europe (1,187)
+		addFrequent("trường"); // 2690. 1,700 (indx 100.0%),  Vietnam (1,656), Vietnam_asia (1,656)
+		addFrequent("yaylası"); // 2691. 1,655 (indx 100.0%),  Turkey (1,655), Turkey_black-sea (704)
+		addFrequent("pla"); // 2692. 3,005 (indx 100.0%),  Spain (1,654), Spain_catalunya (1,057)
+		addFrequent("piaui"); // 2693. 1,653 (indx 100.0%),  Brazil (1,653), Brazil_sao-paulo (331)
+		addFrequent("tro"); // 2694. 1,652 (indx 100.0%),  France (1,652), France_brittany (1,301)
+		addFrequent("vicarage"); // 2695. 1,651 (indx 100.0%),  Gb (1,651), Gb_england (1,560)
+		addFrequent("sato"); // 2696. 1,651 (indx 100.0%),  Japan (1,651), Japan_kinki (1,440)
+		addFrequent("26xiang"); // 2697. 1,651 (indx 100.0%),  Taiwan (1,651), Taiwan_asia (1,651)
+		addFrequent("chōme"); // 2698. 1,650 (indx 21.8%),  Japan (1,650), Japan_kinki (727)
+		addFrequent("аль"); // 2699. 2,085 (indx 100.0%),  Syria (1,648), Syria_asia (1,648)
+		addFrequent("se"); // 2700. 3,656 (indx 69.1%),  Ecuador (1,647), Ecuador_southamerica (1,647)
+		addFrequent("priory"); // 2701. 1,773 (indx 100.0%),  Gb (1,646), Gb_england (1,473)
+		addFrequent("clifton"); // 2702. 3,397 (indx 100.0%),  Us (1,645), Gb_england (1,026)
+		addFrequent("american"); // 2703. 2,072 (indx 100.0%),  Us (1,644), Us_california (208)
+		addFrequent("đại"); // 2704. 1,861 (indx 100.0%),  Vietnam (1,642), Vietnam_asia (1,642)
+		addFrequent("viadotto"); // 2705. 1,642 (indx 100.0%),  Italy (1,642), Italy_sicilia (1,105)
+		addFrequent("রোড"); // 2706. 1,978 (indx 100.0%),  Bangladesh (1,641), Bangladesh_asia (1,641)
+		addFrequent("perón"); // 2707. 1,677 (indx 100.0%),  Argentina (1,640), Argentina_buenos-aires (470)
+		addFrequent("aman"); // 2708. 1,980 (indx 100.0%),  Malaysia (1,640), Malaysia_asia (1,640)
+		addFrequent("17nong"); // 2709. 1,638 (indx 100.0%),  Taiwan (1,638), Taiwan_asia (1,638)
+		addFrequent("18xiang"); // 2710. 1,637 (indx 100.0%),  Taiwan (1,637), Taiwan_asia (1,637)
+		addFrequent("manchester"); // 2711. 2,150 (indx 100.0%),  Us (1,636), Gb_england (359)
+		addFrequent("highfield"); // 2712. 2,011 (indx 100.0%),  Gb (1,635), Gb_england (1,428)
+		addFrequent("queens"); // 2713. 3,580 (indx 100.0%),  Gb (1,632), Gb_england (1,454)
+		addFrequent("maine"); // 2714. 1,910 (indx 100.0%),  France (1,632), France_new-aquitaine (829)
+		addFrequent("stretta"); // 2715. 1,930 (indx 100.0%),  France (1,631), France_corse (1,631)
+		addFrequent("25xiang"); // 2716. 1,631 (indx 100.0%),  Taiwan (1,631), Taiwan_asia (1,631)
+		addFrequent("vasco"); // 2717. 4,151 (indx 100.0%),  Portugal (1,628), Portugal_europe (1,628)
+		addFrequent("lang"); // 2718. 4,901 (indx 100.0%),  Vietnam (1,628), Vietnam_asia (1,628)
+		addFrequent("pernambuco"); // 2719. 1,628 (indx 100.0%),  Brazil (1,628), Brazil_sao-paulo (350)
+		addFrequent("michi"); // 2720. 1,628 (indx 100.0%),  Japan (1,628), Japan_kanto (538)
+		addFrequent("gulberg"); // 2721. 1,628 (indx 100.0%),  Pakistan (1,628), Pakistan_asia (1,628)
+		addFrequent("dien"); // 2722. 1,636 (indx 100.0%),  Vietnam (1,625), Vietnam_asia (1,625)
+		addFrequent("10xiang"); // 2723. 1,621 (indx 100.0%),  Taiwan (1,621), Taiwan_asia (1,621)
+		addFrequent("21xiang"); // 2724. 1,621 (indx 100.0%),  Taiwan (1,621), Taiwan_asia (1,621)
+		addFrequent("quy"); // 2725. 1,630 (indx 100.0%),  Vietnam (1,620), Vietnam_asia (1,620)
+		addFrequent("12xiang"); // 2726. 1,620 (indx 100.0%),  Taiwan (1,620), Taiwan_asia (1,620)
+		addFrequent("60xiang"); // 2727. 1,619 (indx 100.0%),  Taiwan (1,619), Taiwan_asia (1,619)
+		addFrequent("peron"); // 2728. 2,092 (indx 100.0%),  Argentina (1,615), Argentina_buenos-aires (457)
+		addFrequent("tien"); // 2729. 1,794 (indx 100.0%),  Vietnam (1,614), Vietnam_asia (1,614)
+		addFrequent("scolii"); // 2730. 1,758 (indx 100.0%),  Romania (1,612), Romania_europe (1,612)
+		addFrequent("21nong"); // 2731. 1,611 (indx 100.0%),  Taiwan (1,611), Taiwan_asia (1,611)
+		addFrequent("peña"); // 2732. 5,014 (indx 100.0%),  Spain (1,610), Spain_castilla-leon (412)
+		addFrequent("loi"); // 2733. 2,192 (indx 100.0%),  Vietnam (1,610), Vietnam_asia (1,610)
+		addFrequent("q"); // 2734. 4,059 (indx 100.0%),  Brazil (1,609), Brazil_distrito-federal (671)
+		addFrequent("karrika"); // 2735. 2,234 (indx 100.0%),  France (1,608), France_new-aquitaine (1,608)
+		addFrequent("dolna"); // 2736. 1,869 (indx 100.0%),  Poland (1,605), Poland_lesser-poland (376)
+		addFrequent("hải"); // 2737. 1,645 (indx 100.0%),  Vietnam (1,605), Vietnam_asia (1,605)
+		addFrequent("prat"); // 2738. 2,874 (indx 100.0%),  France (1,604), France_brittany (835)
+		addFrequent("dăo"); // 2739. 1,604 (indx 100.0%),  China (1,604), China_shandong (292)
+		addFrequent("muhammad"); // 2740. 3,254 (indx 100.0%),  Pakistan (1,602), Pakistan_asia (1,602)
+		addFrequent("علیا"); // 2741. 1,682 (indx 100.0%),  Iran (1,602), Iran_kermanshah (218)
+		addFrequent("entre"); // 2742. 3,733 (indx 100.0%),  Argentina (1,601), Portugal_europe (691)
+		addFrequent("luò"); // 2743. 1,601 (indx 100.0%),  China (1,601), China_henan (251)
+		addFrequent("hawthorn"); // 2744. 2,569 (indx 100.0%),  Gb (1,600), Gb_england (1,301)
+		addFrequent("leona"); // 2745. 2,436 (indx 100.0%),  Mexico (1,600), Mexico_veracruz (220)
+		addFrequent("delta"); // 2746. 2,447 (indx 100.0%),  Us (1,597), Us_california (200)
+		addFrequent("viet"); // 2747. 1,607 (indx 100.0%),  Vietnam (1,597), Vietnam_asia (1,597)
+		addFrequent("rambla"); // 2748. 1,906 (indx 100.0%),  Spain (1,596), Spain_catalunya (500)
+		addFrequent("subdivision"); // 2749. 2,719 (indx 19.9%),  Philippines (1,595), Philippines_central-luzon (311)
+		addFrequent("xie"); // 2750. 2,705 (indx 100.0%),  China (1,594), Taiwan_asia (483)
+		addFrequent("30xiang"); // 2751. 1,607 (indx 100.0%),  Taiwan (1,594), Taiwan_asia (1,594)
+		addFrequent("rectory"); // 2752. 1,621 (indx 100.0%),  Gb (1,594), Gb_england (1,489)
+		addFrequent("local"); // 2753. 2,253 (indx 100.0%),  Brazil (1,593), Brazil_bahia (709)
+		addFrequent("lea"); // 2754. 2,361 (indx 100.0%),  Gb (1,593), Gb_england (1,494)
+		addFrequent("phước"); // 2755. 1,592 (indx 100.0%),  Vietnam (1,592), Vietnam_asia (1,592)
+		addFrequent("xii"); // 2756. 3,491 (indx 100.0%),  Indonesia (1,591), Indonesia_jawa-timur (430)
+		addFrequent("6xiang"); // 2757. 1,601 (indx 100.0%),  Taiwan (1,591), Taiwan_asia (1,591)
+		addFrequent("martinho"); // 2758. 3,263 (indx 100.0%),  Portugal (1,590), Portugal_europe (1,590)
+		addFrequent("che"); // 2759. 3,189 (indx 100.0%),  Taiwan (1,589), Taiwan_asia (1,589)
+		addFrequent("abajo"); // 2760. 3,446 (indx 100.0%),  Spain (1,585), Spain_castilla-leon (745)
+		addFrequent("i̇l"); // 2761. 1,585 (indx 100.0%),  Turkey (1,585), Turkey_central-anatolia (337)
+		addFrequent("huī"); // 2762. 1,584 (indx 100.0%),  China (1,584), China_guangdong (264)
+		addFrequent("15xiang"); // 2763. 1,583 (indx 100.0%),  Taiwan (1,583), Taiwan_asia (1,583)
+		addFrequent("مدرسه"); // 2764. 2,125 (indx 100.0%),  Egypt (1,582), Egypt_africa (1,582)
+		addFrequent("војводе"); // 2765. 1,733 (indx 100.0%),  Serbia (1,582), Serbia_europe (1,582)
+		addFrequent("oaxaca"); // 2766. 1,582 (indx 100.0%),  Mexico (1,582), Mexico_oaxaca (530)
+		addFrequent("yên"); // 2767. 1,582 (indx 100.0%),  Vietnam (1,582), Vietnam_asia (1,582)
+		addFrequent("ta"); // 2768. 5,403 (indx 100.0%),  Myanmar (1,579), Myanmar_asia (1,579)
+		addFrequent("yar"); // 2769. 2,090 (indx 100.0%),  Myanmar (1,578), Myanmar_asia (1,578)
+		addFrequent("tryq"); // 2770. 5,817 (indx 100.0%),  Saudi-arabia (1,578), Saudi-arabia_asia (1,578)
+		addFrequent("нижняя"); // 2771. 1,696 (indx 100.0%),  Russia (1,578), Russia_moskovskaya-oblast (104)
+		addFrequent("vas"); // 2772. 1,845 (indx 100.0%),  Slovenia (1,577), Slovenia_europe (1,577)
+		addFrequent("parodos"); // 2773. 1,634 (indx 100.0%),  Greece (1,577), Greece_europe (1,577)
+		addFrequent("عبدالله"); // 2774. 2,817 (indx 100.0%),  Saudi-arabia (1,575), Saudi-arabia_asia (1,575)
+		addFrequent("haie"); // 2775. 1,910 (indx 100.0%),  France (1,575), France_pays-de-la-loire (401)
+		addFrequent("boston"); // 2776. 2,011 (indx 100.0%),  Us (1,574), Us_massachusetts (245)
+		addFrequent("pinhal"); // 2777. 1,650 (indx 100.0%),  Portugal (1,574), Portugal_europe (1,574)
+		addFrequent("lúcia"); // 2778. 1,573 (indx 100.0%),  Brazil (1,573), Brazil_sao-paulo (419)
+		addFrequent("annez"); // 2779. 1,572 (indx 100.0%),  France (1,572), France_brittany (1,527)
+		addFrequent("πάροδος"); // 2780. 1,571 (indx 100.0%),  Greece (1,571), Greece_europe (1,571)
+		addFrequent("joaquin"); // 2781. 5,155 (indx 100.0%),  Spain (1,569), Spain_andalusia (373)
+		addFrequent("петра"); // 2782. 3,556 (indx 100.0%),  Serbia (1,568), Serbia_europe (1,568)
+		addFrequent("bs16"); // 2783. 1,568 (indx 100.0%),  Gb (1,568), Gb_england (1,568)
+		addFrequent("5xiang"); // 2784. 1,568 (indx 100.0%),  Taiwan (1,568), Taiwan_asia (1,568)
+		addFrequent("cristobal"); // 2785. 4,950 (indx 100.0%),  Mexico (1,566), Spain_andalusia (391)
+		addFrequent("downs"); // 2786. 2,962 (indx 100.0%),  Us (1,566), Gb_england (511)
+		addFrequent("ait"); // 2787. 1,957 (indx 100.0%),  Morocco (1,565), Morocco_africa (1,565)
+		addFrequent("granada"); // 2788. 3,657 (indx 100.0%),  Spain (1,565), Spain_andalusia (1,175)
+		addFrequent("camoes"); // 2789. 1,627 (indx 100.0%),  Portugal (1,565), Portugal_europe (1,565)
+		addFrequent("land"); // 2790. 2,851 (indx 100.0%),  Us (1,564), Carribean-archipelago-all_centralamerica (163)
+		addFrequent("petra"); // 2791. 4,361 (indx 100.0%),  Serbia (1,563), Serbia_europe (1,563)
+		addFrequent("mutiara"); // 2792. 2,834 (indx 100.0%),  Malaysia (1,559), Malaysia_asia (1,559)
+		addFrequent("yen"); // 2793. 1,899 (indx 100.0%),  Vietnam (1,558), Vietnam_asia (1,558)
+		addFrequent("35xiang"); // 2794. 1,558 (indx 100.0%),  Taiwan (1,558), Taiwan_asia (1,558)
+		addFrequent("61xiang"); // 2795. 1,558 (indx 100.0%),  Taiwan (1,558), Taiwan_asia (1,558)
+		addFrequent("fr"); // 2796. 2,372 (indx 100.0%),  Us (1,557), Us_missouri (396)
+		addFrequent("thit"); // 2797. 1,610 (indx 100.0%),  Myanmar (1,557), Myanmar_asia (1,557)
+		addFrequent("phuoc"); // 2798. 1,557 (indx 100.0%),  Vietnam (1,557), Vietnam_asia (1,557)
+		addFrequent("usj"); // 2799. 1,555 (indx 100.0%),  Malaysia (1,555), Malaysia_asia (1,555)
+		addFrequent("السلام"); // 2800. 2,056 (indx 100.0%),  Egypt (1,554), Egypt_africa (1,554)
+		addFrequent("vojvode"); // 2801. 1,892 (indx 100.0%),  Serbia (1,554), Serbia_europe (1,554)
+		addFrequent("христо"); // 2802. 1,672 (indx 100.0%),  Bulgaria (1,554), Bulgaria_europe (1,554)
+		addFrequent("escadinhas"); // 2803. 1,732 (indx 100.0%),  Portugal (1,553), Portugal_europe (1,553)
+		addFrequent("ard"); // 2804. 2,018 (indx 100.0%),  Ireland (1,553), Ireland_europe (1,553)
+		addFrequent("nwr"); // 2805. 1,712 (indx 100.0%),  Iran (1,552), Iran_tehran (264)
+		addFrequent("josipa"); // 2806. 1,851 (indx 100.0%),  Croatia (1,552), Croatia_europe (1,552)
+		addFrequent("figueira"); // 2807. 2,636 (indx 100.0%),  Brazil (1,552), Portugal_europe (891)
+		addFrequent("república"); // 2808. 5,404 (indx 100.0%),  Mexico (1,551), Portugal_europe (991)
+		addFrequent("cristóbal"); // 2809. 3,841 (indx 100.0%),  Mexico (1,551), Spain_andalusia (310)
+		addFrequent("piemonte"); // 2810. 1,551 (indx 100.0%),  Italy (1,551), Italy_lombardia (266)
+		addFrequent("32xiang"); // 2811. 1,551 (indx 100.0%),  Taiwan (1,551), Taiwan_asia (1,551)
+		addFrequent("camões"); // 2812. 1,568 (indx 100.0%),  Portugal (1,547), Portugal_europe (1,547)
+		addFrequent("22nong"); // 2813. 1,547 (indx 100.0%),  Taiwan (1,547), Taiwan_asia (1,547)
+		addFrequent("msjd"); // 2814. 1,718 (indx 100.0%),  Iran (1,546), Iran_tehran (250)
+		addFrequent("khera"); // 2815. 1,546 (indx 100.0%),  India (1,546), India_rajasthan (1,152)
+		addFrequent("9xiang"); // 2816. 1,546 (indx 100.0%),  Taiwan (1,546), Taiwan_asia (1,546)
+		addFrequent("mer"); // 2817. 1,904 (indx 100.0%),  France (1,543), France_normandy (385)
+		addFrequent("19xiang"); // 2818. 1,543 (indx 100.0%),  Taiwan (1,543), Taiwan_asia (1,543)
+		addFrequent("approach"); // 2819. 2,367 (indx 100.0%),  Gb (1,542), Gb_england (1,474)
+		addFrequent("miquel"); // 2820. 1,601 (indx 100.0%),  Spain (1,541), Spain_catalunya (927)
+		addFrequent("сельсовет"); // 2821. 1,539 (indx 100.0%),  Russia (1,539), Russia_altayskiy (560)
+		addFrequent("ko'shesi"); // 2822. 1,679 (indx 100.0%),  Uzbekistan (1,539), Uzbekistan_asia (1,539)
+		addFrequent("ciudad"); // 2823. 5,263 (indx 100.0%),  Mexico (1,538), Venezuela_southamerica (532)
+		addFrequent("siel'soviet"); // 2824. 1,538 (indx 100.0%),  Russia (1,538), Russia_altayskiy (560)
+		addFrequent("nc"); // 2825. 1,953 (indx 100.0%),  Us (1,537), Us_north-carolina (1,425)
+		addFrequent("terre"); // 2826. 2,282 (indx 100.0%),  France (1,537), France_auvergne-rhone-alpes (283)
+		addFrequent("fief"); // 2827. 1,558 (indx 100.0%),  France (1,533), France_new-aquitaine (894)
+		addFrequent("fan"); // 2828. 2,998 (indx 100.0%),  China (1,532), Taiwan_asia (584)
+		addFrequent("சாலை"); // 2829. 1,547 (indx 100.0%),  India (1,531), India_tamil-nadu (1,366)
+		addFrequent("46xiang"); // 2830. 1,531 (indx 100.0%),  Taiwan (1,531), Taiwan_asia (1,531)
+		addFrequent("ankara"); // 2831. 1,561 (indx 100.0%),  Turkey (1,529), Turkey_central-anatolia (1,174)
+		addFrequent("oeste"); // 2832. 8,492 (indx 100.0%),  Brazil (1,528), Colombia_southamerica (693)
+		addFrequent("100xiang"); // 2833. 1,528 (indx 100.0%),  Taiwan (1,528), Taiwan_asia (1,528)
+		addFrequent("cemitério"); // 2834. 2,502 (indx 100.0%),  Brazil (1,527), Portugal_europe (901)
+		addFrequent("highlands"); // 2835. 2,002 (indx 100.0%),  Us (1,526), Gb_england (229)
+		addFrequent("mary's"); // 2836. 1,865 (indx 100.0%),  Gb (1,524), Gb_england (1,344)
+		addFrequent("jr"); // 2837. 1,887 (indx 100.0%),  Us (1,522), Japan_kanto (272)
+		addFrequent("tome"); // 2838. 2,485 (indx 100.0%),  Brazil (1,521), Portugal_europe (546)
+		addFrequent("avenguda"); // 2839. 1,535 (indx 100.0%),  France (1,521), France_provence-alpes-cote-d-azur (1,184)
+		addFrequent("carrefour"); // 2840. 2,151 (indx 100.0%),  France (1,520), France_ile-de-france (307)
+		addFrequent("ng9"); // 2841. 1,520 (indx 100.0%),  Gb (1,520), Gb_england (1,520)
+		addFrequent("școlii"); // 2842. 1,761 (indx 100.0%),  Romania (1,520), Romania_europe (1,520)
+		addFrequent("муниципальный"); // 2843. 1,574 (indx 100.0%),  Russia (1,519), Russia_sverdlovsk (77)
+		addFrequent("shah"); // 2844. 2,161 (indx 100.0%),  Pakistan (1,518), Pakistan_asia (1,518)
+		addFrequent("dusun"); // 2845. 1,518 (indx 100.0%),  Indonesia (1,518), Indonesia_nusa-tenggara-barat (627)
+		addFrequent("cemiterio"); // 2846. 2,685 (indx 100.0%),  Brazil (1,517), Portugal_europe (899)
+		addFrequent("principe"); // 2847. 2,906 (indx 100.0%),  Italy (1,517), Italy_sicilia (435)
+		addFrequent("chong"); // 2848. 3,030 (indx 100.0%),  Taiwan (1,516), Taiwan_asia (1,516)
+		addFrequent("vojvodie"); // 2849. 1,547 (indx 100.0%),  Serbia (1,516), Serbia_europe (1,516)
+		addFrequent("37xiang"); // 2850. 1,516 (indx 100.0%),  Taiwan (1,516), Taiwan_asia (1,516)
+		addFrequent("ىوسف"); // 2851. 2,367 (indx 100.0%),  Egypt (1,515), Egypt_africa (1,515)
+		addFrequent("railway"); // 2852. 6,684 (indx 73.0%),  Australia-oceania (1,515), Gb_england (920)
+		addFrequent("tuán"); // 2853. 1,515 (indx 100.0%),  China (1,515), China_xinjiang-uygur (277)
+		addFrequent("tiriti"); // 2854. 1,513 (indx 100.0%),  New-zealand (1,513), New-zealand_australia-oceania (1,513)
+		addFrequent("المجاهد"); // 2855. 1,525 (indx 100.0%),  Algeria (1,512), Algeria_africa (1,512)
+		addFrequent("fā"); // 2856. 1,512 (indx 100.0%),  China (1,512), China_guangdong (338)
+		addFrequent("39xiang"); // 2857. 1,510 (indx 100.0%),  Taiwan (1,510), Taiwan_asia (1,510)
+		addFrequent("rp"); // 2858. 2,322 (indx 100.0%),  Myanmar (1,509), Myanmar_asia (1,509)
+		addFrequent("karen"); // 2859. 1,757 (indx 100.0%),  Us (1,507), Us_california (120)
+		addFrequent("chí"); // 2860. 2,856 (indx 100.0%),  Vietnam (1,506), Vietnam_asia (1,506)
+		addFrequent("carlton"); // 2861. 2,692 (indx 100.0%),  Us (1,505), Gb_england (868)
+		addFrequent("rego"); // 2862. 2,829 (indx 100.0%),  Brazil (1,504), Portugal_europe (825)
+		addFrequent("cluain"); // 2863. 1,600 (indx 100.0%),  Ireland (1,504), Ireland_europe (1,504)
+		addFrequent("shen"); // 2864. 4,051 (indx 100.0%),  Taiwan (1,502), Taiwan_asia (1,502)
+		addFrequent("republica"); // 2865. 5,509 (indx 100.0%),  Mexico (1,502), Portugal_europe (1,038)
+		addFrequent("lime"); // 2866. 2,586 (indx 100.0%),  Gb (1,501), Gb_england (1,355)
+		addFrequent("aires"); // 2867. 6,117 (indx 100.0%),  Brazil (1,500), Peru_southamerica (450)
+		addFrequent("durango"); // 2868. 1,878 (indx 100.0%),  Mexico (1,500), Mexico_durango (299)
 	}
 
 
+
+	public static void mainFilterFrequentWords(String[] args) {
+		// algorithm to find missing frequent words
+		String[] array = new String[] { 
+				// retrieved from https://taginfo.openstreetmap.org/api/4/key/values?key=name&page=1&rp=999&sortorder=desc&sortname=count 
+				"Hauptstraße",
+				"Центральная улица",
+				"Советская улица",
+				"улица Ленина",
+				"Main Street",
+				//. ....
+		};
+		CommonWords instance = CommonWords.getInstance();
+		for (String name : array) {
+			List<String> tokens = SearchAlgorithms.splitAndNormalize(name, true);
+			for (String token : tokens) {
+				if (instance.getCommonSearch(token) < 0) {
+					System.out.println("Missing " + token);
+				}
+			}
+		}
+	}
 
 }

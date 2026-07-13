@@ -3,15 +3,12 @@ package net.osmand.plus.configmap.tracks;
 import static net.osmand.plus.track.fragments.TrackMenuFragment.TrackMenuTab.OVERVIEW;
 import static net.osmand.plus.utils.FileUtils.RenameCallback;
 
-import android.app.Activity;
 import android.app.Dialog;
 import android.content.res.ColorStateList;
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.Window;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 
@@ -25,6 +22,7 @@ import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
 import androidx.viewpager.widget.ViewPager.SimpleOnPageChangeListener;
 
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.configmap.tracks.appearance.ChangeAppearanceController;
@@ -53,6 +51,8 @@ import net.osmand.plus.track.helpers.save.SaveGpxHelper;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
 import net.osmand.plus.utils.FileUtils;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTargetsCollection;
 import net.osmand.plus.widgets.dialogbutton.DialogButton;
 import net.osmand.plus.widgets.popup.PopUpMenu;
 import net.osmand.plus.widgets.popup.PopUpMenuDisplayData;
@@ -60,6 +60,7 @@ import net.osmand.plus.widgets.popup.PopUpMenuItem;
 import net.osmand.shared.gpx.GpxFile;
 import net.osmand.shared.gpx.TrackFolderLoaderTask.LoadTracksListener;
 import net.osmand.shared.gpx.TrackItem;
+import net.osmand.shared.gpx.TrackItemUtils;
 import net.osmand.shared.gpx.data.TrackFolder;
 import net.osmand.shared.io.KFile;
 import net.osmand.util.Algorithms;
@@ -77,6 +78,9 @@ public class TracksTabsFragment extends BaseTracksTabsFragment implements LoadTr
 
 	public static final String TAG = TracksTabsFragment.class.getSimpleName();
 
+	public static final String PRESELECTED_TAB_PARAMS_KEY = "preselected_tab_params";
+	public static final String CALLING_FRAGMENT_TAG = "calling_fragment_tag";
+
 	private ImageView searchButton;
 
 	private DialogButton applyButton;
@@ -90,38 +94,41 @@ public class TracksTabsFragment extends BaseTracksTabsFragment implements LoadTr
 		return nightMode;
 	}
 
+	@Override
+	protected int getThemeId() {
+		return nightMode ? R.style.OsmandDarkTheme_DarkActionbar : R.style.OsmandLightTheme_DarkActionbar_LightStatusBar;
+	}
+
 	@NonNull
 	@Override
-	public Dialog onCreateDialog(@Nullable Bundle savedInstanceState) {
-		Activity activity = requireActivity();
-		int themeId = nightMode ? R.style.OsmandDarkTheme_DarkActionbar : R.style.OsmandLightTheme_DarkActionbar_LightStatusBar;
-		Dialog dialog = new Dialog(activity, themeId) {
+	public Dialog createDialog(@Nullable Bundle savedInstanceState) {
+		return new Dialog(requireActivity(), getThemeId()) {
 			@Override
 			public void onBackPressed() {
 				TracksTabsFragment.this.onBackPressed();
 			}
 		};
-		Window window = dialog.getWindow();
-		if (window != null) {
-			if (!settings.DO_NOT_USE_ANIMATIONS.get()) {
-				window.getAttributes().windowAnimations = R.style.Animations_Alpha;
-			}
-			window.setStatusBarColor(ContextCompat.getColor(app, getStatusBarColorId()));
-		}
-		return dialog;
 	}
 
 	@Nullable
 	@Override
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
 		updateNightMode();
-		View view = themedInflater.inflate(R.layout.tracks_fragment, container, false);
+		View view = inflate(R.layout.tracks_fragment, container, false);
 
 		setupToolbar(view);
 		setupTabLayout(view);
 		setupButtons(view);
 
 		return view;
+	}
+
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.replace(InsetTarget.createBottomContainer(R.id.buttons_container));
+		collection.replace(InsetTarget.createHorizontalLandscape(R.id.appbar));
+		return collection;
 	}
 
 	private void setupToolbar(@NonNull View view) {
@@ -263,13 +270,15 @@ public class TracksTabsFragment extends BaseTracksTabsFragment implements LoadTr
 
 	@Override
 	public void loadTracksFinished(@NonNull TrackFolder folder) {
-		trackTabsHelper.updateTrackItems(folder);
-		AndroidUiHelper.updateVisibility(progressBar, false);
-		updateTrackTabs();
-		applyPreselectedParams();
-		updateTabsContent();
-		updateButtonsState();
-		preselectedTabParams = null;
+		if (isAdded()) {
+			trackTabsHelper.updateTrackItems(folder);
+			AndroidUiHelper.updateVisibility(progressBar, false);
+			updateTrackTabs();
+			applyPreselectedParams();
+			updateTabsContent();
+			updateButtonsState();
+			preselectedTabParams = null;
+		}
 	}
 
 	@Override
@@ -288,15 +297,28 @@ public class TracksTabsFragment extends BaseTracksTabsFragment implements LoadTr
 	}
 
 	private void applyPreselectedParams() {
-		if (preselectedTabParams != null) {
-			String tabId = preselectedTabParams.getPreselectedTabId();
-			TrackTab trackTab = getTab(tabId);
-			if (trackTab != null) {
-				setSelectedTab(tabId);
+		if (preselectedTabParams == null) return;
 
-				if (preselectedTabParams.shouldSelectAll()) {
-					itemsSelectionHelper.onItemsSelected(trackTab.getTrackItems(), true);
-				}
+		String tabId = preselectedTabParams.getTabId();
+		TrackTab trackTab = getTab(tabId);
+
+		if (trackTab != null) {
+			setSelectedTab(tabId);
+
+			String subGroupId = preselectedTabParams.getSubGroupId();
+			List<String> specificPaths = preselectedTabParams.getSpecificPaths();
+			boolean selectAll = preselectedTabParams.getSelectAll();
+
+			List<TrackItem> itemsToSelect = Collections.emptyList();
+			if (selectAll) {
+				itemsToSelect = trackTab.getTrackItems();
+			} else if (subGroupId != null) {
+				itemsToSelect = trackTab.getTrackItemsByGroupId(subGroupId);
+			} else if (specificPaths != null && !specificPaths.isEmpty()) {
+				itemsToSelect = TrackItemUtils.filterByPaths(trackTab.getTrackItems(), specificPaths);
+			}
+			if (!itemsToSelect.isEmpty()) {
+				itemsSelectionHelper.onItemsSelected(itemsToSelect, true);
 			}
 		}
 	}
@@ -371,8 +393,8 @@ public class TracksTabsFragment extends BaseTracksTabsFragment implements LoadTr
 				.setTitleId(R.string.analyze_on_map)
 				.setIcon(getContentIcon(R.drawable.ic_action_info_dark))
 				.setOnClickListener(v -> GpxSelectionHelper.getGpxFile(activity, file, true, result -> {
-					OpenGpxDetailsTask detailsTask = new OpenGpxDetailsTask(activity, result, null);
-					detailsTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+					OpenGpxDetailsTask detailsTask = new OpenGpxDetailsTask(activity, result, null, null);
+					OsmAndTaskManager.executeTask(detailsTask);
 					dismiss();
 					return true;
 				}))
@@ -477,7 +499,7 @@ public class TracksTabsFragment extends BaseTracksTabsFragment implements LoadTr
 				reloadTracks();
 			}
 		});
-		deleteFilesTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+		OsmAndTaskManager.executeTask(deleteFilesTask);
 	}
 
 	@Override
@@ -496,13 +518,14 @@ public class TracksTabsFragment extends BaseTracksTabsFragment implements LoadTr
 		reloadTracks();
 	}
 
-	public static void showInstance(@NonNull FragmentManager manager) {
-		showInstance(manager, null, null);
+	public static void showInstance(@NonNull FragmentActivity activity) {
+		showInstance(activity, null, null);
 	}
 
-	public static void showInstance(@NonNull FragmentManager manager,
+	public static void showInstance(@NonNull FragmentActivity activity,
 	                                @Nullable PreselectedTabParams params,
 	                                @Nullable String callingFragmentTag) {
+		FragmentManager manager = activity.getSupportFragmentManager();
 		if (AndroidUtils.isFragmentCanBeAdded(manager, TAG)) {
 			TracksTabsFragment fragment = new TracksTabsFragment();
 			fragment.preselectedTabParams = params;

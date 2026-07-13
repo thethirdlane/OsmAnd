@@ -5,7 +5,6 @@ import static net.osmand.plus.settings.fragments.SettingsScreenType.EXTERNAL_INP
 import static net.osmand.plus.settings.fragments.SettingsScreenType.POSITION_ANIMATION;
 
 import android.content.Context;
-import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
@@ -21,8 +20,8 @@ import androidx.appcompat.widget.AppCompatCheckedTextView;
 import androidx.fragment.app.FragmentManager;
 import androidx.preference.Preference;
 
-import net.osmand.data.PointDescription;
 import net.osmand.plus.R;
+import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.base.MapViewTrackingUtilities;
 import net.osmand.plus.base.dialog.DialogManager;
 import net.osmand.plus.base.dialog.interfaces.controller.IDialogController;
@@ -33,17 +32,24 @@ import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.bottomsheets.DistanceDuringNavigationBottomSheet;
 import net.osmand.plus.settings.controllers.CompassModeDialogController;
-import net.osmand.plus.settings.enums.AngularConstants;
+import net.osmand.plus.settings.coordinates.CoordinateFormatFormatter;
 import net.osmand.plus.settings.enums.DrivingRegion;
 import net.osmand.plus.settings.enums.CompassMode;
+import net.osmand.plus.settings.enums.ScreenOrientation;
+import net.osmand.plus.settings.enums.TemperatureUnitsMode;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.plus.settings.enums.VolumeUnit;
 import net.osmand.plus.utils.OsmAndFormatter;
 import net.osmand.router.GeneralRouter;
+import net.osmand.shared.settings.enums.AltitudeMetrics;
+import net.osmand.shared.settings.enums.AngularConstants;
 import net.osmand.shared.settings.enums.MetricsConstants;
 import net.osmand.shared.settings.enums.SpeedConstants;
 import net.osmand.plus.settings.preferences.ListPreferenceEx;
 import net.osmand.plus.settings.preferences.SwitchPreferenceEx;
 import net.osmand.plus.utils.UiUtilities;
+import net.osmand.util.Algorithms;
+import net.osmand.shared.routing.GeneralRouterProfile;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -62,10 +68,12 @@ public class GeneralProfileSettingsFragment extends BaseSettingsFragment {
 
 		setupDrivingRegionPref();
 		setupUnitsOfLengthPref();
+		setupUnitsOfAltitudePref();
 		setupCoordinatesFormatPref();
 		setupAngularUnitsPref();
 		setupSpeedSystemPref();
 		setupUnitOfVolumePref();
+		setupUnitOfTemperaturePref();
 		setupPreciseDistanceNumbersPref();
 
 		setupVolumeButtonsAsZoom();
@@ -108,7 +116,8 @@ public class GeneralProfileSettingsFragment extends BaseSettingsFragment {
 		if (settings.isSystemThemeUsed(mode)) {
 			iconId = R.drawable.ic_action_android;
 		} else {
-			iconId = settings.isLightContentForMode(mode) ? R.drawable.ic_action_sun : R.drawable.ic_action_moon;
+			boolean nightMode = app.getDaynightHelper().isNightMode(mode, ThemeUsageContext.APP);
+			iconId = nightMode ? R.drawable.ic_action_moon : R.drawable.ic_action_sun;
 		}
 		return getActiveIcon(iconId);
 	}
@@ -125,26 +134,32 @@ public class GeneralProfileSettingsFragment extends BaseSettingsFragment {
 	}
 
 	private void setupMapScreenOrientationPref() {
-		ListPreferenceEx mapScreenOrientation = findPreference(settings.MAP_SCREEN_ORIENTATION.getId());
-		mapScreenOrientation.setEntries(new String[] {getString(R.string.map_orientation_portrait), getString(R.string.map_orientation_landscape), getString(R.string.map_orientation_default)});
-		mapScreenOrientation.setEntryValues(new Integer[] {ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE, ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED});
-		mapScreenOrientation.setIcon(getMapScreenOrientationIcon());
+		ListPreferenceEx preference = requirePreference(settings.MAP_SCREEN_ORIENTATION.getId());
+		ScreenOrientation[] values = ScreenOrientation.values();
+		String[] entries = new String[values.length];
+		Integer[] entryValues = new Integer[values.length];
+
+		for (int i = 0; i < values.length; i++) {
+			ScreenOrientation orientation = values[i];
+			entries[i] = getString(orientation.getTitleId());
+			entryValues[i] = orientation.getValue();
+		}
+
+		preference.setEntries(entries);
+		preference.setEntryValues(entryValues);
+		preference.setIcon(getMapScreenOrientationIcon());
 	}
 
 	private void setupTurnScreenOnPref() {
-		Preference screenControl = findPreference("screen_control");
+		Preference screenControl = requirePreference("screen_control");
 		screenControl.setIcon(getContentIcon(R.drawable.ic_action_turn_screen_on));
 	}
 
+	@NonNull
 	private Drawable getMapScreenOrientationIcon() {
-		switch (settings.MAP_SCREEN_ORIENTATION.getModeValue(getSelectedAppMode())) {
-			case ActivityInfo.SCREEN_ORIENTATION_PORTRAIT:
-				return getActiveIcon(R.drawable.ic_action_phone_portrait_orientation);
-			case ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE:
-				return getActiveIcon(R.drawable.ic_action_phone_landscape_orientation);
-			default:
-				return getActiveIcon(R.drawable.ic_action_phone_device_orientation);
-		}
+		int value = settings.MAP_SCREEN_ORIENTATION.getModeValue(getSelectedAppMode());
+		ScreenOrientation orientation = ScreenOrientation.fromValue(value);
+		return getActiveIcon(orientation.getIconId());
 	}
 
 	private void setupDrivingRegionPref() {
@@ -167,13 +182,30 @@ public class GeneralProfileSettingsFragment extends BaseSettingsFragment {
 		ListPreferenceEx unitsOfLength = findPreference(settings.METRIC_SYSTEM.getId());
 		unitsOfLength.setEntries(entries);
 		unitsOfLength.setEntryValues(entryValues);
-		unitsOfLength.setIcon(getActiveIcon(R.drawable.ic_action_ruler_unit));
+		unitsOfLength.setIcon(getActiveIcon(R.drawable.ic_action_units_length));
+	}
+
+	private void setupUnitsOfAltitudePref() {
+		AltitudeMetrics[] altitudeMetrics = AltitudeMetrics.values();
+		String[] entries = new String[altitudeMetrics.length];
+		Integer[] entryValues = new Integer[altitudeMetrics.length];
+
+		for (int i = 0; i < entries.length; i++) {
+			entries[i] = Algorithms.capitalizeFirstLetter(altitudeMetrics[i].toHumanString());
+			entryValues[i] = altitudeMetrics[i].ordinal();
+		}
+
+		ListPreferenceEx unitsOfAltitude = findPreference(settings.ALTITUDE_METRIC.getId());
+		unitsOfAltitude.setEntries(entries);
+		unitsOfAltitude.setEntryValues(entryValues);
+		unitsOfAltitude.setDescription(R.string.altitude_metrics_description);
+		unitsOfAltitude.setIcon(getActiveIcon(R.drawable.ic_action_units_altitude));
 	}
 
 	private void setupCoordinatesFormatPref() {
-		Preference coordinatesFormat = findPreference(settings.COORDINATES_FORMAT.getId());
+		Preference coordinatesFormat = findPreference(CoordinatesFormatFragment.SETTINGS_PREF_ID);
 		coordinatesFormat.setIcon(getActiveIcon(R.drawable.ic_action_coordinates_widget));
-		coordinatesFormat.setSummary(PointDescription.formatToHumanString(app, settings.COORDINATES_FORMAT.getModeValue(getSelectedAppMode())));
+		coordinatesFormat.setSummary(CoordinateFormatFormatter.getPrimaryTitle(app, getSelectedAppMode()));
 	}
 
 	private void setupAngularUnitsPref() {
@@ -183,13 +215,13 @@ public class GeneralProfileSettingsFragment extends BaseSettingsFragment {
 
 		for (int i = 0; i < entries.length; i++) {
 			if (ac[i] == AngularConstants.DEGREES) {
-				entries[i] = AngularConstants.DEGREES.toHumanString(app) + " 180";
+				entries[i] = AngularConstants.DEGREES.toHumanString() + " 180";
 				entryValues[i] = AngularConstants.DEGREES.ordinal();
 			} else if (ac[i] == AngularConstants.DEGREES360) {
-				entries[i] = AngularConstants.DEGREES.toHumanString(app) + " 360";
+				entries[i] = AngularConstants.DEGREES.toHumanString() + " 360";
 				entryValues[i] = AngularConstants.DEGREES360.ordinal();
 			} else {
-				entries[i] = ac[i].toHumanString(app);
+				entries[i] = ac[i].toHumanString();
 				entryValues[i] = AngularConstants.MILLIRADS.ordinal();
 			}
 		}
@@ -224,15 +256,15 @@ public class GeneralProfileSettingsFragment extends BaseSettingsFragment {
 		if (routeService == RouteService.OSMAND) {
 			GeneralRouter router = app.getRouter(mode);
 			if (router != null) {
-				GeneralRouter.GeneralRouterProfile routerProfile = router.getProfile();
+				GeneralRouterProfile routerProfile = router.getProfile();
 				hidePref = routerProfile == null
-						|| routerProfile == GeneralRouter.GeneralRouterProfile.PEDESTRIAN
-						|| routerProfile == GeneralRouter.GeneralRouterProfile.BICYCLE
-						|| routerProfile == GeneralRouter.GeneralRouterProfile.HORSEBACKRIDING
-						|| routerProfile == GeneralRouter.GeneralRouterProfile.SKI;
+						|| routerProfile == GeneralRouterProfile.PEDESTRIAN
+						|| routerProfile == GeneralRouterProfile.BICYCLE
+						|| routerProfile == GeneralRouterProfile.HORSEBACKRIDING
+						|| routerProfile == GeneralRouterProfile.SKI;
 			}
 		}
-		ListPreferenceEx unitOfVolumePref = findPreference(settings.UNIT_OF_VOLUME.getId());
+		ListPreferenceEx unitOfVolumePref = requirePreference(settings.UNIT_OF_VOLUME.getId());
 		if (hidePref) {
 			unitOfVolumePref.setVisible(false);
 		} else {
@@ -250,6 +282,22 @@ public class GeneralProfileSettingsFragment extends BaseSettingsFragment {
 			unitOfVolumePref.setDescription(R.string.unit_of_volume_description);
 			unitOfVolumePref.setIcon(getActiveIcon(R.drawable.ic_action_fuel_tank));
 		}
+	}
+
+	private void setupUnitOfTemperaturePref() {
+		ListPreferenceEx preference = requirePreference(settings.UNIT_OF_TEMPERATURE.getId());
+		TemperatureUnitsMode[] unitValues = TemperatureUnitsMode.values();
+		String[] entries = new String[unitValues.length];
+		Integer[] entryValues = new Integer[unitValues.length];
+
+		for (int i = 0; i < entries.length; i++) {
+			entries[i] = unitValues[i].toHumanString(app);
+			entryValues[i] = unitValues[i].ordinal();
+		}
+		preference.setEntries(entries);
+		preference.setEntryValues(entryValues);
+		preference.setDescription(R.string.unit_of_temperature_description);
+		preference.setIcon(getActiveIcon(R.drawable.ic_action_thermometer));
 	}
 
 	private void setupPreciseDistanceNumbersPref() {
@@ -412,7 +460,7 @@ public class GeneralProfileSettingsFragment extends BaseSettingsFragment {
 			ApplicationMode selectedMode = getSelectedAppMode();
 			if (newValue instanceof String) {
 				applyPreference(settings.DRIVING_REGION_AUTOMATIC.getId(), applyToAllProfiles, true);
-				MapViewTrackingUtilities mapViewTrackingUtilities = requireMyApplication().getMapViewTrackingUtilities();
+				MapViewTrackingUtilities mapViewTrackingUtilities = app.getMapViewTrackingUtilities();
 				if (mapViewTrackingUtilities != null) {
 					mapViewTrackingUtilities.resetDrivingRegionUpdate();
 				}
@@ -432,6 +480,9 @@ public class GeneralProfileSettingsFragment extends BaseSettingsFragment {
 			MapViewTrackingUtilities mapViewTrackingUtilities = app.getMapViewTrackingUtilities();
 			if (mapViewTrackingUtilities != null) {
 				mapViewTrackingUtilities.updateSettings();
+			}
+			if (settings.ALTITUDE_METRIC.getId().equals(prefId)) {
+				callMapActivity(MapActivity::refreshMapComplete);
 			}
 		}
 	}

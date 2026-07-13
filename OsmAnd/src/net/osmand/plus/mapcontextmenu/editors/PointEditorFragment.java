@@ -9,6 +9,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -27,6 +28,10 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.material.textfield.TextInputLayout;
 
 import net.osmand.data.LatLon;
+import net.osmand.plus.myplaces.MyPlacesActivity;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTarget.Type;
+import net.osmand.plus.utils.InsetTargetsCollection;
 import net.osmand.shared.gpx.GpxUtilities.PointsGroup;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
@@ -76,14 +81,9 @@ public abstract class PointEditorFragment extends EditorFragment {
 	public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
 		updateNightMode();
 		Context context = requireContext();
-		PointEditor editor = getEditor();
-		if (editor == null) {
-			view = themedInflater.inflate(getLayoutId(), container, false);
-			AndroidUtils.addStatusBarPadding21v(requireMyActivity(), view);
-			return view;
-		}
 
 		view = super.onCreateView(inflater, container, savedInstanceState);
+		AndroidUtils.addStatusBarPadding21v(requireMyActivity(), view);
 
 		int activeColor = ColorUtilities.getActiveColor(context, nightMode);
 		ImageView toolbarAction = view.findViewById(R.id.toolbar_action);
@@ -185,6 +185,10 @@ public abstract class PointEditorFragment extends EditorFragment {
 		View deleteButton = view.findViewById(R.id.button_delete_container);
 		deleteButton.setOnClickListener(v -> deletePressed());
 
+		PointEditor editor = getEditor();
+		if (editor == null) {
+			return view;
+		}
 		if (editor.isProcessingTemplate()) {
 			View replaceButton = view.findViewById(R.id.button_replace_container);
 			AndroidUiHelper.setVisibility(View.GONE, toolbarAction, replaceButton, deleteButton);
@@ -225,6 +229,19 @@ public abstract class PointEditorFragment extends EditorFragment {
 		drawPointImage();
 
 		return view;
+	}
+
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+
+		if (getActionBarActivity() instanceof MyPlacesActivity) {
+			collection.removeType(Type.ROOT_INSET);
+		} else {
+			collection = super.getInsetTargets();
+			collection.add(InsetTarget.createScrollable(R.id.editor_scroll_view).build());
+		}
+		return collection;
 	}
 
 	private void updateDescriptionIcon() {
@@ -272,7 +289,8 @@ public abstract class PointEditorFragment extends EditorFragment {
 	@Override
 	public void onResume() {
 		super.onResume();
-		if (!descriptionEdit.getText().toString().isEmpty() || descriptionEdit.hasFocus()) {
+		CharSequence text = descriptionEdit.getText();
+		if (!Algorithms.isEmpty(text) || descriptionEdit.hasFocus()) {
 			descriptionCaption.setVisibility(View.VISIBLE);
 			addDelDescription.setText(app.getString(R.string.delete_description));
 		} else {
@@ -452,7 +470,7 @@ public abstract class PointEditorFragment extends EditorFragment {
 	protected String getCategoryTextValue() {
 		RecyclerView recyclerView = view.findViewById(R.id.group_recycler_view);
 		if (recyclerView.getAdapter() != null && selectedGroup != null) {
-			if (isPersonalCategoryDisplayName(requireContext(), selectedGroup.getName())) {
+			if (isPersonalCategoryDisplayName(app, selectedGroup.getName())) {
 				return PERSONAL_CATEGORY;
 			}
 			if (Algorithms.stringsEqual(selectedGroup.getName(), getDefaultCategoryName())) {
@@ -527,7 +545,7 @@ public abstract class PointEditorFragment extends EditorFragment {
 					notifyItemChanged(previousSelectedPosition);
 				});
 				PointsGroup group = items.get(position);
-				holder.groupName.setText(group.getName());
+				setupGroupName(holder.groupName, group);
 				holder.pointsCounter.setText(String.valueOf(group.getPoints().size()));
 				int strokeColor;
 				int strokeWidth;
@@ -575,6 +593,14 @@ public abstract class PointEditorFragment extends EditorFragment {
 		int getItemPosition(PointsGroup group) {
 			return items.indexOf(group);
 		}
+	}
+
+	protected void setupGroupName(@NonNull TextView groupName, @NonNull PointsGroup group) {
+		groupName.setTag(null);
+		groupName.setSingleLine(true);
+		groupName.setMaxLines(1);
+		groupName.setEllipsize(TextUtils.TruncateAt.END);
+		groupName.setText(group.getName());
 	}
 
 	static class GroupsViewHolder extends RecyclerView.ViewHolder {

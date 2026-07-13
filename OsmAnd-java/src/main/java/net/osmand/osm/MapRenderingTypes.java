@@ -12,6 +12,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
+import java.util.TreeSet;
 
 import net.osmand.PlatformUtil;
 import net.osmand.util.Algorithms;
@@ -26,8 +28,10 @@ import org.xmlpull.v1.XmlPullParserException;
 public abstract class MapRenderingTypes {
 
 	private static final Log log = PlatformUtil.getLog(MapRenderingTypes.class);
-	public static final String[] langs = new String[] { "af", "als", "ar", "az", "be", "bg", "bn", "bpy", "br", "bs", "ca", "ceb", "ckb", "cs", "cy", "da", "de", "el", "eo", "es", "et", "eu", "fa", "fi", "fr", "fy", "ga", "gl", "he", "hi", "hsb",
-		"hr", "ht", "hu", "hy", "id", "is", "it", "ja", "ka", "kk", "kn", "ko", "ku", "la", "lb", "lo", "lt", "lv", "mk", "ml", "mr", "ms", "nds", "new", "nl", "nn", "no", "nv", "oc", "os", "pl", "pms", "pt", "ro", "ru", "sat", "sc", "sh", "sk", "sl", "sq", "sr", "sr-latn", "sv", "sw", "ta", "te", "th", "tl", "tr", "uk", "vi", "vo", "zh", "zh-hans", "zh-hant",  };
+	public static final String[] langs = new String[] { "af", "als", "ar", "az", "be", "bg", "bn", "bpy", "br", "bs", "ca", "ceb", "ckb", "crh", "cs", "cy", "da", "de", "el", "eo", "es", "et", "eu", "fa", "fi", "fr", "fy", "ga", "gl", "he", "hi", "hsb",
+		"hr", "ht", "hu", "hy", "id", "is", "it", "ja", "ka", "kk", "kn", "ko", "ku", "la", "lb", "lo", "lt", "lv", "mi", "mk", "ml", "mr", "ms", "nds", "new", "nl", "nn", "no", "nv", "oc", "os", "pl", "pms", "pt", "ro", "ru", "sat", "sc", "sh", "sk", "sl", "sq", "sr", "sr-latn", "sv", "sw", "ta", "te", "th", "tl", "tr", "uk", "vi", "vo", "zh", "zh-hans", "zh-hant",  };
+	
+	public static final Set<String> langsSet = new TreeSet<>(Arrays.asList(langs)); 
 	
 	
 	public final static byte RESTRICTION_NO_RIGHT_TURN = 1;
@@ -131,6 +135,13 @@ public abstract class MapRenderingTypes {
 			} else {
 				res.add(g.getValue());
 			}
+		}
+		if (res.isEmpty()) {
+			if (!Algorithms.isEmpty(type)) {
+				common.remove(ATTACHED_KEY);
+				common.put("seamark", type);
+			}
+			res.add(common);
 		}
 		return res;
 	}	
@@ -289,6 +300,10 @@ public abstract class MapRenderingTypes {
 				rtype.propagateToNodes = PropagateToNodesType.BORDERIN;
 			} else if ("borderout".equals(propagateToNodes)) {
 				rtype.propagateToNodes = PropagateToNodesType.BORDEROUT;
+			}
+			String propagateAvoidPolygonsValue = parser.getAttributeValue("", "propagateAvoidPolygons");
+			if (propagateAvoidPolygonsValue != null) {
+				rtype.propagateAvoidPolygons = Boolean.parseBoolean(propagateAvoidPolygonsValue);
 			}
 			String propagateToNodesPrefix = parser.getAttributeValue("", "propagateToNodesPrefix");
 			if (propagateToNodesPrefix != null) {
@@ -585,6 +600,7 @@ public abstract class MapRenderingTypes {
 	public static class PropagateToNode {
 		public PropagateToNodesType propagateToNodes;
 		public String propagateToNodesPrefix;
+		public boolean propagateAvoidPolygons;
 		public Map<String, String> propagateIf;
 		public Map<String, String> propagateNetworkIf;
 		public String[] propagateAlsoTags;
@@ -841,6 +857,11 @@ public abstract class MapRenderingTypes {
 			result.put(entry.getValue(), values.get(index));
 		}
 		return result;
+	}
+	
+	public boolean isMapRenderingType(String tag, String value) {
+		String ruleKey = constructRuleKey(tag, value);
+		return types.containsKey(ruleKey);
 	}
 	
 }

@@ -2,18 +2,24 @@ package net.osmand.plus.mapcontextmenu.editors;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentActivity;
 
+import net.osmand.NativeLibrary.RenderedObject;
+import net.osmand.binary.ObfConstants;
 import net.osmand.data.Amenity;
+import net.osmand.data.BaseDetailsObject;
 import net.osmand.data.FavouritePoint;
 import net.osmand.data.LatLon;
-import net.osmand.plus.views.layers.PlaceDetailsObject;
-import net.osmand.shared.gpx.primitives.WptPt;
 import net.osmand.osm.edit.Entity;
+import net.osmand.osm.edit.Entity.EntityType;
+import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.myplaces.favorites.FavoriteGroup;
 import net.osmand.plus.plugins.osmedit.data.OpenstreetmapPoint;
 import net.osmand.plus.render.RenderingIcons;
-import net.osmand.plus.views.layers.MapSelectionHelper;
+import net.osmand.search.AmenitySearcher;
+import net.osmand.shared.gpx.primitives.WptPt;
 import net.osmand.util.Algorithms;
 
 public class FavoritePointEditor extends PointEditor {
@@ -24,6 +30,10 @@ public class FavoritePointEditor extends PointEditor {
 
 	public FavoritePointEditor(@NonNull MapActivity mapActivity) {
 		super(mapActivity);
+	}
+
+	public FavoritePointEditor(@NonNull OsmandApplication app) {
+		super(app);
 	}
 
 	@Override
@@ -68,14 +78,24 @@ public class FavoritePointEditor extends PointEditor {
 		Amenity amenity = null;
 		if (object instanceof Amenity) {
 			amenity = (Amenity) object;
-		} else if (object instanceof PlaceDetailsObject detailsObject) {
+		} else if (object instanceof BaseDetailsObject detailsObject) {
 			amenity = detailsObject.getSyntheticAmenity();
 		} else if (object instanceof OpenstreetmapPoint point) {
 			Entity entity = point.getEntity();
-			amenity = MapSelectionHelper.findAmenityByOsmId(app, latLon, entity.getId());
+			AmenitySearcher searcher = app.getResourceManager().getAmenitySearcher();
+			AmenitySearcher.Settings settings = app.getResourceManager().getDefaultAmenitySearchSettings();
+
+			Amenity requestAmenity = new Amenity();
+			requestAmenity.setLocation(latLon);
+			requestAmenity.setId(ObfConstants.createMapObjectIdFromCleanOsmId(entity.getId(), EntityType.valueOf(entity)));
+
+			AmenitySearcher.Request request = new AmenitySearcher.Request(requestAmenity);
+			amenity = searcher.searchDetailedAmenity(request, settings);
 		}
 		if (amenity != null) {
 			setAmenity(amenity);
+		} else if (object instanceof RenderedObject renderedObject) {
+			setMapObject(renderedObject);
 		}
 		FavoritePointEditorFragment.showInstance(mapActivity);
 	}
@@ -86,6 +106,13 @@ public class FavoritePointEditor extends PointEditor {
 		favorite.setAmenityExtensions(amenity.getAmenityExtensions(app.getPoiTypes(), true));
 	}
 
+	private void setMapObject(@NonNull RenderedObject renderedObject) {
+		favorite.setAmenityOriginName(renderedObject.toStringEn());
+		if (renderedObject.getIconRes() != null) {
+			favorite.setIconId(RenderingIcons.getResId(renderedObject.getIconRes()));
+		}
+	}
+
 	public void add(LatLon latLon, String title, String categoryName, int categoryColor, boolean autoFill) {
 		MapActivity mapActivity = getMapActivity();
 		if (latLon == null || mapActivity == null) {
@@ -93,10 +120,10 @@ public class FavoritePointEditor extends PointEditor {
 		}
 		isNew = true;
 		if (categoryName != null && !categoryName.isEmpty()) {
-			FavoriteGroup category = mapActivity.getMyApplication().getFavoritesHelper()
+			FavoriteGroup category = mapActivity.getApp().getFavoritesHelper()
 					.getGroup(categoryName);
 			if (category == null) {
-				mapActivity.getMyApplication().getFavoritesHelper().addFavoriteGroup(categoryName, categoryColor);
+				mapActivity.getApp().getFavoritesHelper().addFavoriteGroup(categoryName, categoryColor);
 			}
 		} else {
 			categoryName = "";
@@ -105,7 +132,7 @@ public class FavoritePointEditor extends PointEditor {
 		favorite = new FavouritePoint(latLon.getLatitude(), latLon.getLongitude(), title, categoryName);
 		favorite.setDescription("");
 		favorite.setAddress("");
-		FavoritePointEditorFragment.showAutoFillInstance(mapActivity, autoFill);
+		FavoritePointEditorFragment.showInstance(mapActivity, autoFill);
 	}
 
 	public void edit(FavouritePoint favorite) {
@@ -116,5 +143,14 @@ public class FavoritePointEditor extends PointEditor {
 		isNew = false;
 		this.favorite = favorite;
 		FavoritePointEditorFragment.showInstance(mapActivity);
+	}
+
+	public void edit(@Nullable FavouritePoint favorite, @NonNull FragmentActivity activity, @NonNull Fragment targetFragment) {
+		if (favorite == null) {
+			return;
+		}
+		isNew = false;
+		this.favorite = favorite;
+		FavoritePointEditorFragment.showInstance(this, activity, targetFragment, false);
 	}
 }

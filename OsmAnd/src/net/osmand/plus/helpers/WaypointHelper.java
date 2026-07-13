@@ -2,6 +2,7 @@ package net.osmand.plus.helpers;
 
 import static net.osmand.plus.routing.AlarmInfoType.PEDESTRIAN;
 import static net.osmand.plus.routing.AlarmInfoType.RAILWAY;
+import static net.osmand.plus.routing.AlarmInfoType.RED_LIGHT_CAMERA;
 import static net.osmand.plus.routing.AlarmInfoType.SPEED_CAMERA;
 import static net.osmand.plus.routing.AlarmInfoType.TUNNEL;
 import static net.osmand.plus.routing.data.AnnounceTimeDistances.STATE_LONG_ALARM_ANNOUNCE;
@@ -23,12 +24,14 @@ import net.osmand.binary.RouteDataObject;
 import net.osmand.data.Amenity;
 import net.osmand.data.Amenity.AmenityRoutePoint;
 import net.osmand.data.LocationPoint;
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.poi.PoiUIFilter;
 import net.osmand.plus.routing.AlarmInfo;
 import net.osmand.plus.routing.AlarmInfoType;
 import net.osmand.plus.routing.RouteCalculationResult;
 import net.osmand.plus.routing.RouteDirectionInfo;
+import net.osmand.plus.routing.RoutingHelper;
 import net.osmand.plus.routing.VoiceRouter;
 import net.osmand.plus.routing.data.AnnounceTimeDistances;
 import net.osmand.plus.settings.backend.ApplicationMode;
@@ -232,7 +235,8 @@ public class WaypointHelper {
 	}
 
 	public AlarmInfo getMostImportantAlarm(SpeedConstants sc, boolean showCameras) {
-		Location lastProjection = app.getRoutingHelper().getLastProjection();
+		RoutingHelper routingHelper = app.getRoutingHelper();
+		Location lastProjection = routingHelper == null ? null : routingHelper.getLastProjection();
 		float mxspeed = route.getCurrentMaxSpeed(appMode.getRouteTypeProfile());
 		float delta = settings.SPEED_LIMIT_EXCEED_KMH.get() / 3.6f;
 		AlarmInfo speedAlarm = createSpeedAlarm(sc, mxspeed, lastProjection, delta);
@@ -268,7 +272,7 @@ public class WaypointHelper {
 					}
 					float time = speed > 0 ? distanceByRoute / speed : Integer.MAX_VALUE;
 					int priority = inf.updateDistanceAndGetPriority(time, distanceByRoute);
-					if (priority < mostPriority && (showCameras || inf.getType() != SPEED_CAMERA)) {
+					if (priority < mostPriority && (showCameras || (inf.getType() != SPEED_CAMERA && inf.getType() != RED_LIGHT_CAMERA))) {
 						mostImportant = inf;
 						mostPriority = priority;
 					}
@@ -358,7 +362,7 @@ public class WaypointHelper {
 					RouteTypeRule typeRule = reg.quickGetEncodingRule(pointType);
 					AlarmInfo info = AlarmInfo.createAlarmInfo(typeRule, 0, loc);
 					if (info != null) {
-						if (info.getType() != SPEED_CAMERA || showCameras) {
+						if ((info.getType() != SPEED_CAMERA && info.getType() != RED_LIGHT_CAMERA) || showCameras) {
 							return info;
 						}
 					}
@@ -379,7 +383,7 @@ public class WaypointHelper {
 				} else {
 					speed = Math.round(mxspeed * 3.6f);
 				}
-				speedAlarm = AlarmInfo.createSpeedLimit(speed, loc);
+				speedAlarm = AlarmInfo.createSpeedLimit(speed, loc, mxspeed);
 			}
 		}
 		return speedAlarm;
@@ -714,7 +718,7 @@ public class WaypointHelper {
 		AlarmInfo prevRailway = null;
 		for (AlarmInfo alarmInfo : route.getAlarmInfo()) {
 			AlarmInfoType type = alarmInfo.getType();
-			if (type == SPEED_CAMERA) {
+			if (type == SPEED_CAMERA || type == RED_LIGHT_CAMERA) {
 				if (settings.SHOW_CAMERAS.getModeValue(mode) || settings.SPEAK_SPEED_CAMERA.getModeValue(mode)) {
 					// ignore double speed cams
 					if (prevSpeedCam == null || MapUtils.getDistance(prevSpeedCam.getLatitude(), prevSpeedCam.getLongitude(),
@@ -787,7 +791,7 @@ public class WaypointHelper {
 	}
 
 	private void runAsync(@NonNull Runnable runnable, @Nullable OnCompleteCallback callback) {
-		new AsyncTask<Void, Void, Void>() {
+		OsmAndTaskManager.executeTask(new AsyncTask<Void, Void, Void>() {
 			@Override
 			protected Void doInBackground(Void... voids) {
 				runnable.run();
@@ -800,6 +804,6 @@ public class WaypointHelper {
 					callback.onComplete();
 				}
 			}
-		}.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+		});
 	}
 }

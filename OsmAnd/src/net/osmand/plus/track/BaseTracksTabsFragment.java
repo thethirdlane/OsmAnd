@@ -24,7 +24,7 @@ import androidx.viewpager.widget.ViewPager;
 
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
-import net.osmand.plus.base.BaseOsmAndDialogFragment;
+import net.osmand.plus.base.BaseFullScreenDialogFragment;
 import net.osmand.plus.configmap.tracks.SortByBottomSheet;
 import net.osmand.plus.configmap.tracks.TrackItemsContainer;
 import net.osmand.plus.configmap.tracks.TrackTab;
@@ -43,6 +43,7 @@ import net.osmand.plus.myplaces.tracks.ItemsSelectionHelper;
 import net.osmand.plus.myplaces.tracks.ItemsSelectionHelper.SelectionHelperProvider;
 import net.osmand.plus.myplaces.tracks.dialogs.MoveGpxFileBottomSheet.OnTrackFileMoveListener;
 import net.osmand.plus.settings.enums.TracksSortMode;
+import net.osmand.shared.gpx.enums.TracksSortScope;
 import net.osmand.plus.shared.SharedUtil;
 import net.osmand.plus.track.helpers.GpxSelectionHelper;
 import net.osmand.plus.track.helpers.SelectGpxTask.SelectGpxTaskListener;
@@ -66,7 +67,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
-public abstract class BaseTracksTabsFragment extends BaseOsmAndDialogFragment implements LoadTracksListener,
+public abstract class BaseTracksTabsFragment extends BaseFullScreenDialogFragment implements LoadTracksListener,
 		SelectionHelperProvider<TrackItem>, OnTrackFileMoveListener, RenameCallback,
 		TrackSelectionListener, SortTracksListener, EmptyTracksListener, SelectGpxTaskListener {
 
@@ -166,7 +167,7 @@ public abstract class BaseTracksTabsFragment extends BaseOsmAndDialogFragment im
 
 	@NonNull
 	public List<TrackTab> getSortedTrackTabs() {
-		return getSortedTrackTabs(false);
+		return getSortedTrackTabs(true);
 	}
 
 	@NonNull
@@ -182,7 +183,9 @@ public abstract class BaseTracksTabsFragment extends BaseOsmAndDialogFragment im
 	@Nullable
 	public TrackTab getSelectedTab() {
 		List<TrackTab> trackTabs = getSortedTrackTabs();
-		return trackTabs.isEmpty() ? null : trackTabs.get(viewPager.getCurrentItem());
+		int currentItemIndex = viewPager.getCurrentItem();
+		int selectedTabIndex = currentItemIndex < trackTabs.size() ? currentItemIndex : 0;
+		return trackTabs.isEmpty() ? null : trackTabs.get(selectedTabIndex);
 	}
 
 	public void setSelectedTab(@NonNull String id) {
@@ -211,8 +214,14 @@ public abstract class BaseTracksTabsFragment extends BaseOsmAndDialogFragment im
 		FragmentActivity activity = getActivity();
 		if (activity != null) {
 			FragmentManager manager = activity.getSupportFragmentManager();
-			SortByBottomSheet.showInstance(manager, getTracksSortMode(), this, isUsedOnMap());
+			SortByBottomSheet.showInstance(manager, getTrackSortScope(), getTracksSortMode(), this, isUsedOnMap());
 		}
+	}
+
+	@NonNull
+	@Override
+	public TracksSortScope getTrackSortScope() {
+		return TracksSortScope.TRACKS;
 	}
 
 	@NonNull

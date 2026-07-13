@@ -1,10 +1,14 @@
 package net.osmand.plus.plugins.aistracker;
 
-import static net.osmand.plus.plugins.aistracker.AisObjType.AIS_AIRPLANE;
-import static net.osmand.plus.plugins.aistracker.AisObjType.AIS_ATON;
-import static net.osmand.plus.plugins.aistracker.AisObjType.AIS_ATON_VIRTUAL;
-import static net.osmand.plus.plugins.aistracker.AisObjType.AIS_LANDSTATION;
-import static net.osmand.plus.plugins.aistracker.AisObjType.AIS_SART;
+import net.osmand.shared.aistracker.AisLatLon;
+import net.osmand.shared.aistracker.AisObjType;
+import net.osmand.shared.aistracker.AisObject;
+
+import static net.osmand.shared.aistracker.AisObjType.AIS_AIRPLANE;
+import static net.osmand.shared.aistracker.AisObjType.AIS_ATON;
+import static net.osmand.shared.aistracker.AisObjType.AIS_ATON_VIRTUAL;
+import static net.osmand.shared.aistracker.AisObjType.AIS_LANDSTATION;
+import static net.osmand.shared.aistracker.AisObjType.AIS_SART;
 
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -12,12 +16,8 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PointF;
-import android.graphics.drawable.Drawable;
-import android.util.Log;
 
-import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 
 import net.osmand.core.android.MapRendererView;
 import net.osmand.core.jni.MapMarkersCollection;
@@ -29,236 +29,142 @@ import net.osmand.data.PointDescription;
 import net.osmand.data.RotatedTileBox;
 import net.osmand.plus.ChartPointsHelper;
 import net.osmand.plus.plugins.PluginsHelper;
-import net.osmand.plus.utils.AndroidUtils;
+import net.osmand.plus.plugins.aistracker.AisTrackerPlugin.AisDataManager.AisObjectListener;
 import net.osmand.plus.utils.NativeUtilities;
 import net.osmand.plus.views.OsmandMapTileView;
 import net.osmand.plus.views.layers.ContextMenuLayer.IContextMenuProvider;
 import net.osmand.plus.views.layers.MapSelectionResult;
+import net.osmand.plus.views.layers.MapSelectionRules;
 import net.osmand.plus.views.layers.base.OsmandMapLayer;
 import net.osmand.util.Algorithms;
 
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Timer;
-import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class AisTrackerLayer extends OsmandMapLayer implements IContextMenuProvider {
+public class AisTrackerLayer extends OsmandMapLayer implements IContextMenuProvider, AisObjectListener {
 
-	private static final int START_ZOOM = 6;
-	private static final int AIS_OBJECT_LIST_COUNTER_MAX = 200;
+	public static final int START_ZOOM = 6;
+	public static final int START_ZOOM_SHOW_SHAPE = 16;
+	public static final int START_ZOOM_SHOW_DIRECTION = 10;
+
+	private static final long AIS_RENDER_REFRESH_INTERVAL_MS = 1000L;
 
 	private final AisTrackerPlugin plugin = PluginsHelper.requirePlugin(AisTrackerPlugin.class);
 	private final Paint bitmapPaint = new Paint();
-	private final Map<Integer, AisObject> objects = new ConcurrentHashMap<>();
-	private final Map<Integer, Bitmap> pointImages = new ConcurrentHashMap<>();
+	private final Map<Integer, AisObjectDrawable> objectDrawables = new ConcurrentHashMap<>();
 
-	private Timer timer;
-	private AisMessageListener listener;
 	private MapMarkersCollection markersCollection;
 	private VectorLinesCollection vectorLinesCollection;
+	private Bitmap aisRestBitmap;
 	private SingleSkImage aisRestImage;
 	private float textScale = 1f;
+	private int lastRenderZoom = -1;
+	private long lastRenderRefreshTimeMs;
 
 	public AisTrackerLayer(@NonNull Context context) {
 		super(context);
-
-		this.bitmapPaint.setAntiAlias(true);
-		this.bitmapPaint.setFilterBitmap(true);
-		this.bitmapPaint.setStrokeWidth(4);
-		this.bitmapPaint.setColor(Color.DKGRAY);
-
-		AisObject.setCpaWarningTime(plugin.AIS_CPA_WARNING_TIME.get());
-		AisObject.setCpaWarningDistance(plugin.AIS_CPA_WARNING_DISTANCE.get());
-
-		initTimer();
-		startNetworkListener();
 	}
 
 	@Override
 	public void initLayer(@NonNull OsmandMapTileView view) {
 		super.initLayer(view);
 
+		bitmapPaint.setAntiAlias(true);
+		bitmapPaint.setFilterBitmap(true);
+		bitmapPaint.setStrokeWidth(4);
+		bitmapPaint.setColor(Color.DKGRAY);
 
-	}
-
-	@Override
-	public void onMapRendererChange(@Nullable MapRendererView currentMapRenderer,
-			@Nullable MapRendererView newMapRenderer) {
-		super.onMapRendererChange(currentMapRenderer, newMapRenderer);
-
-		if (newMapRenderer != null) {
-			markersCollection = new MapMarkersCollection();
-			vectorLinesCollection = new VectorLinesCollection();
-			newMapRenderer.addSymbolsProvider(markersCollection);
-			newMapRenderer.addSymbolsProvider(vectorLinesCollection);
-
-			ChartPointsHelper pointsHelper = new ChartPointsHelper(getContext());
-			float density = 5;
-			int pointColor = 0xFFFFFFFF;
-			aisRestImage = NativeUtilities.createSkImageFromBitmap(
-					pointsHelper.createXAxisPointBitmap(pointColor, density));
-
-			for (AisObject ais : objects.values()) {
-				ais.createAisRenderData(getBaseOrder(), this, bitmapPaint,
-						markersCollection, vectorLinesCollection, aisRestImage);
-				ais.updateAisRenderData(getTileView(), this, bitmapPaint);
-			}
-		}
-	}
-
-	public void setListener(@Nullable AisMessageListener listener) {
-		this.listener = listener;
-	}
-
-	private void initTimer() {
-		TimerTask timerTask = new TimerTask() {
-			@Override
-			public void run() {
-				removeLostAisObjects();
-			}
-		};
-		this.timer = new Timer();
-		timer.schedule(timerTask, 20000, 30000);
-	}
-
-	private void startNetworkListener() {
-		int proto = plugin.AIS_NMEA_PROTOCOL.get();
-		if (proto == AisTrackerPlugin.AIS_NMEA_PROTOCOL_UDP) {
-			this.listener = new AisMessageListener(plugin.AIS_NMEA_UDP_PORT.get(), this);
-		} else if (proto == AisTrackerPlugin.AIS_NMEA_PROTOCOL_TCP) {
-			this.listener = new AisMessageListener(plugin.AIS_NMEA_IP_ADDRESS.get(), plugin.AIS_NMEA_TCP_PORT.get(), this);
-		}
-	}
-
-	private void stopNetworkListener() {
-		if (this.listener != null) {
-			this.listener.stopListener();
-			this.listener = null;
-		}
-	}
-
-	/* this method restarts the TCP listeners after a "resume" event (the smartphone resumed
-	 *  from sleep or from switched off state): in this case the TCP connection might be broken,
-	 *  but the sockets are still (logically) open.
-	 *  as additional indication of a broken TCP connection it is checked whether any AIS message
-	 *  was received in the last 20 seconds  */
-	public void checkTcpConnection() {
-		if (listener != null) {
-			if (listener.checkTcpSocket()) {
-				if (((System.currentTimeMillis() - AisObject.getAndUpdateLastMessageReceived()) / 1000) > 20) {
-					Log.d("AisTrackerLayer", "checkTcpConnection(): restart TCP socket");
-					restartNetworkListener();
-				}
-			}
-		}
-	}
-
-	public void restartNetworkListener() {
-		stopNetworkListener();
-		startNetworkListener();
+		float density = 5;
+		int pointColor = 0xFFFFFFFF;
+		ChartPointsHelper pointsHelper = new ChartPointsHelper(getContext());
+		aisRestBitmap = pointsHelper.createXAxisPointBitmap(pointColor, density);
 	}
 
 	@Override
 	public void cleanupResources() {
-		if (this.timer != null) {
-			this.timer.cancel();
-			this.timer.purge();
-			this.timer = null;
-		}
-		this.objects.clear();
-
-		MapRendererView mapRenderer = view.getMapRenderer();
+		MapRendererView mapRenderer = getMapRenderer();
 		if (mapRenderer != null && markersCollection != null && vectorLinesCollection != null) {
 			markersCollection.removeAllMarkers();
 			vectorLinesCollection.removeAllLines();
 			mapRenderer.removeSymbolsProvider(markersCollection);
 			mapRenderer.removeSymbolsProvider(vectorLinesCollection);
+			aisRestImage = null;
 		}
-
-		stopNetworkListener();
+		objectDrawables.clear();
+		lastRenderZoom = -1;
+		lastRenderRefreshTimeMs = 0;
 	}
 
-	private void removeLostAisObjects() {
-		for (Iterator<Map.Entry<Integer, AisObject>> iterator = objects.entrySet().iterator(); iterator.hasNext(); ) {
-			Map.Entry<Integer, AisObject> entry = iterator.next();
-			if (entry.getValue().checkObjectAge()) {
-				Log.d("AisTrackerLayer", "remove AIS object with MMSI " + entry.getValue().getMmsi());
-				if (view.getMapRenderer() != null && markersCollection != null && vectorLinesCollection != null) {
-					entry.getValue().clearAisRenderData(markersCollection, vectorLinesCollection);
-				}
-				iterator.remove();
-			}
-		}
-		// aisObjectList.entrySet().removeIf(entry -> entry.getValue().checkObjectAge());
-	}
-
-	private void removeOldestAisObjectListEntry() {
-		Log.d("AisTrackerLayer", "removeOldestAisObjectListEntry() called");
-		long oldestTimeStamp = System.currentTimeMillis();
-		AisObject oldest = null;
-		for (AisObject ais : objects.values()) {
-			long timeStamp = ais.getLastUpdate();
-			if (timeStamp <= oldestTimeStamp) {
-				oldestTimeStamp = timeStamp;
-				oldest = ais;
-			}
-		}
-		if (oldest != null) {
-			Log.d("AisTrackerLayer", "remove AIS object with MMSI " + oldest.getMmsi());
-			if (view.getMapRenderer() != null && markersCollection != null && vectorLinesCollection != null) {
-				oldest.clearAisRenderData(markersCollection, vectorLinesCollection);
-			}
-			objects.remove(oldest.getMmsi(), oldest);
-		}
-	}
-
-	/* add new AIS object to list, or (if already exist) update its value */
-	public void updateAisObjectList(@NonNull AisObject ais) {
+	@Override
+	public void onAisObjectReceived(@NonNull AisObject ais) {
 		int mmsi = ais.getMmsi();
-		AisObject obj = objects.get(mmsi);
-		if (obj == null) {
-			Log.d("AisTrackerLayer", "add AIS object with MMSI " + ais.getMmsi());
-			AisObject newObj = new AisObject(ais);
-
-			if (view.getMapRenderer() != null && markersCollection != null && vectorLinesCollection != null) {
-				newObj.createAisRenderData(getBaseOrder(), this, bitmapPaint,
-						markersCollection, vectorLinesCollection, aisRestImage);
-				newObj.updateAisRenderData(getTileView(), this, bitmapPaint);
+		boolean own = isOwnObject(ais);
+		AisObjectDrawable drawable = objectDrawables.get(mmsi);
+		if (drawable == null) {
+			if (isOwnObjectHidden(ais)) {
+				return; // exclude own AIS object from list
 			}
-
-			objects.put(mmsi, newObj);
-
-			if (objects.size() >= AIS_OBJECT_LIST_COUNTER_MAX) {
-				this.removeOldestAisObjectListEntry();
-			}
+			drawable = new AisObjectDrawable(plugin, ais);
+			drawable.setOwnObject(own);
+			objectDrawables.put(ais.getMmsi(), drawable);
 		} else {
-			obj.set(ais);
+			if (isOwnObjectHidden(ais)) {
+				this.onAisObjectRemoved(ais);
+				return;
+			} else {
+				drawable.setOwnObject(own);
+				drawable.set(ais);
+			}
+		}
+		if (getMapRenderer() != null && !drawable.hasAisRenderData() && aisRestImage != null
+				&& markersCollection != null && vectorLinesCollection != null) {
+			drawable.createAisRenderData(getBaseOrder(), bitmapPaint, markersCollection, vectorLinesCollection, aisRestImage);
+		}
+		drawable.updateAisRenderData(getTileView(), bitmapPaint);
+	}
 
-			if (view.getMapRenderer() != null && markersCollection != null && vectorLinesCollection != null) {
-				obj.updateAisRenderData(getTileView(), this, bitmapPaint);
+	@Override
+	public void onAisObjectRemoved(@NonNull AisObject ais) {
+		if (getMapRenderer() != null && markersCollection != null && vectorLinesCollection != null) {
+			AisObjectDrawable drawable = objectDrawables.get(ais.getMmsi());
+			if (drawable != null) {
+				drawable.clearAisRenderData(markersCollection, vectorLinesCollection);
+			}
+		}
+		objectDrawables.remove(ais.getMmsi());
+	}
+
+	private boolean isOwnObject(@NonNull AisObject ais) {
+		return ais.getMmsi() == plugin.AIS_OWN_MMSI.get();
+	}
+
+	private boolean isOwnObjectHidden(@NonNull AisObject ais) {
+		return isOwnObject(ais) && !plugin.AIS_DISPLAY_OWN_POSITION.get();
+	}
+
+	public void refreshOwnObjectVisibility() {
+		for (AisObject ais : plugin.getAisObjects()) {
+			AisObjectDrawable drawable = objectDrawables.get(ais.getMmsi());
+			if (isOwnObjectHidden(ais)) {
+				if (drawable != null) {
+					onAisObjectRemoved(ais);
+				}
+			} else if (drawable != null) {
+				drawable.setOwnObject(isOwnObject(ais));
+				drawable.updateAisRenderData(getTileView(), bitmapPaint);
+			} else {
+				onAisObjectReceived(ais);
 			}
 		}
 	}
 
-	@Nullable
-	public Bitmap getBitmap(@DrawableRes int drawableId) {
-		Bitmap bitmap = pointImages.get(drawableId);
-		if (bitmap == null) {
-			Drawable icon = getApplication().getUIUtilities().getIcon(drawableId);
-			bitmap = AndroidUtils.drawableToBitmap(icon, textScale, true);
-			pointImages.put(drawableId, bitmap);
-		}
-		return bitmap;
-	}
-
-	public boolean isLocationVisible(RotatedTileBox tileBox, LatLon coordinates) {
+	public boolean isLocationVisible(RotatedTileBox tileBox, double lat, double lon) {
 		//noinspection SimplifiableIfStatement
-		if (tileBox == null || coordinates == null) {
+		if (tileBox == null) {
 			return false;
 		}
-		return tileBox.containsLatLon(coordinates);
+		return tileBox.containsLatLon(lat, lon);
 	}
 
 	@Override
@@ -269,34 +175,79 @@ public class AisTrackerLayer extends OsmandMapLayer implements IContextMenuProvi
 	@Override
 	public void onPrepareBufferImage(Canvas canvas, RotatedTileBox tileBox, DrawSettings settings) {
 		super.onPrepareBufferImage(canvas, tileBox, settings);
+		MapRendererView mapRenderer = getMapRenderer();
 
-		if (tileBox.getZoom() >= START_ZOOM) {
-			AisObject.setOwnPosition(getApplication().getLocationProvider().getLastKnownLocation());
+		float textScale = getTextScale();
+		boolean textScaleChanged = this.textScale != textScale;
+		this.textScale = textScale;
+		if (textScaleChanged) {
+			plugin.getAisImagesCache().clearCache();
+		}
 
-			float textScale = getTextScale();
-			boolean textScaleChanged = this.textScale != textScale;
-			this.textScale = textScale;
-			if (textScaleChanged) {
-				pointImages.clear();
-			}
-			if (view.getMapRenderer() != null) {
-				for (AisObject ais : objects.values()) {
-					// Calling updateAisRenderData in onPrepareBufferImage is overhead
-					// but it is needed to update directional line points
-					// also there is no zoom animation for directional line depending on zoom
-					// TODO: SUPPORT THIS IN ENGINE
-					ais.updateAisRenderData(getTileView(), this, bitmapPaint);
+		List<AisObject> aisObjects = plugin.getAisObjects();
+		if (mapRenderer != null) {
+			if (mapActivityInvalidated || mapRendererChanged || textScaleChanged) {
+				cleanupResources();
+
+				if (aisRestImage == null) {
+					aisRestImage = NativeUtilities.createSkImageFromBitmap(aisRestBitmap);
 				}
+				markersCollection = new MapMarkersCollection();
+				vectorLinesCollection = new VectorLinesCollection();
+				mapRenderer.addSymbolsProvider(markersCollection);
+				mapRenderer.addSymbolsProvider(vectorLinesCollection);
 
-				return;
+				for (AisObject ais : plugin.getAisObjects()) {
+					if (isOwnObjectHidden(ais)) {
+						continue;
+					}
+					AisObjectDrawable drawable = new AisObjectDrawable(plugin, ais);
+					drawable.setOwnObject(isOwnObject(ais));
+					objectDrawables.put(ais.getMmsi(), drawable);
+					drawable.createAisRenderData(getBaseOrder(), bitmapPaint,
+							markersCollection, vectorLinesCollection, aisRestImage);
+					drawable.updateAisRenderData(getTileView(), bitmapPaint);
+				}
+				updateNativeRenderRefreshState();
+			} else if (shouldRefreshNativeRenderData()) {
+				refreshNativeRenderData(aisObjects);
 			}
-
-			for (AisObject ais : objects.values()) {
-				if (isLocationVisible(tileBox, ais.getPosition())) {
-					ais.draw(this, bitmapPaint, canvas, tileBox);
+			mapActivityInvalidated = false;
+			mapRendererChanged = false;
+		} else if (tileBox.getZoom() >= START_ZOOM) {
+			for (AisObject ais : aisObjects) {
+				AisObjectDrawable drawable = objectDrawables.get(ais.getMmsi());
+				if (drawable != null && ais.getPosition() != null && isLocationVisible(tileBox, ais.getPosition().getLatitude(), ais.getPosition().getLongitude())) {
+					drawable.draw(bitmapPaint, canvas, tileBox);
 				}
 			}
 		}
+	}
+
+	private boolean shouldRefreshNativeRenderData() {
+		OsmandMapTileView tileView = getTileView();
+		if (getMapRenderer() == null || tileView == null || objectDrawables.isEmpty()) {
+			return false;
+		}
+		long now = System.currentTimeMillis();
+		return tileView.getZoom() != lastRenderZoom
+				|| now - lastRenderRefreshTimeMs >= AIS_RENDER_REFRESH_INTERVAL_MS;
+	}
+
+	private void refreshNativeRenderData(@NonNull List<AisObject> aisObjects) {
+		for (AisObject ais : aisObjects) {
+			AisObjectDrawable drawable = objectDrawables.get(ais.getMmsi());
+			if (drawable != null) {
+				drawable.updateAisRenderData(getTileView(), bitmapPaint);
+			}
+		}
+		updateNativeRenderRefreshState();
+	}
+
+	private void updateNativeRenderRefreshState() {
+		OsmandMapTileView tileView = getTileView();
+		lastRenderZoom = tileView != null ? tileView.getZoom() : -1;
+		lastRenderRefreshTimeMs = System.currentTimeMillis();
 	}
 
 	@Override
@@ -305,11 +256,11 @@ public class AisTrackerLayer extends OsmandMapLayer implements IContextMenuProvi
 	}
 
 	@Override
-	public void collectObjectsFromPoint(@NonNull MapSelectionResult result,
-			boolean unknownLocation, boolean excludeUntouchableObjects) {
+	public void collectObjectsFromPoint(@NonNull MapSelectionResult result, @NonNull MapSelectionRules rules) {
 		PointF point = result.getPoint();
 		RotatedTileBox tileBox = result.getTileBox();
-		if (Algorithms.isEmpty(objects) || tileBox.getZoom() < START_ZOOM) {
+		List<AisObject> aisObjects = plugin.getAisObjects();
+		if (Algorithms.isEmpty(aisObjects) || tileBox.getZoom() < START_ZOOM) {
 			return;
 		}
 		MapRendererView mapRenderer = getMapRenderer();
@@ -321,8 +272,11 @@ public class AisTrackerLayer extends OsmandMapLayer implements IContextMenuProvi
 				return;
 			}
 		}
-		for (AisObject object : objects.values()) {
-			LatLon latLon = object.getPosition();
+		for (AisObject object : aisObjects) {
+			if (isOwnObjectHidden(object)) {
+				continue;
+			}
+			AisLatLon latLon = object.getPosition();
 			if (latLon != null) {
 				double lat = latLon.getLatitude();
 				double lon = latLon.getLongitude();
@@ -340,7 +294,7 @@ public class AisTrackerLayer extends OsmandMapLayer implements IContextMenuProvi
 	@Override
 	public LatLon getObjectLocation(Object o) {
 		if (o instanceof AisObject) {
-			LatLon pos = ((AisObject) o).getPosition();
+			AisLatLon pos = ((AisObject) o).getPosition();
 			if (pos != null) {
 				return new LatLon(pos.getLatitude(), pos.getLongitude());
 			}
@@ -354,12 +308,12 @@ public class AisTrackerLayer extends OsmandMapLayer implements IContextMenuProvi
 			AisObjType objectClass = ais.getObjectClass();
 			if (ais.getShipName() != null) {
 				return new PointDescription("AIS object", ais.getShipName() +
-						(ais.getSignalLostState() ? " (signal lost)" : ""));
+						(isSignalLost(ais) ? " (signal lost)" : ""));
 			} else if (objectClass == AIS_LANDSTATION) {
 				return new PointDescription("AIS object", "Land Station with MMSI " + ais.getMmsi());
 			} else if (objectClass == AIS_AIRPLANE) {
 				return new PointDescription("AIS object", "Airplane with MMSI " +
-						ais.getMmsi() + (ais.getSignalLostState() ? " (signal lost)" : ""));
+						ais.getMmsi() + (isSignalLost(ais) ? " (signal lost)" : ""));
 			} else if ((objectClass == AIS_ATON) || (objectClass == AIS_ATON_VIRTUAL)) {
 				return new PointDescription("AIS object", "Aid to Navigation");
 			} else if (objectClass == AIS_SART) {
@@ -367,8 +321,12 @@ public class AisTrackerLayer extends OsmandMapLayer implements IContextMenuProvi
 			}
 			return new PointDescription("AIS object",
 					"AIS object with MMSI " + ais.getMmsi() +
-							(ais.getSignalLostState() ? " (signal lost)" : ""));
+							(isSignalLost(ais) ? " (signal lost)" : ""));
 		}
 		return null;
 	}
+
+    private boolean isSignalLost(AisObject ais) {
+        return ais.isLost(plugin.getVesselLostTimeoutInMinutes()) && ais.isMovable() && !ais.isVesselAtRest();
+    }
 }

@@ -1,8 +1,6 @@
 package net.osmand.plus.charts;
 
-import android.content.Context;
 import android.os.Bundle;
-import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.CheckBox;
 import android.widget.ImageView;
@@ -15,8 +13,6 @@ import androidx.annotation.NonNull;
 import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
 
-import net.osmand.gpx.GPXTrackAnalysis;
-import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.base.MenuBottomSheetDialogFragment;
 import net.osmand.plus.base.bottomsheetmenu.BaseBottomSheetItem;
@@ -30,13 +26,14 @@ import net.osmand.shared.gpx.GpxTrackAnalysis;
 import net.osmand.util.Algorithms;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class ChartModeBottomSheet extends MenuBottomSheetDialogFragment {
 
 	public static final String TAG = ChartModeBottomSheet.class.getSimpleName();
 
-	private OsmandApplication app;
 	private LinearLayout container;
 	private GraphModeListener listener;
 	private final List<View> itemViews = new ArrayList<>();
@@ -48,20 +45,17 @@ public class ChartModeBottomSheet extends MenuBottomSheetDialogFragment {
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		app = requiredMyApplication();
-		selectedXAxisMode = listener.getSelectedAxisType();
-		selectedYAxisMode.addAll(listener.getSelectedDataSetTypes());
+		if (listener == null || listener.getSelectedAxisType() == null) {
+			dismiss();
+		} else {
+			selectedXAxisMode = listener.getSelectedAxisType();
+			selectedYAxisMode.addAll(listener.getSelectedDataSetTypes());
+		}
 	}
 
 	@Override
 	public void createMenuItems(Bundle savedInstanceState) {
-		Context context = getContext();
-		if (context == null) {
-			return;
-		}
-
-		LayoutInflater inflater = UiUtilities.getInflater(getContext(), nightMode);
-		View itemView = inflater.inflate(R.layout.chart_mode_bottom_sheet, null, false);
+		View itemView = inflate(R.layout.chart_mode_bottom_sheet);
 		items.add(new BaseBottomSheetItem.Builder()
 				.setCustomView(itemView)
 				.create());
@@ -93,8 +87,7 @@ public class ChartModeBottomSheet extends MenuBottomSheetDialogFragment {
 		container.removeAllViews();
 		itemViews.clear();
 		for (GPXDataSetAxisType type : getAvailableXTypes(listener.getAnalysis())) {
-			LayoutInflater inflater = UiUtilities.getInflater(getContext(), nightMode);
-			View itemView = inflater.inflate(R.layout.bottom_sheet_item_with_radio_btn, null, false);
+			View itemView = inflate(R.layout.bottom_sheet_item_with_radio_btn);
 
 			itemView.setTag(type);
 			itemView.setOnClickListener(v -> {
@@ -138,7 +131,7 @@ public class ChartModeBottomSheet extends MenuBottomSheetDialogFragment {
 		boolean checked = selectedYAxisMode.contains(type);
 		int iconColor;
 		int textColor;
-		if (selectedYAxisMode.size() >= 2 && !checked) {
+		if (selectedYAxisMode.size() >= ChartUtils.MAX_CHART_TYPES && !checked) {
 			view.setEnabled(false);
 			iconColor = ColorUtilities.getSecondaryIconColor(app, nightMode);
 			textColor = ColorUtilities.getDisabledTextColor(app, nightMode);
@@ -158,53 +151,130 @@ public class ChartModeBottomSheet extends MenuBottomSheetDialogFragment {
 		textView.setTextColor(textColor);
 	}
 
+	private void checkSelectedYTypes(@NonNull List<GPXDataSetType> generalTypes, @NonNull List<GPXDataSetType> sensorTypes) {
+		if (isSelectedSupported(generalTypes, sensorTypes)) {
+			return;
+		}
+
+		selectedYAxisMode.clear();
+
+		if (Algorithms.isEmpty(generalTypes)) {
+			return;
+		}
+
+		if (generalTypes.size() >= 2) {
+			selectedYAxisMode.add(generalTypes.get(0));
+			selectedYAxisMode.add(generalTypes.get(1));
+		} else {
+			selectedYAxisMode.add(generalTypes.get(0));
+		}
+	}
+
+	private boolean isSelectedSupported(@NonNull List<GPXDataSetType> generalTypes, @NonNull List<GPXDataSetType> sensorTypes) {
+		for (GPXDataSetType selected : selectedYAxisMode) {
+			if (!isSupported(selected, generalTypes, sensorTypes)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private boolean isSupported(@NonNull GPXDataSetType selected, @NonNull List<GPXDataSetType> generalTypes, @NonNull List<GPXDataSetType> sensorTypes) {
+		return generalTypes.contains(selected) || sensorTypes.contains(selected);
+	}
+
 	private void createYAxisItems() {
 		if (listener == null) {
 			return;
 		}
+
+		resetContainer();
+
+		GpxTrackAnalysis analysis = listener.getAnalysis();
+		List<GPXDataSetType> generalTypes = getAvailableDefaultYTypes(analysis);
+		List<GPXDataSetType> sensorTypes = getAvailableSensorYTypes(analysis);
+
+		checkSelectedYTypes(generalTypes, sensorTypes);
+
+		addItems(generalTypes);
+		addGroupedSensorItems(sensorTypes);
+	}
+
+	private void resetContainer() {
 		container.removeAllViews();
 		itemViews.clear();
-		GpxTrackAnalysis analysis = listener.getAnalysis();
-		List<GPXDataSetType[]> defaultTypes = getAvailableDefaultYTypes(analysis);
-		for (GPXDataSetType[] types : defaultTypes) {
-			createYAxisItem(types);
-		}
-		List<GPXDataSetType[]> sensorTypes = getAvailableSensorYTypes(analysis);
-		if (!Algorithms.isEmpty(sensorTypes)) {
-			container.addView(createDivider());
-		}
-		for (GPXDataSetType[] types : sensorTypes) {
+	}
+
+	private void addItems(List<GPXDataSetType> typesList) {
+		for (GPXDataSetType types : typesList) {
 			createYAxisItem(types);
 		}
 	}
 
+	private void addGroupedSensorItems(List<GPXDataSetType> sensorTypes) {
+		Map<GpxDataSetTypeGroup, List<GPXDataSetType>> grouped =
+				groupByGroup(sensorTypes);
+
+		for (Map.Entry<GpxDataSetTypeGroup, List<GPXDataSetType>> entry : grouped.entrySet()) {
+			addGroup(entry.getKey(), entry.getValue());
+		}
+	}
+
+	private Map<GpxDataSetTypeGroup, List<GPXDataSetType>> groupByGroup(List<GPXDataSetType> sensorTypes) {
+		Map<GpxDataSetTypeGroup, List<GPXDataSetType>> grouped = new LinkedHashMap<>();
+
+		for (GPXDataSetType types : sensorTypes) {
+			grouped.computeIfAbsent(types.typeGroup, k -> new ArrayList<>())
+					.add(types);
+		}
+
+		return grouped;
+	}
+
+	private void addGroup(GpxDataSetTypeGroup group, List<GPXDataSetType> typesList) {
+		if (Algorithms.isEmpty(typesList)) {
+			return;
+		}
+
+		container.addView(createDivider());
+
+		String groupName = group.getName(app);
+		if (!Algorithms.isEmpty(groupName)) {
+			container.addView(createCategory(groupName));
+		}
+
+		addItems(typesList);
+	}
+
+	private View createCategory(String name){
+		View categoryView = inflate(R.layout.axis_category_title);
+		TextView title = categoryView.findViewById(android.R.id.title);
+		title.setText(name);
+
+		return categoryView;
+	}
+
 	private View createDivider(){
-		LayoutInflater inflater = UiUtilities.getInflater(getContext(), nightMode);
-		View divider = inflater.inflate(R.layout.divider, null, false);
+		View divider = inflate(R.layout.divider);
 		LayoutParams params = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-		params.setMargins(params.leftMargin, AndroidUtils.dpToPx(app, 8), params.rightMargin, AndroidUtils.dpToPx(app, 8));
+		params.setMargins(params.leftMargin, dpToPx(8), params.rightMargin, dpToPx(8));
 		divider.setLayoutParams(params);
 		return divider;
 	}
 
-	private void createYAxisItem(GPXDataSetType[] types) {
-		if (types.length > 1) {
-			return;
-		}
-		GPXDataSetType singleSetType = types[0];
-		LayoutInflater inflater = UiUtilities.getInflater(getContext(), nightMode);
-		View itemView = inflater.inflate(R.layout.bottom_sheet_item_title_icon_with_checkbox, null, false);
+	private void createYAxisItem(GPXDataSetType type) {
+		View itemView = inflate(R.layout.bottom_sheet_item_title_icon_with_checkbox);
 
-		itemView.setTag(singleSetType);
+		itemView.setTag(type);
 		itemView.setOnClickListener(v -> {
-			if (selectedYAxisMode.contains(singleSetType)) {
-				selectedYAxisMode.remove(singleSetType);
+			if (selectedYAxisMode.contains(type)) {
+				selectedYAxisMode.remove(type);
 				updateItems();
 				updateApplyButton();
 				return;
 			}
-			if (selectedYAxisMode.size() < 2) {
-				selectedYAxisMode.add(singleSetType);
+			if (selectedYAxisMode.size() < ChartUtils.MAX_CHART_TYPES) {
+				selectedYAxisMode.add(type);
 				updateItems();
 				updateApplyButton();
 			}
@@ -214,7 +284,7 @@ public class ChartModeBottomSheet extends MenuBottomSheetDialogFragment {
 		UiUtilities.setupCompoundButton(nightMode, ColorUtilities.getActiveColor(app, nightMode), checkBox);
 
 		TextView textView = itemView.findViewById(R.id.title);
-		textView.setText(singleSetType.getTitleId());
+		textView.setText(type.getTitleId());
 
 		container.addView(itemView);
 		itemViews.add(itemView);
@@ -227,13 +297,14 @@ public class ChartModeBottomSheet extends MenuBottomSheetDialogFragment {
 			int screenHeight = AndroidUtils.getScreenHeight(activity);
 			int statusBarHeight = AndroidUtils.getStatusBarHeight(activity);
 			int navBarHeight = AndroidUtils.getNavBarHeight(activity);
-			int buttonsHeight = getResources().getDimensionPixelSize(R.dimen.dialog_button_ex_height);
+			int buttonsHeight = getDimensionPixelSize(R.dimen.dialog_button_ex_height);
 
-			return screenHeight - statusBarHeight - buttonsHeight - navBarHeight - getResources().getDimensionPixelSize(R.dimen.toolbar_height);
+			return screenHeight - statusBarHeight - buttonsHeight - navBarHeight - getDimensionPixelSize(R.dimen.toolbar_height);
 		}
 		return super.getCustomHeight();
 	}
 
+	@NonNull
 	private TextToggleButton.TextRadioItem createRadioButton(int titleId, boolean showYAxis) {
 		TextToggleButton.TextRadioItem item = new TextToggleButton.TextRadioItem(getString(titleId));
 		item.setOnClickListener((radioItem, view) -> {
@@ -247,6 +318,7 @@ public class ChartModeBottomSheet extends MenuBottomSheetDialogFragment {
 		return item;
 	}
 
+	@NonNull
 	public static List<GPXDataSetAxisType> getAvailableXTypes(GpxTrackAnalysis analysis) {
 		List<GPXDataSetAxisType> availableTypes = new ArrayList<>();
 		for (GPXDataSetAxisType type : GPXDataSetAxisType.values()) {
@@ -262,23 +334,23 @@ public class ChartModeBottomSheet extends MenuBottomSheetDialogFragment {
 	}
 
 	@NonNull
-	public static List<GPXDataSetType[]> getAvailableDefaultYTypes(@NonNull GpxTrackAnalysis analysis) {
-		List<GPXDataSetType[]> availableTypes = new ArrayList<>();
+	public static List<GPXDataSetType> getAvailableDefaultYTypes(@NonNull GpxTrackAnalysis analysis) {
+		List<GPXDataSetType> availableTypes = new ArrayList<>();
 		boolean hasElevationData = analysis.hasElevationData();
 		boolean hasSpeedData = analysis.hasSpeedData();
 		if (hasElevationData) {
-			availableTypes.add(new GPXDataSetType[]{GPXDataSetType.ALTITUDE});
-			availableTypes.add(new GPXDataSetType[]{GPXDataSetType.SLOPE});
+			availableTypes.add(GPXDataSetType.ALTITUDE);
+			availableTypes.add(GPXDataSetType.SLOPE);
 		}
 		if (hasSpeedData) {
-			availableTypes.add(new GPXDataSetType[]{GPXDataSetType.SPEED});
+			availableTypes.add(GPXDataSetType.SPEED);
 		}
 		return availableTypes;
 	}
 
 	@NonNull
-	public static List<GPXDataSetType[]> getAvailableSensorYTypes(@NonNull GpxTrackAnalysis analysis) {
-		List<GPXDataSetType[]> availableTypes = new ArrayList<>();
+	public static List<GPXDataSetType> getAvailableSensorYTypes(@NonNull GpxTrackAnalysis analysis) {
+		List<GPXDataSetType> availableTypes = new ArrayList<>();
 		PluginsHelper.getAvailableGPXDataSetTypes(analysis, availableTypes);
 		return availableTypes;
 	}

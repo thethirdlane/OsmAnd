@@ -25,10 +25,6 @@ import net.osmand.core.android.MapRendererContext;
 import net.osmand.data.Amenity;
 import net.osmand.data.LatLon;
 import net.osmand.data.MapObject;
-import net.osmand.plus.mapcontextmenu.gallery.ImageCardsHolder;
-import net.osmand.plus.mapcontextmenu.gallery.tasks.GetImageCardsTask.GetImageCardsListener;
-import net.osmand.shared.gpx.GpxTrackAnalysis;
-import net.osmand.shared.gpx.GpxTrackAnalysis.TrackPointsAnalyser;
 import net.osmand.map.WorldRegion;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
@@ -38,16 +34,18 @@ import net.osmand.plus.charts.GPXDataSetAxisType;
 import net.osmand.plus.charts.GPXDataSetType;
 import net.osmand.plus.charts.OrderedLineDataSet;
 import net.osmand.plus.chooseplan.OsmAndFeature;
-import net.osmand.shared.gpx.TrackItem;
 import net.osmand.plus.dashboard.tools.DashFragmentData;
 import net.osmand.plus.download.DownloadActivityType;
 import net.osmand.plus.download.DownloadOsmandIndexesHelper.IndexFileList;
 import net.osmand.plus.download.DownloadResources;
 import net.osmand.plus.download.IndexItem;
+import net.osmand.plus.gallery.data.GalleryKey;
 import net.osmand.plus.keyevent.assignment.KeyAssignment;
 import net.osmand.plus.keyevent.commands.KeyEventCommand;
 import net.osmand.plus.mapcontextmenu.MenuBuilder;
 import net.osmand.plus.mapcontextmenu.MenuController;
+import net.osmand.plus.gallery.online.OnlinePhotosHolder;
+import net.osmand.plus.gallery.online.tasks.GetOnlineImagesTask.GetImageCardsListener;
 import net.osmand.plus.myplaces.MyPlacesActivity;
 import net.osmand.plus.poi.PoiUIFilter;
 import net.osmand.plus.quickaction.QuickActionType;
@@ -57,6 +55,7 @@ import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.backend.preferences.CommonPreference;
 import net.osmand.plus.settings.backend.preferences.ListStringPreference;
 import net.osmand.plus.settings.backend.preferences.OsmandPreference;
+import net.osmand.plus.settings.enums.ScreenLayoutMode;
 import net.osmand.plus.settings.fragments.SettingsScreenType;
 import net.osmand.plus.views.layers.base.OsmandMapLayer;
 import net.osmand.plus.views.mapwidgets.MapWidgetInfo;
@@ -67,6 +66,9 @@ import net.osmand.plus.widgets.ctxmenu.ContextMenuAdapter;
 import net.osmand.plus.widgets.popup.PopUpMenuItem;
 import net.osmand.render.RenderingRuleProperty;
 import net.osmand.search.core.SearchPhrase;
+import net.osmand.shared.gpx.GpxTrackAnalysis;
+import net.osmand.shared.gpx.GpxTrackAnalysis.TrackPointsAnalyser;
+import net.osmand.shared.gpx.TrackItem;
 import net.osmand.util.Algorithms;
 
 import org.apache.commons.logging.Log;
@@ -77,7 +79,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 public abstract class OsmandPlugin {
@@ -260,8 +261,8 @@ public abstract class OsmandPlugin {
 	protected void attachAdditionalInfoToRecordedTrack(@NonNull Location location, @NonNull JSONObject json) throws JSONException {
 	}
 
-	protected boolean createContextMenuImageCard(@NonNull ImageCardsHolder holder,
-	                                             @NonNull JSONObject imageObject) {
+	protected boolean addContextMenuGalleryItem(@NonNull OnlinePhotosHolder holder,
+	                                            @NonNull JSONObject imageObject) {
 		return false;
 	}
 
@@ -302,20 +303,22 @@ public abstract class OsmandPlugin {
 	/*
 	 * Return true in case if plugin should fill the map context menu with buildContextMenuRows method.
 	 */
-	public boolean isMenuControllerSupported(Class<? extends MenuController> menuControllerClass) {
+	public boolean isMenuControllerSupported(MenuController menuController) {
 		return false;
 	}
 
 	/*
 	 * Add menu rows to the map context menu.
 	 */
-	public void buildContextMenuRows(@NonNull MenuBuilder menuBuilder, @NonNull View view, @Nullable Object object) {
+	public void buildContextMenuRows(@NonNull MenuBuilder menuBuilder, @NonNull View view,
+	                                 @Nullable Object object, @Nullable Amenity amenity) {
 	}
 
 	/*
 	 * Add gallery menu row to the map context menu.
 	 */
-	public void buildContextMenuGalleryRows(@NonNull MenuBuilder menuBuilder, @NonNull View view, @Nullable Object object) {
+	public void buildContextMenuGalleryRows(@NonNull MenuBuilder menuBuilder, @NonNull View view,
+	                                        @NonNull GalleryKey.Location key) {
 	}
 
 	@Nullable
@@ -348,7 +351,8 @@ public abstract class OsmandPlugin {
 	public void registerLayers(@NonNull Context context, @Nullable MapActivity mapActivity) {
 	}
 
-	public void createWidgets(@NonNull MapActivity mapActivity, @NonNull List<MapWidgetInfo> widgetInfos, @NonNull ApplicationMode appMode) {
+	public void createWidgets(@NonNull MapActivity activity, @NonNull List<MapWidgetInfo> widgetInfos,
+	                          @NonNull ApplicationMode appMode, @Nullable ScreenLayoutMode layoutMode) {
 	}
 
 	public void mapActivityCreate(@NonNull MapActivity activity) {
@@ -385,10 +389,10 @@ public abstract class OsmandPlugin {
 	}
 
 	protected void registerMapContextMenuActions(@NonNull MapActivity mapActivity, double latitude, double longitude,
-	                                             ContextMenuAdapter adapter, Object selectedObj, boolean configureMenu) {
+	                                             @NonNull ContextMenuAdapter adapter, Object selectedObj, boolean configureMenu) {
 	}
 
-	protected void registerOptionsMenuItems(MapActivity mapActivity, ContextMenuAdapter helper) {
+	protected void registerOptionsMenuItems(@NonNull MapActivity mapActivity, @NonNull ContextMenuAdapter helper) {
 	}
 
 	public DashFragmentData getCardFragment() {
@@ -445,8 +449,14 @@ public abstract class OsmandPlugin {
 	}
 
 	protected CommonPreference<Boolean> registerBooleanPreference(@NonNull String prefId, boolean defValue) {
+		return registerBooleanPreference(prefId, defValue, true);
+	}
+
+	protected CommonPreference<Boolean> registerBooleanPreference(@NonNull String prefId, boolean defValue, boolean setRelatedPlugin) {
 		CommonPreference<Boolean> preference = settings.registerBooleanPreference(prefId, defValue);
-		preference.setRelatedPlugin(this);
+		if (setRelatedPlugin) {
+			preference.setRelatedPlugin(this);
+		}
 		pluginPreferences.add(preference);
 		return preference;
 	}
@@ -466,7 +476,10 @@ public abstract class OsmandPlugin {
 	}
 
 	protected CommonPreference<Integer> registerIntPreference(@NonNull String prefId, int defValue) {
-		CommonPreference<Integer> preference = settings.registerIntPreference(prefId, defValue);
+		return (CommonPreference<Integer>) registerPreference(settings.registerIntPreference(prefId, defValue));
+	}
+
+	protected CommonPreference<?> registerPreference(@NonNull CommonPreference<?> preference) {
 		preference.setRelatedPlugin(this);
 		pluginPreferences.add(preference);
 		return preference;
@@ -510,14 +523,16 @@ public abstract class OsmandPlugin {
 	}
 
 	protected CommonPreference<String> registerRenderingPreference(@NonNull String prefId, @Nullable String defValue) {
-		CommonPreference<String> preference = settings.registerCustomRenderProperty(prefId, defValue);
+		CommonPreference<String> preference = settings.getCustomRenderProperty(prefId, defValue);
+		preference.setDefaultValue(defValue);
 		preference.setRelatedPlugin(this);
 		pluginPreferences.add(preference);
 		return preference;
 	}
 
 	private CommonPreference<Boolean> registerBooleanRenderingPreference(@NonNull String prefId, boolean defValue) {
-		CommonPreference<Boolean> preference = settings.registerCustomRenderBooleanProperty(prefId, defValue);
+		CommonPreference<Boolean> preference = settings.getCustomRenderBooleanProperty(prefId, defValue);
+		preference.setDefaultValue(defValue);
 		preference.setRelatedPlugin(this);
 		pluginPreferences.add(preference);
 		return preference;
@@ -544,7 +559,7 @@ public abstract class OsmandPlugin {
 		return null;
 	}
 
-	public void getAvailableGPXDataSetTypes(@NonNull GpxTrackAnalysis analysis, @NonNull List<GPXDataSetType[]> availableTypes) {
+	public void getAvailableGPXDataSetTypes(@NonNull GpxTrackAnalysis analysis, @NonNull List<GPXDataSetType> availableTypes) {
 
 	}
 

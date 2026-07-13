@@ -33,6 +33,7 @@ import net.osmand.search.core.SearchPhrase
 import net.osmand.search.core.SearchResult
 import net.osmand.util.Algorithms
 import net.osmand.util.MapUtils
+import net.osmand.util.OpeningHoursParser
 
 class POIScreen(
     carContext: CarContext,
@@ -44,13 +45,17 @@ class POIScreen(
     private var initialCompassMode: CompassMode? = null
 
     init {
-        loadPOI()
         lifecycle.addObserver(this)
     }
 
     override fun shouldRestoreMapState() = true
 
-    override fun onGetTemplate(): Template {
+    override fun onFirstGetTemplate() {
+        super.onFirstGetTemplate()
+        loadPOI()
+    }
+
+    override fun getTemplate(): Template {
         val templateBuilder = PlaceListNavigationTemplate.Builder()
         if (loading) {
             templateBuilder.setLoading(true)
@@ -105,39 +110,46 @@ class POIScreen(
         val mapPoint = ArrayList<Amenity>()
         val mapRect = QuadRect()
         searchResults?.let {
-            val searchResultsSize = searchResults.size
-            val limitedSearchResults =
-                searchResults.subList(0, searchResultsSize.coerceAtMost(contentLimit - 1))
-            if (!Algorithms.isEmpty(limitedSearchResults)) {
-                initialCompassMode = app.settings.compassMode
-                app.mapViewTrackingUtilities.switchCompassModeTo(CompassMode.NORTH_IS_UP)
-            }
-            for (point in limitedSearchResults) {
+            var counter = 0
+            for (point in searchResults) {
+                if (point.location == null) {
+                    continue
+                }
+                if (counter >= contentLimit) {
+                    break
+                }
+                var description = ""
+                var openHour = ""
                 if (point.`object` is Amenity) {
                     val amenity = point.`object` as Amenity
                     mapPoint.add(amenity)
                     val latLon = amenity.location
                     Algorithms.extendRectToContainPoint(mapRect, latLon.longitude, latLon.latitude)
+                    val openHourInfo = OpeningHoursParser.getInfo(amenity.openingHours)
+                    if(openHourInfo != null && openHourInfo.isNotEmpty()) {
+                        openHour = " • ${openHourInfo[0].shortInfo}"
+                    }
+                    if(!Algorithms.isEmpty(amenity.streetName)) {
+                        description = " • ${amenity.streetName}"
+                    }
                 }
                 val title = point.localeName
                 var groupIcon = QuickSearchListItem.getIcon(app, point)
                 if (groupIcon == null) {
                     groupIcon = AppCompatResources.getDrawable(app, R.drawable.mx_special_custom_category)
                 }
-                val icon = CarIcon.Builder(
-                    IconCompat.createWithBitmap(AndroidUtils.drawableToBitmap(groupIcon))).build()
-                val description =
-                    if (point.alternateName != null) point.alternateName else ""
+                val icon = if (groupIcon != null) CarIcon.Builder(
+                    IconCompat.createWithBitmap(AndroidUtils.drawableToBitmap(groupIcon)))
+                    .build() else null
                 val dist = MapUtils.getDistance(
                     point.location.latitude, point.location.longitude,
                     location.latitude, location.longitude)
                 val address =
-                    SpannableString(if (Algorithms.isEmpty(description)) " " else "  • $description")
+                    SpannableString(" $openHour$description")
                 val distanceSpan = DistanceSpan.create(TripUtils.getDistance(app, dist))
                 address.setSpan(distanceSpan, 0, 1, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
-                listBuilder.addItem(Row.Builder()
+                val rowBuilder = Row.Builder()
                     .setTitle(title)
-                    .setImage(icon)
                     .addText(address)
                     .setOnClickListener { onClickSearchResult(point) }
                     .setMetadata(
@@ -146,7 +158,13 @@ class POIScreen(
                                 CarLocation.create(
                                     point.location.latitude,
                                     point.location.longitude)).build()).build())
-                    .build())
+                icon?.let { rowBuilder.setImage(it) }
+                listBuilder.addItem(rowBuilder.build())
+                counter++
+            }
+            if (counter > 0) {
+                initialCompassMode = app.settings.compassMode
+                app.mapViewTrackingUtilities.switchCompassModeTo(CompassMode.NORTH_IS_UP)
             }
         }
         adjustMapToRect(location, mapRect)
@@ -155,7 +173,7 @@ class POIScreen(
 
     private fun loadPOI() {
         categoryResult.priorityDistance = searchRadius
-        searchHelper.completeQueryWithObject(categoryResult)
+        searchHelper?.completeQueryWithObject(categoryResult)
         loading = true
     }
 

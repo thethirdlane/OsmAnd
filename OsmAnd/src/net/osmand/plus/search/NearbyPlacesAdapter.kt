@@ -18,9 +18,13 @@ import net.osmand.data.LatLon
 import net.osmand.plus.OsmandApplication
 import net.osmand.plus.R
 import net.osmand.plus.helpers.AndroidUiHelper
+import net.osmand.plus.helpers.LocaleHelper
 import net.osmand.plus.plugins.PluginsHelper
 import net.osmand.plus.render.RenderingIcons
+import net.osmand.plus.search.listitems.QuickSearchListItem
+import net.osmand.plus.settings.enums.ThemeUsageContext
 import net.osmand.plus.utils.AndroidUtils
+import net.osmand.plus.utils.ColorUtilities
 import net.osmand.plus.utils.OsmAndFormatter
 import net.osmand.plus.utils.PicassoUtils
 import net.osmand.plus.utils.UiUtilities
@@ -40,6 +44,10 @@ class NearbyPlacesAdapter(
 		fun onNearbyItemClicked(amenity: Amenity)
 	}
 
+	var isLoading = false
+	val locale = LocaleHelper.getPreferredPlacesLanguage(getApp())
+	val transliterate = getApp().getSettings().MAP_TRANSLITERATE_NAMES.get()
+
 	// Initialize the UpdateLocationViewCache
 	private val updateLocationViewCache = UpdateLocationUtils.getUpdateLocationViewCache(context)
 	private var location: Location? = null
@@ -54,17 +62,24 @@ class NearbyPlacesAdapter(
 		return NearbyViewHolder(view, updateLocationViewCache)
 	}
 
+	private fun getApp(): OsmandApplication {
+		return context.applicationContext as OsmandApplication
+	}
+
 	private fun isNightMode(): Boolean {
-		val app = context.applicationContext as OsmandApplication
-		return !app.getSettings().isLightContent
+		return getApp().daynightHelper.isNightMode(ThemeUsageContext.APP)
 	}
 
 	override fun onBindViewHolder(holder: NearbyViewHolder, position: Int) {
-		val item = items[position]
-		holder.bind(item, position)
+		if (!isLoading) {
+			val item = items[position]
+			holder.bind(item, position)
+		}
 	}
 
-	override fun getItemCount(): Int = items.size
+	override fun getItemCount(): Int = if (isLoading) 5 else items.size
+
+	fun hasData(): Boolean = items.isNotEmpty()
 
 	fun updateLocation(location: Location?) {
 		this.location = location
@@ -81,6 +96,7 @@ class NearbyPlacesAdapter(
 		private val errorImageView: ImageView = itemView.findViewById(R.id.item_image_error)
 		private val iconImageView: ImageView = itemView.findViewById(R.id.item_icon)
 		private val titleTextView: TextView = itemView.findViewById(R.id.item_title)
+		private val itemTypeContainer: View? = itemView.findViewById(R.id.item_type_container)
 		private val descriptionTextView: TextView? = itemView.findViewById(R.id.item_description)
 		private val itemTypeTextView: TextView = itemView.findViewById(R.id.item_type)
 		private val distanceTextView: TextView? = itemView.findViewById(R.id.distance)
@@ -104,19 +120,15 @@ class NearbyPlacesAdapter(
 			val osmanPoiType = item.osmandPoiKey
 			val itemType = osmanPoiType ?: item.subType
 			val subType = poiTypes.getPoiTypeByKey(itemType)
-			val poiIcon =
-				if (subType == null) null else RenderingIcons.getBigIcon(app, subType.keyName)
+			val nightMode = app.daynightHelper.isNightMode(ThemeUsageContext.MAP)
+			val poiIcon = QuickSearchListItem.getAmenityTypeIcon(
+				app,
+				item,
+				ColorUtilities.getSecondaryIconColorId(nightMode),
+				true)
 			val uiUtilities = app.uiUtilities
-			val nightMode = app.daynightHelper.isNightMode
-			val coloredIcon = if (poiIcon != null) {
-				uiUtilities.getRenderingIcon(
-					app,
-					subType.keyName,
-					nightMode
-				)
-			} else {
-				uiUtilities.getIcon(R.drawable.ic_action_info_dark, nightMode)
-			}
+			val coloredIcon =
+				poiIcon ?: uiUtilities.getIcon(R.drawable.ic_action_info_dark, nightMode)
 			iconImageView.setImageDrawable(coloredIcon)
 			errorImageView.setImageDrawable(coloredIcon)
 			AndroidUiHelper.updateVisibility(errorImageView, true)
@@ -151,10 +163,15 @@ class NearbyPlacesAdapter(
 				AndroidUiHelper.updateVisibility(imageViewContainer, false)
 			}
 
-			// Add row number to the title
-			titleTextView.text = "${position + 1}. ${item.name}"
+			itemTypeContainer?.let {
+				it.setBackgroundResource(0)
+				it.alpha = 1f
+			}
+			titleTextView.setBackgroundResource(0)
+			titleTextView.alpha = 1f
+			titleTextView.text = "${position + 1}. ${item.getName(locale, transliterate)}"
 
-			descriptionTextView?.text = item.getDescription(null)
+			descriptionTextView?.text = item.getDescription(locale)
 			descriptionTextView?.let {
 				AndroidUiHelper.updateVisibility(it, !Algorithms.isEmpty(item.getDescription(null)))
 			}
@@ -163,11 +180,10 @@ class NearbyPlacesAdapter(
 
 			// Calculate distance and show arrow
 			if (distanceTextView != null && arrowImageView != null) {
-				val distance = calculateDistance(app, item, location)
-				if (distance != null) {
+				val distance = calculateDistance(item, location)
+				val hasDistance = distance != null
+				if (hasDistance) {
 					distanceTextView.text = OsmAndFormatter.getFormattedDistance(distance, app)
-					distanceTextView.visibility = View.VISIBLE
-					arrowImageView.visibility = View.VISIBLE
 
 					// Update compass icon rotation
 					val latLon = LatLon(item.location.latitude, item.location.longitude)
@@ -176,11 +192,11 @@ class NearbyPlacesAdapter(
 						updateLocationViewCache,
 						arrowImageView,
 						distanceTextView,
-						latLon)
-				} else {
-					distanceTextView.visibility = View.GONE
-					arrowImageView.visibility = View.GONE
+						latLon
+					)
 				}
+				AndroidUiHelper.updateVisibility(arrowImageView, hasDistance)
+				AndroidUiHelper.updateVisibility(distanceTextView, hasDistance)
 			}
 			if (!itemView.hasOnClickListeners()) {
 				itemView.setOnClickListener(clickListener)
@@ -210,10 +226,7 @@ class NearbyPlacesAdapter(
 		private val clickListener =
 			OnClickListener { item?.let { onItemClickListener.onNearbyItemClicked(it) } }
 
-		private fun calculateDistance(
-			app: OsmandApplication,
-			item: Amenity,
-			location: Location?): Float? {
+		private fun calculateDistance(item: Amenity, location: Location?): Float? {
 			if (location != null) {
 				val results = FloatArray(1)
 				Location.distanceBetween(

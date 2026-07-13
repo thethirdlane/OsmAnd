@@ -20,6 +20,7 @@ import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.preferences.CommonPreference;
+import net.osmand.plus.settings.enums.ScreenLayoutMode;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.views.OsmandMapTileView;
 import net.osmand.plus.views.layers.AidlMapLayer;
@@ -41,6 +42,7 @@ import net.osmand.util.Algorithms;
 
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -66,6 +68,8 @@ public class ConnectedApp implements Comparable<ConnectedApp> {
 
 	private final Map<String, AidlMapWidgetWrapper> widgets = new ConcurrentHashMap<>();
 	private final Map<String, TextInfoWidget> widgetControls = new ConcurrentHashMap<>();
+
+	private final Map<String, AidlWidgetGroupWrapper> widgetGroups = new ConcurrentHashMap<>();
 
 	private final Map<String, AidlMapLayerWrapper> layers = new ConcurrentHashMap<>();
 	private final Map<String, OsmandMapLayer> mapLayers = new ConcurrentHashMap<>();
@@ -113,6 +117,11 @@ public class ConnectedApp implements Comparable<ConnectedApp> {
 	@NonNull
 	public Map<String, TextInfoWidget> getWidgetControls() {
 		return widgetControls;
+	}
+
+	@NonNull
+	public Map<String, AidlWidgetGroupWrapper> getWidgetGroups() {
+		return widgetGroups;
 	}
 
 	@NonNull
@@ -183,8 +192,9 @@ public class ConnectedApp implements Comparable<ConnectedApp> {
 
 	void createWidgetControls(@NonNull MapActivity mapActivity,
 	                          @NonNull List<MapWidgetInfo> widgetsInfos,
-	                          @NonNull ApplicationMode appMode) {
-		WidgetInfoCreator creator = new WidgetInfoCreator(app, appMode);
+	                          @NonNull ApplicationMode appMode,
+	                          @Nullable ScreenLayoutMode layoutMode) {
+		WidgetInfoCreator creator = new WidgetInfoCreator(app, appMode, layoutMode);
 		for (AidlMapWidgetWrapper widgetData : widgets.values()) {
 			String baseWidgetId = widgetData.getId();
 			String widgetKey = WIDGET_ID_PREFIX + baseWidgetId;
@@ -261,6 +271,7 @@ public class ConnectedApp implements Comparable<ConnectedApp> {
 		private String cachedSubtext;
 		private Boolean cachedNight;
 		private Integer cachedIcon;
+		private String cachedIconUri;
 		private boolean init = true;
 
 		public AidlTextInfoWidget(@NonNull MapActivity mapActivity, @NonNull String widgetId, @Nullable WidgetsPanel widgetsPanel) {
@@ -268,7 +279,6 @@ public class ConnectedApp implements Comparable<ConnectedApp> {
 			this.widgetId = widgetId;
 
 			updateInfo(null);
-			setOnClickListener(getOnClickListener());
 		}
 
 		@Override
@@ -288,17 +298,25 @@ public class ConnectedApp implements Comparable<ConnectedApp> {
 				String txt = widget.getText();
 				String subtext = widget.getDescription();
 				boolean nightMode = drawSettings != null && drawSettings.isNightMode();
-				int icon = AndroidUtils.getDrawableId(app, nightMode ? widget.getDarkIconName() : widget.getLightIconName());
+				String iconUri = nightMode ? widget.getDarkIconUri() : widget.getLightIconUri();
+				int icon = Algorithms.isEmpty(iconUri)
+						? AndroidUtils.getDrawableId(app, nightMode ? widget.getDarkIconName() : widget.getLightIconName())
+						: 0;
 				if (init || !Algorithms.objectEquals(txt, cachedTxt) || !Algorithms.objectEquals(subtext, cachedSubtext)
-						|| !Algorithms.objectEquals(nightMode, cachedNight) || !Algorithms.objectEquals(icon, cachedIcon)) {
+						|| !Algorithms.objectEquals(nightMode, cachedNight) || !Algorithms.objectEquals(icon, cachedIcon)
+						|| !Algorithms.objectEquals(iconUri, cachedIconUri)) {
 					init = false;
 					cachedTxt = txt;
 					cachedSubtext = subtext;
 					cachedNight = nightMode;
 					cachedIcon = icon;
+					cachedIconUri = iconUri;
 
 					setText(txt, subtext);
-					if (icon != 0) {
+					Drawable customIcon = AidlExternalIconHelper.getIconDrawable(app, iconUri);
+					if (customIcon != null) {
+						setImageDrawable(customIcon);
+					} else if (icon != 0) {
 						setImageDrawable(icon);
 					} else {
 						setImageDrawable(null);
@@ -354,6 +372,48 @@ public class ConnectedApp implements Comparable<ConnectedApp> {
 			return true;
 		}
 		return false;
+	}
+
+	/**
+	 * Registers a widget group or updates an existing one with the same id
+	 */
+	boolean addWidgetGroup(AidlWidgetGroupWrapper group) {
+		if (group != null && !Algorithms.isEmpty(group.getId())) {
+			widgetGroups.put(group.getId(), group);
+			app.getAidlApi().reloadMap();
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Removes a widget group. By default its widgets are kept but ungrouped (their
+	 * group reference is cleared); if removeWidgets is true the widgets are removed
+	 * too. Returns true only if the group existed
+	 */
+	boolean removeWidgetGroup(String groupId, boolean removeWidgets) {
+		if (Algorithms.isEmpty(groupId) || widgetGroups.remove(groupId) == null) {
+			return false;
+		}
+		if (removeWidgets) {
+			List<String> idsToRemove = new ArrayList<>();
+			for (AidlMapWidgetWrapper widget : widgets.values()) {
+				if (groupId.equals(widget.getGroupId())) {
+					idsToRemove.add(widget.getId());
+				}
+			}
+			for (String widgetId : idsToRemove) {
+				removeMapWidget(widgetId);
+			}
+		} else {
+			for (AidlMapWidgetWrapper widget : widgets.values()) {
+				if (groupId.equals(widget.getGroupId())) {
+					widget.setGroupId(null);
+				}
+			}
+		}
+		app.getAidlApi().reloadMap();
+		return true;
 	}
 
 	boolean addMapLayer(AidlMapLayerWrapper layer) {

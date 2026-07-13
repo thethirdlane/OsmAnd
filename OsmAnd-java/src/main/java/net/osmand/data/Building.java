@@ -47,14 +47,14 @@ public class Building extends MapObject {
 	}
 	
 	public Map<String, LatLon> getEntrances() {
-		if(entrances == null) {
+		if (entrances == null) {
 			return Collections.emptyMap();
 		}
 		return entrances;
 	}
 	
 	public void addEntrance(String ref, LatLon location) {
-		if(entrances == null) {
+		if (entrances == null) {
 			entrances = new LinkedHashMap<>();
 		}
 		entrances.put(ref, location);
@@ -63,6 +63,7 @@ public class Building extends MapObject {
 	public int getInterpolationInterval() {
 		return interpolationInterval;
 	}
+	
 	public void setInterpolationInterval(int interpolationNumber) {
 		this.interpolationInterval = interpolationNumber;
 	}
@@ -102,8 +103,21 @@ public class Building extends MapObject {
 			return fname + "-" + name2 + " (" + interpolationType.toString().toLowerCase() + ") ";
 		}
 		return name;
-	}	
+	}
 	
+	public String getFullName() {
+		String fname = this.name;
+		if (interpolationInterval != 0) {
+			return fname + "-" + name2 + " (+" + interpolationInterval + ") ";
+		} else if (interpolationType != null) {
+			return fname + "-" + name2 + " (" + interpolationType.toString().toLowerCase() + ") ";
+		}
+		return name;
+	}
+	
+	public boolean isInterpolation() {
+		return getInterpolationType() != null || getInterpolationInterval() > 0;
+	}
 
 	public float interpolation(String hno) {
 		if (getInterpolationType() != null || getInterpolationInterval() > 0
@@ -177,7 +191,7 @@ public class Building extends MapObject {
 	}
 
 	public boolean belongsToInterpolation(String hno) {
-		return interpolation(hno) >= 0;
+		return interpolation(hno) > 0;
 	}
 	
 	@Override
@@ -207,8 +221,8 @@ public class Building extends MapObject {
 	@Override
 	public boolean equals(Object o) {
 		boolean res = super.equals(o);
-		if (res && o instanceof Building) {
-			return Algorithms.stringsEqual(((MapObject) o).getName(), getName());
+		if (res && o instanceof Building b) {
+			return Algorithms.stringsEqual(b.getFullName(), getFullName());
 		}
 		return res;
 	}

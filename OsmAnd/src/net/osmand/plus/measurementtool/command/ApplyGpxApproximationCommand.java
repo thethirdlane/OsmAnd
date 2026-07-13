@@ -10,6 +10,7 @@ import net.osmand.plus.measurementtool.MeasurementToolLayer;
 import net.osmand.plus.measurementtool.RoadSegmentData;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.router.GpxRouteApproximation;
+import net.osmand.util.Algorithms;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -54,7 +55,7 @@ public class ApplyGpxApproximationCommand extends MeasurementModeCommand {
 		MeasurementEditingContext ctx = getEditingCtx();
 		points = new ArrayList<>(ctx.getPoints());
 		roadSegmentData = ctx.getRoadSegmentData();
-		applyApproximation();
+		applyAllApproximations();
 		refreshMap();
 		return true;
 	}
@@ -65,7 +66,7 @@ public class ApplyGpxApproximationCommand extends MeasurementModeCommand {
 			ApplyGpxApproximationCommand approxCommand = (ApplyGpxApproximationCommand) command;
 			approximations = approxCommand.approximations;
 			mode = approxCommand.mode;
-			applyApproximation();
+			applyAllApproximations();
 			refreshMap();
 			return true;
 		}
@@ -85,18 +86,20 @@ public class ApplyGpxApproximationCommand extends MeasurementModeCommand {
 
 	@Override
 	public void redo() {
-		applyApproximation();
+		applyAllApproximations();
 		refreshMap();
 	}
 
-	public void applyApproximation() {
+	private void applyAllApproximations() {
 		MeasurementEditingContext ctx = getEditingCtx();
 		ctx.setAppMode(mode);
 		for (int i = 0; i < approximations.size(); i++) {
 			GpxRouteApproximation approximation = approximations.get(i);
 			List<WptPt> segmentPoints = segmentPointsList.get(i);
-			List<WptPt> newSegmentPoints = ctx.setPoints(approximation, segmentPoints, mode, false);
-			if (newSegmentPoints != null) {
+			List<WptPt> newSegmentPoints = ctx.setPoints(i, approximation, segmentPoints, mode, false);
+			if (!Algorithms.isEmpty(newSegmentPoints)) {
+				long initialTimestamp = segmentPoints.isEmpty() ? 0 : segmentPoints.get(0).getTime();
+				newSegmentPoints.get(0).setTime(initialTimestamp);
 				segmentPointsList.set(i, newSegmentPoints);
 			}
 		}

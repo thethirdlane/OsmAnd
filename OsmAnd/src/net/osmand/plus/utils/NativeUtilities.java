@@ -3,7 +3,6 @@ package net.osmand.plus.utils;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.graphics.PointF;
-import android.os.AsyncTask;
 import android.util.Pair;
 
 import androidx.annotation.ColorInt;
@@ -17,6 +16,7 @@ import net.osmand.core.jni.*;
 import net.osmand.data.LatLon;
 import net.osmand.data.QuadRect;
 import net.osmand.data.RotatedTileBox;
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.plugins.weather.OfflineForecastHelper;
 import net.osmand.plus.utils.HeightsResolverTask.HeightsResolverCallback;
 import net.osmand.plus.views.corenative.NativeCoreContext;
@@ -31,9 +31,12 @@ public class NativeUtilities {
 
 	public static final int MIN_ALTITUDE_VALUE = -20_000;
 
-	public static SingleSkImage createSkImageFromBitmap(@NonNull Bitmap inputBmp) {
-		return SwigUtilities.createSkImageARGB888With(
-				inputBmp.getWidth(), inputBmp.getHeight(), AndroidUtils.getByteArrayFromBitmap(inputBmp));
+	public static SingleSkImage createSkImageFromBitmap(@NonNull Bitmap bitmap) {
+		return createSkImage(bitmap.getWidth(), bitmap.getHeight(), AndroidUtils.getByteArrayFromBitmap(bitmap));
+	}
+
+	public static SingleSkImage createSkImage(long width, long height, byte[] pixels) {
+		return SwigUtilities.createSkImageARGB888With(width, height, pixels);
 	}
 
 	public static FColorRGB createFColorRGB(@ColorInt int color) {
@@ -234,14 +237,10 @@ public class NativeUtilities {
 		if (mapRenderer != null) {
 			point31 = get31FromElevatedPixel(mapRenderer, x, y);
 		}
-
 		if (point31 == null) {
 			return tileBox.getLatLonFromPixel(x, y);
 		}
-
-		double lat = MapUtils.get31LatitudeY(point31.getY());
-		double lon = MapUtils.get31LongitudeX(point31.getX());
-		return new LatLon(lat, lon);
+		return getLatLonFromPoint31(point31);
 	}
 
 	@Nullable
@@ -258,9 +257,14 @@ public class NativeUtilities {
 	                                        @NonNull PointI screenPoint) {
 		PointI point31 = get31FromPixel(mapRenderer, tileBox, screenPoint, false);
 		if (point31 != null) {
-			return new LatLon(MapUtils.get31LatitudeY(point31.getY()), MapUtils.get31LongitudeX(point31.getX()));
+			return getLatLonFromPoint31(point31);
 		}
 		return null;
+	}
+
+	@NonNull
+	public static LatLon getLatLonFromPoint31(@NonNull PointI point31) {
+		return new LatLon(MapUtils.get31LatitudeY(point31.getY()), MapUtils.get31LongitudeX(point31.getX()));
 	}
 
 	@NonNull
@@ -283,7 +287,7 @@ public class NativeUtilities {
 			} else {
 				HeightsResolverCallback heightsCallback = heights -> callback.onResult(heights != null && heights.length > 0 ? (double) heights[0] : null);
 				HeightsResolverTask task = new HeightsResolverTask(Collections.singletonList(latLon), heightsCallback);
-				task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+				OsmAndTaskManager.executeTask(task);
 			}
 		} else {
 			callback.onResult(null);
@@ -543,5 +547,9 @@ public class NativeUtilities {
 		Bitmap bitmap = Bitmap.createBitmap(iconData.getWidth(), iconData.getHeight(), Config.ARGB_8888);
 		boolean ok = OsmAndCore.copyPixels(iconData.getBitmap(), bitmap);
 		return ok ? bitmap : null;
+	}
+
+	public static boolean arePointsEqual(@Nullable PointI first, @Nullable PointI second) {
+		return first != null && second != null && first.getX() == second.getX() && first.getY() == second.getY();
 	}
 }

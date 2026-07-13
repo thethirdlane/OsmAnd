@@ -27,6 +27,10 @@ import net.osmand.plus.plugins.externalsensors.devices.sensors.AbstractSensor;
 import net.osmand.plus.plugins.externalsensors.devices.sensors.SensorData;
 import net.osmand.plus.plugins.externalsensors.devices.sensors.SensorWidgetDataFieldType;
 import net.osmand.plus.utils.AndroidUtils;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTarget.Type;
+import net.osmand.plus.utils.InsetTargetsCollection;
+import net.osmand.plus.utils.InsetsUtils;
 import net.osmand.plus.widgets.dialogbutton.DialogButton;
 import net.osmand.plus.widgets.dialogbutton.DialogButtonType;
 
@@ -75,6 +79,14 @@ public class SelectExternalDeviceFragment extends ExternalDevicesBaseFragment im
 		View view = super.onCreateView(inflater, container, savedInstanceState);
 		updateCurrentStateView();
 		return view;
+	}
+
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection targetsCollection = new InsetTargetsCollection();
+		targetsCollection.add(InsetTarget.createRootInset());
+
+		return targetsCollection;
 	}
 
 	@Override
@@ -154,6 +166,9 @@ public class SelectExternalDeviceFragment extends ExternalDevicesBaseFragment im
 	protected void setupToolbar(@NonNull View view) {
 		super.setupToolbar(view);
 		Toolbar toolbar = view.findViewById(R.id.toolbar);
+		if (InsetsUtils.isEdgeToEdgeSupported()) {
+			toolbar.setFitsSystemWindows(false);
+		}
 		toolbar.setOnMenuItemClickListener(item -> {
 			if (item.getItemId() == R.id.action_add) {
 				showPairNewSensorBottomSheet();
@@ -211,31 +226,6 @@ public class SelectExternalDeviceFragment extends ExternalDevicesBaseFragment im
 		updateCurrentStateView();
 	}
 
-
-	public static void showInstance(@NonNull FragmentManager manager,
-	                                @NonNull Fragment targetFragment,
-	                                @NonNull SensorWidgetDataFieldType fieldType,
-	                                @Nullable String selectedDeviceId,
-	                                boolean withNoneVariant) {
-		if (!(targetFragment instanceof SelectDeviceListener)) {
-			throw new IllegalArgumentException("targetFragment should implement SelectDeviceListener interface");
-		}
-		if (AndroidUtils.isFragmentCanBeAdded(manager, TAG)) {
-			SelectExternalDeviceFragment fragment = new SelectExternalDeviceFragment();
-			Bundle arguments = new Bundle();
-			arguments.putInt(WIDGET_TYPE_KEY, fieldType.ordinal());
-			arguments.putString(SELECTED_DEVICE_ID_KEY, selectedDeviceId);
-			arguments.putBoolean(WITH_NONE_VARIANT_KEY, withNoneVariant);
-			fragment.setTargetFragment(targetFragment, 0);
-			fragment.setArguments(arguments);
-			fragment.setRetainInstance(true);
-			manager.beginTransaction()
-					.replace(R.id.fragmentContainer, fragment, TAG)
-					.addToBackStack(null)
-					.commitAllowingStateLoss();
-		}
-	}
-
 	@Override
 	public void onDeviceConnecting(@NonNull AbstractDevice<?> device) {
 	}
@@ -258,6 +248,30 @@ public class SelectExternalDeviceFragment extends ExternalDevicesBaseFragment im
 		if (getTargetFragment() instanceof SelectDeviceListener) {
 			((SelectDeviceListener) getTargetFragment()).selectNewDevice(deviceId, widgetDataFieldType);
 			requireActivity().onBackPressed();
+		}
+	}
+
+	public static void showInstance(@NonNull FragmentManager manager,
+	                                @NonNull Fragment targetFragment,
+	                                @NonNull SensorWidgetDataFieldType fieldType,
+	                                @Nullable String selectedDeviceId,
+	                                boolean withNoneVariant) {
+		if (!(targetFragment instanceof SelectDeviceListener)) {
+			throw new IllegalArgumentException("targetFragment should implement SelectDeviceListener interface");
+		}
+		if (AndroidUtils.isFragmentCanBeAdded(manager, TAG)) {
+			SelectExternalDeviceFragment fragment = new SelectExternalDeviceFragment();
+			Bundle arguments = new Bundle();
+			arguments.putInt(WIDGET_TYPE_KEY, fieldType.ordinal());
+			arguments.putString(SELECTED_DEVICE_ID_KEY, selectedDeviceId);
+			arguments.putBoolean(WITH_NONE_VARIANT_KEY, withNoneVariant);
+			fragment.setTargetFragment(targetFragment, 0);
+			fragment.setArguments(arguments);
+			fragment.setRetainInstance(true);
+			manager.beginTransaction()
+					.add(R.id.fragmentContainer, fragment, TAG)
+					.addToBackStack(null)
+					.commitAllowingStateLoss();
 		}
 	}
 

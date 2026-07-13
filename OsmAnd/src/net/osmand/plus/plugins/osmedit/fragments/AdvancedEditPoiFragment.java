@@ -18,6 +18,7 @@ import android.widget.Filterable;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.fragment.app.FragmentManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -30,11 +31,14 @@ import net.osmand.osm.PoiType;
 import net.osmand.osm.edit.Entity;
 import net.osmand.osm.edit.OSMSettings;
 import net.osmand.plus.R;
-import net.osmand.plus.activities.MapActivity;
-import net.osmand.plus.base.BaseOsmAndFragment;
+import net.osmand.plus.base.BaseFullScreenFragment;
 import net.osmand.plus.plugins.osmedit.data.EditPoiData;
 import net.osmand.plus.plugins.osmedit.dialogs.EditPoiDialogFragment;
 import net.osmand.plus.utils.AndroidUtils;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTarget.Type;
+import net.osmand.plus.utils.InsetTargetsCollection;
+import net.osmand.plus.utils.InsetsUtils.InsetSide;
 import net.osmand.util.Algorithms;
 
 import java.util.ArrayList;
@@ -43,7 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public class AdvancedEditPoiFragment extends BaseOsmAndFragment implements EditPoiDialogFragment.OnFragmentActivatedListener,
+public class AdvancedEditPoiFragment extends BaseFullScreenFragment implements EditPoiDialogFragment.OnFragmentActivatedListener,
 		EditPoiDialogFragment.OnSaveButtonClickListener {
 
 	private EditPoiData.TagsChangedListener mTagsChangedListener;
@@ -59,7 +63,7 @@ public class AdvancedEditPoiFragment extends BaseOsmAndFragment implements EditP
 	@Override
 	public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
 		updateNightMode();
-		View view = themedInflater.inflate(R.layout.fragment_edit_poi_advanced_new, container, false);
+		View view = inflate(R.layout.fragment_edit_poi_advanced_new, container, false);
 
 		recyclerView = view.findViewById(R.id.content_recycler_view);
 
@@ -115,12 +119,25 @@ public class AdvancedEditPoiFragment extends BaseOsmAndFragment implements EditP
 			}
 		};
 
-		contentAdapter = new EditPoiContentAdapter((MapActivity) requireActivity(), getContentList(),
+		contentAdapter = new EditPoiContentAdapter(requireActivity(), getContentList(),
 				valueAdapter, tagAdapter, null, nightMode, getEditPoiFragment(), editPoiListener);
 		recyclerView.setLayoutManager(new LinearLayoutManager(app));
 		recyclerView.setAdapter(contentAdapter);
 
 		return view;
+	}
+
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.add(InsetTarget.createCustomBuilder(R.id.content_recycler_view)
+				.portraitSides(InsetSide.TOP)
+				.typeMask(WindowInsetsCompat.Type.ime())
+				.applyPadding(true)
+				.build());
+		collection.add(InsetTarget.createHorizontalLandscape(R.id.content_recycler_view).build());
+		collection.removeType(Type.ROOT_INSET);
+		return collection;
 	}
 
 	public record TagItem(@NonNull String tag, @NonNull String value, long id) {
@@ -232,7 +249,9 @@ public class AdvancedEditPoiFragment extends BaseOsmAndFragment implements EditP
 
 	@Override
 	public void onSaveButtonClick() {
-		contentAdapter.clearFocus();
+		if (contentAdapter != null) {
+			contentAdapter.clearFocus();
+		}
 	}
 
 	public static void addPoiToStringSet(AbstractPoiType abstractPoiType, Set<String> stringSet,

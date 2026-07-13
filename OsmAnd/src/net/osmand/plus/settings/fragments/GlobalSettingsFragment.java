@@ -3,7 +3,6 @@ package net.osmand.plus.settings.fragments;
 import static net.osmand.plus.profiles.SelectProfileBottomSheet.PROFILE_KEY_ARG;
 import static net.osmand.plus.profiles.SelectProfileBottomSheet.USE_LAST_PROFILE_ARG;
 
-import android.app.Activity;
 import android.app.backup.BackupManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -16,7 +15,6 @@ import androidx.preference.Preference;
 import androidx.preference.PreferenceViewHolder;
 import androidx.preference.SwitchPreferenceCompat;
 
-import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.RestartActivity;
 import net.osmand.plus.dialogs.LocationSourceBottomSheet;
@@ -24,7 +22,7 @@ import net.osmand.plus.dialogs.MapRenderingEngineDialog;
 import net.osmand.plus.dialogs.SpeedCamerasBottomSheet;
 import net.osmand.plus.feedback.SendAnalyticsBottomSheetDialogFragment;
 import net.osmand.plus.feedback.SendAnalyticsBottomSheetDialogFragment.OnSendAnalyticsPrefsUpdate;
-import net.osmand.plus.helpers.LocaleHelper;
+import net.osmand.plus.helpers.SupportedLocale;
 import net.osmand.plus.profiles.SelectDefaultProfileBottomSheet;
 import net.osmand.plus.profiles.SelectProfileBottomSheet.OnSelectProfileCallback;
 import net.osmand.plus.settings.backend.ApplicationMode;
@@ -49,13 +47,15 @@ public class GlobalSettingsFragment extends BaseSettingsFragment
 	private static final String DIALOGS_AND_NOTIFICATIONS_PREF_ID = "dialogs_and_notifications";
 	private static final String SEND_UNIQUE_USER_IDENTIFIER_PREF_ID = "send_unique_user_identifier";
 	private static final String ENABLE_PROXY_PREF_ID = "enable_proxy";
+	private static final String MEDIA_STORAGE_PREF_ID = "media_storage";
 
 	@Override
 	protected void setupPreferences() {
 		setupDefaultAppModePref();
 		setupPreferredLocalePref();
-		setupExternalStorageDirPref();
 		setupMapRenderingEnginePref();
+		setupExternalStorageDirPref();
+		setupMediaStoragePref();
 
 		setupSendAnonymousDataPref();
 		setupSendUniqueIdentifiersPreference();
@@ -64,6 +64,7 @@ public class GlobalSettingsFragment extends BaseSettingsFragment
 		setupEnableProxyPref();
 		setupLocationSourcePref();
 		setupAutoBackupPref();
+		setupAutoCopyMediaPref();
 		setupUninstallSpeedCamerasPref();
 	}
 
@@ -89,7 +90,7 @@ public class GlobalSettingsFragment extends BaseSettingsFragment
 		if (DIALOGS_AND_NOTIFICATIONS_PREF_ID.equals(prefId)) {
 			ImageView imageView = (ImageView) holder.findViewById(android.R.id.icon);
 			if (imageView != null) {
-				boolean enabled = preference.isEnabled() && (!settings.DO_NOT_SHOW_STARTUP_MESSAGES.get() || settings.SHOW_DOWNLOAD_MAP_DIALOG.get());
+				boolean enabled = preference.isEnabled() && (!settings.DO_NOT_SHOW_STARTUP_MESSAGES.get() || settings.SHOW_SUGGEST_MAP_DIALOG.get());
 				imageView.setEnabled(enabled);
 			}
 		} else if (SEND_UNIQUE_USER_IDENTIFIER_PREF_ID.equals(prefId)) {
@@ -146,13 +147,16 @@ public class GlobalSettingsFragment extends BaseSettingsFragment
 	@Override
 	public void onPreferenceChanged(@NonNull String prefId) {
 		if (prefId.equals(settings.PREFERRED_LOCALE.getId())) {
-			// recreate activity to update locale
-			Activity activity = getActivity();
-			OsmandApplication app = getMyApplication();
-			if (app != null && activity != null) {
-				app.getLocaleHelper().checkPreferredLocale();
-				RestartActivity.doRestart(activity);
-			}
+			callActivity(activity -> {
+				// On Android 13+ (Tiramisu), the OS applies per-app locales asynchronously.
+				// Calling checkPreferredLocale() immediately after a change causes an IPC race condition:
+				// the OS returns the old locale (not yet updated), which incorrectly overwrites the user's new choice.
+				// For older Android versions, we still must manually force the locale update before restarting.
+				if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+					app.getLocaleHelper().checkPreferredLocale();
+				}
+				RestartActivity.requestRestart(activity);
+			});
 		} else if (prefId.equals(settings.SPEED_CAMERAS_UNINSTALLED.getId())) {
 			setupUninstallSpeedCamerasPref();
 		} else if (prefId.equals(settings.LOCATION_SOURCE.getId())) {
@@ -210,23 +214,19 @@ public class GlobalSettingsFragment extends BaseSettingsFragment
 	}
 
 	private void setupPreferredLocalePref() {
-		boolean visible = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU;
 		ListPreferenceEx preference = requirePreference(settings.PREFERRED_LOCALE.getId());
-		preference.setVisible(visible);
-		if (visible) {
-			preference.setIcon(getContentIcon(R.drawable.ic_action_map_language));
-			preference.setSummary(settings.PREFERRED_LOCALE.get());
+		preference.setIcon(getContentIcon(R.drawable.ic_action_map_language));
+		preference.setSummary(settings.PREFERRED_LOCALE.get());
 
-			Map<String, String> preferredLanguages = LocaleHelper.getPreferredDisplayLanguages(app);
-			String[] languagesNames = preferredLanguages.values().toArray(new String[0]);
-			String[] languagesIds = preferredLanguages.keySet().toArray(new String[0]);
-			preference.setEntries(languagesNames);
-			preference.setEntryValues(languagesIds);
+		Map<String, String> preferredLanguages = SupportedLocale.getPreferredDisplayLanguages(app);
+		String[] languagesNames = preferredLanguages.values().toArray(new String[0]);
+		String[] languagesIds = preferredLanguages.keySet().toArray(new String[0]);
+		preference.setEntries(languagesNames);
+		preference.setEntryValues(languagesIds);
 
-			// Add " (Display language)" to menu title in Latin letters for all non-en languages
-			if (!getString(R.string.preferred_locale).equals(getString(R.string.preferred_locale_no_translate))) {
-				preference.setTitle(getString(R.string.preferred_locale) + " (" + getString(R.string.preferred_locale_no_translate) + ")");
-			}
+		// Add " (Display language)" to menu title in Latin letters for all non-en languages
+		if (!getString(R.string.preferred_locale).equals(getString(R.string.preferred_locale_no_translate))) {
+			preference.setTitle(getString(R.string.preferred_locale) + " (" + getString(R.string.preferred_locale_no_translate) + ")");
 		}
 	}
 
@@ -253,6 +253,12 @@ public class GlobalSettingsFragment extends BaseSettingsFragment
 		}
 	}
 
+	private void setupMediaStoragePref() {
+		Preference preference = findPreference(MEDIA_STORAGE_PREF_ID);
+		preference.setIcon(getContentIcon(R.drawable.ic_action_folder_av_notes));
+		preference.setSummary(settings.MEDIA_STORAGE_TYPE.get().toHumanString(app));
+	}
+
 	private void setupMapRenderingEnginePref() {
 		Preference preference = findPreference(MAP_RENDERING_ENGINE_ID);
 		preference.setIcon(getContentIcon(R.drawable.ic_map));
@@ -275,7 +281,7 @@ public class GlobalSettingsFragment extends BaseSettingsFragment
 
 	private void setupDialogsAndNotificationsPref() {
 		boolean showStartupMessages = !settings.DO_NOT_SHOW_STARTUP_MESSAGES.get();
-		boolean showDownloadMapDialog = settings.SHOW_DOWNLOAD_MAP_DIALOG.get();
+		boolean showDownloadMapDialog = settings.SHOW_SUGGEST_MAP_DIALOG.get();
 		String summary;
 		if (showStartupMessages && showDownloadMapDialog) {
 			summary = getString(R.string.shared_string_all);
@@ -314,6 +320,11 @@ public class GlobalSettingsFragment extends BaseSettingsFragment
 		SwitchPreferenceEx preference = findPreference(settings.AUTO_BACKUP_ENABLED.getId());
 		preference.setIcon(getPersistentPrefIcon(R.drawable.ic_action_android));
 		preference.setDescription(R.string.auto_backup_preference_desc);
+	}
+
+	private void setupAutoCopyMediaPref() {
+		SwitchPreferenceEx preference = findPreference(settings.AUTO_COPY_MEDIA_TO_OSMAND_STORAGE.getId());
+		preference.setIcon(getPersistentPrefIcon(R.drawable.ic_action_photo_album));
 	}
 
 	private void setupUninstallSpeedCamerasPref() {

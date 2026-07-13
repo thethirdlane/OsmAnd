@@ -2,13 +2,17 @@ package net.osmand.search;
 
 import net.osmand.ResultMatcher;
 import net.osmand.binary.BinaryMapIndexReader;
+import net.osmand.binary.GeocodingUtilities;
+import net.osmand.binary.GeocodingUtilities.GeocodingResult;
+import net.osmand.data.Building;
+import net.osmand.data.Street;
 import net.osmand.osm.AbstractPoiType;
 import net.osmand.osm.MapPoiTypes;
+import net.osmand.router.RoutingContext;
 import net.osmand.search.SearchUICore.SearchResultCollection;
 import net.osmand.search.SearchUICore.SearchResultMatcher;
 import net.osmand.search.core.*;
 import net.osmand.util.Algorithms;
-import net.osmand.util.MapUtils;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -20,11 +24,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.xmlpull.v1.XmlPullParserException;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -39,7 +39,10 @@ public class SearchUICoreTest {
 
 	private static final String SEARCH_RESOURCES_PATH = "src/test/resources/search/";
 	private static boolean TEST_EXTRA_RESULTS = true;
-	
+
+	private RoutingContext geoCtx = null;
+	private final GeocodingUtilities geoUtils = new GeocodingUtilities();
+
 	private final File testFile;
 
     public SearchUICoreTest(String name, File file) {
@@ -107,23 +110,30 @@ public class SearchUICoreTest {
 			}
 		}
 		JSONObject settingsJson = sourceJson.getJSONObject("settings");
-		BinaryMapIndexReader reader = null;
 		boolean useData = settingsJson.optBoolean("useData", true);
+		JSONArray filesJson = sourceJson.optJSONArray("files");
+		List<BinaryMapIndexReader> readers = new ArrayList<>();
 		if (useData) {
 			boolean obfZipFileExists = obfZipFile.exists();
-			if (!obfZipFileExists) {
+			if (!obfZipFileExists && filesJson == null) {
 				System.out.printf("Could not find obf file: %s%n", obfZipFile.getPath());
 				return;
 			}
-			//Assert.assertTrue(obfZipFileExists);
-
-			GZIPInputStream gzin = new GZIPInputStream(new FileInputStream(obfZipFile));
-			FileOutputStream fous = new FileOutputStream(obfFile);
-			Algorithms.streamCopy(gzin, fous);
-			fous.close();
-			gzin.close();
-
-			reader = new BinaryMapIndexReader(new RandomAccessFile(obfFile.getPath(), "r"), obfFile);
+			if (filesJson != null) {
+				File directory = testFile.getParentFile();
+				for (int i = 0; i < filesJson.length(); i++) {
+					String file = filesJson.optString(i);
+					if (file != null && file.endsWith(".obf.gz")) {
+						File gzFile = new File(directory, file);
+						File obf = new File(directory, file.replace(".gz", ""));
+						unzipObf(gzFile, obf);
+						readers.add(new BinaryMapIndexReader(new RandomAccessFile(obf.getPath(), "r"), obf));
+					}
+				}
+			} else {
+				unzipObf(obfZipFile, obfFile);
+				readers.add(new BinaryMapIndexReader(new RandomAccessFile(obfFile.getPath(), "r"), obfFile));
+			}
 		}
 		 boolean disabled = settingsJson.optBoolean("disabled", false);
 		 if (disabled) {
@@ -146,8 +156,9 @@ public class SearchUICoreTest {
 		}
 
 		SearchSettings s = SearchSettings.parseJSON(settingsJson);
-		if (reader != null) {
-			s.setOfflineIndexes(Collections.singletonList(reader));
+		boolean multiSearch = readers.size() > 1;
+		if (!readers.isEmpty()) {			
+			s.setOfflineIndexes(readers);
 		}
 
 		final SearchUICore core = new SearchUICore(MapPoiTypes.getDefault(), "en", false);
@@ -201,14 +212,19 @@ public class SearchUICoreTest {
 					expected = expected.substring(0, expected.indexOf('[')).trim();
 				}
 				// String present = result.toString();
+				boolean testGeocoding = expected.startsWith("@");
+				expected = expected.replaceFirst("^@", "");
 				String present = res == null ? ("#MISSING " + (i + 1)) : formatResult(simpleTest, res, phrase);
 				if (!Algorithms.stringsEqual(expected, present)) {
 					System.out.printf("Phrase: %s%n", phrase);
 					System.out.printf("Mismatch for '%s' != '%s'. Result: %n", expected, present);
 					System.out.println("CURRENT RESULTS: ");
 					for (SearchResult r : searchResults) {
-						System.out.printf("\t\"%s\",%n", formatResult(false, r, phrase));
-					
+						if (multiSearch) {
+							System.out.printf("\t\"%s\",%n", formatResultMultiSearch(r, phrase));
+						} else {
+							System.out.printf("\t\"%s\",%n", formatResult(false, r, phrase));
+						}
 					}
 					System.out.println("EXPECTED : ");
 					for (String r : result) {
@@ -216,10 +232,44 @@ public class SearchUICoreTest {
 					}
 				}
 				Assert.assertEquals(expected, present);
+				if (testGeocoding) {
+					testReverseGeocoding(res, readers.get(0));
+				}
 			}
 		}
 
 		obfFile.delete();
+	}
+
+	private void testReverseGeocoding(SearchResult searchResult, BinaryMapIndexReader reader) throws IOException {
+		Assert.assertNotNull(searchResult);
+		Assert.assertNotNull(searchResult.location);
+		if (geoCtx == null) {
+			geoCtx = GeocodingUtilities.buildDefaultContextForPOI(reader);
+		}
+
+		List<GeocodingResult> geoResult = geoUtils.reverseGeocodingSearch(
+				geoCtx, searchResult.location.getLatitude(), searchResult.location.getLongitude(), false);
+
+		geoResult = geoUtils.sortGeocodingResults(Collections.singletonList(reader), geoResult);
+
+		Assert.assertFalse(geoResult.isEmpty());
+
+		if (searchResult.object instanceof Building b1 && searchResult.relatedObject instanceof Street s1) {
+			Assert.assertEquals(s1.getCity(), geoResult.get(0).city);
+			Assert.assertEquals(s1.getName(), geoResult.get(0).street.getName());
+			Assert.assertEquals(b1.getName(), geoResult.get(0).building.getName());
+		} else {
+			Assert.fail("Unsupported searchResult object / relatedObject");
+		}
+	}
+
+	private void unzipObf(File obfGzFile, File obfFile) throws IOException {
+		GZIPInputStream gzin = new GZIPInputStream(new FileInputStream(obfGzFile));
+		FileOutputStream fous = new FileOutputStream(obfFile);
+		Algorithms.streamCopy(gzin, fous);
+		fous.close();
+		gzin.close();
 	}
 
 	private List<SearchResult> getSearchResult(SearchPhrase phrase, ResultMatcher<SearchResult> rm, SearchUICore core){
@@ -253,18 +303,14 @@ public class SearchUICoreTest {
 		}
 	}
 
-	private String formatResult(boolean simpleTest, SearchResult r, SearchPhrase phrase) {
-		if (simpleTest) {
-			return r.toString().trim();
-		}
-		double dist = 0;
-		if (r.location != null) {
-			dist = MapUtils.getDistance(r.location, phrase.getLastTokenLocation());
-		}
-		return String.format(Locale.US, "%s [[%d, %s, %.3f, %.2f km]]", r.toString(),
-				r.getFoundWordCount(), r.objectType.toString(),
-				r.getUnknownPhraseMatchWeight(),
-				dist / 1000);
+	public static String formatResult(boolean simpleTest, SearchResult r, SearchPhrase phrase) {
+		return SearchUICore.formatSearchResultForTest(simpleTest, r, phrase);
+	}
+	
+	public static String formatResultMultiSearch(SearchResult r, SearchPhrase phrase) {
+		String format = formatResult(false, r, phrase);
+		String reg = r.file == null ? "-" : r.file.getFile().getName();
+		return String.format(Locale.US, "%s [%s]", format, reg);
 	}
 
 	static class TestSearchTranslator implements MapPoiTypes.PoiTranslator {

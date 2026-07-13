@@ -6,6 +6,7 @@ public class OSMSettings {
 		NAME("name"), //$NON-NLS-1$
 		NAME_EN("name:en"), //$NON-NLS-1$
 		LOCK_NAME("lock_name"), //$NON-NLS-1$
+		SHORT_NAME("short_name"),
 		
 		// ways
 		HIGHWAY("highway"), //$NON-NLS-1$
@@ -21,6 +22,8 @@ public class OSMSettings {
 		TOLL("toll"), //$NON-NLS-1$
 		JUNCTION("junction"), //$NON-NLS-1$
 		
+		AREA("area"),
+		
 		
 		// transport
 		ROUTE("route"), //$NON-NLS-1$
@@ -34,12 +37,14 @@ public class OSMSettings {
 		// address
 		PLACE("place"), //$NON-NLS-1$
 		ADDR_HOUSE_NUMBER("addr:housenumber"), //$NON-NLS-1$
+		ADDR_UNIT("addr:unit"), //$NON-NLS-1$
 		ADDR2_HOUSE_NUMBER("addr2:housenumber"), //$NON-NLS-1$
 		ADDR_HOUSE_NAME("addr:housename"), //$NON-NLS-1$
 		ADDR_STREET("addr:street"), //$NON-NLS-1$
 		ADDR_STREET2("addr:street2"), //$NON-NLS-1$
 		ADDR2_STREET("addr2:street"), //$NON-NLS-1$
 		ADDR_CITY("addr:city"), //$NON-NLS-1$
+		ADDR_SUBURB("addr:suburb"), //$NON-NLS-1$
 		ADDR_PLACE("addr:place"), //$NON-NLS-1$
 		ADDR_POSTCODE("addr:postcode"), //$NON-NLS-1$
 		ADDR_INTERPOLATION("addr:interpolation"), //$NON-NLS-1$

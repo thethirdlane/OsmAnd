@@ -3,6 +3,7 @@ package net.osmand.plus.configmap;
 import static net.osmand.aidlapi.OsmAndCustomizationConstants.*;
 import static net.osmand.osm.OsmRouteType.ALPINE;
 import static net.osmand.osm.OsmRouteType.HIKING;
+import static net.osmand.osm.OsmRouteType.SKI_ROUTES;
 import static net.osmand.plus.configmap.ConfigureMapUtils.getPropertyForAttr;
 import static net.osmand.plus.configmap.routes.RouteUtils.CYCLE_NODE_NETWORK_ROUTES_ATTR;
 import static net.osmand.plus.configmap.routes.RouteUtils.SHOW_MTB_SCALE;
@@ -13,6 +14,7 @@ import static net.osmand.plus.dashboard.DashboardType.MAP_ROUTES;
 import static net.osmand.plus.plugins.openseamaps.NauticalDepthContourFragment.DEPTH_CONTOUR_COLOR_SCHEME;
 import static net.osmand.plus.plugins.openseamaps.NauticalDepthContourFragment.DEPTH_CONTOUR_WIDTH;
 import static net.osmand.plus.plugins.osmedit.OsmEditingPlugin.RENDERING_CATEGORY_OSM_ASSISTANT;
+import static net.osmand.plus.plugins.srtm.SRTMPlugin.BUILDINGS_3D;
 import static net.osmand.plus.plugins.srtm.SRTMPlugin.CONTOUR_DENSITY_ATTR;
 import static net.osmand.plus.plugins.srtm.SRTMPlugin.CONTOUR_LINES_ATTR;
 import static net.osmand.plus.plugins.srtm.SRTMPlugin.CONTOUR_LINES_SCHEME_ATTR;
@@ -51,6 +53,7 @@ import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.backend.preferences.CommonPreference;
 import net.osmand.plus.settings.backend.preferences.OsmandPreference;
 import net.osmand.plus.settings.enums.DayNightMode;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.plus.track.helpers.GpxSelectionHelper;
 import net.osmand.plus.transport.TransportLinesMenu;
 import net.osmand.plus.utils.AndroidUtils;
@@ -95,7 +98,7 @@ public class ConfigureMapMenu {
 
 	@NonNull
 	public ContextMenuAdapter createListAdapter(@NonNull MapActivity mapActivity) {
-		boolean nightMode = app.getDaynightHelper().isNightModeForMapControls();
+		boolean nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.OVER_MAP);
 
 		ContextMenuAdapter adapter = new ContextMenuAdapter(app);
 
@@ -137,7 +140,7 @@ public class ConfigureMapMenu {
 
 		ResourceManager resourceManager = app.getResourceManager();
 		boolean hasPoiData = !Algorithms.isEmpty(resourceManager.getAmenityRepositories())
-				|| !resourceManager.isWikivoyageRepositoryEmpty();
+				|| resourceManager.hasTravelRepositories();
 		if (hasPoiData) {
 			PoiFiltersHelper poiFilters = app.getPoiFilters();
 			selected = poiFilters.isShowingAnyGeneralPoi();
@@ -276,7 +279,7 @@ public class ConfigureMapMenu {
 					@Override
 					public boolean onRowItemClick(@NonNull OnDataChangeUiAdapter adapter,
 							@NonNull View view, @NonNull ContextMenuItem item) {
-						if (property != null) {
+						if (property != null || SKI_ROUTES.getRenderingPropertyAttr().equals(attrName)) {
 							routeLayersHelper.setSelectedAttrName(attrName);
 							activity.getDashboard().setDashboardVisibility(true, MAP_ROUTES, AndroidUtils.getCenterViewCoordinates(view));
 						} else {
@@ -296,12 +299,11 @@ public class ConfigureMapMenu {
 						if (adapter != null) {
 							adapter.onDataSetChanged();
 						}
-						if (property != null) {
-							activity.refreshMapComplete();
-							activity.updateLayers();
-						} else {
+						if (property == null) {
 							RouteUtils.showRendererSnackbarForAttr(activity, attrName, nightMode, null);
 						}
+						activity.refreshMapComplete();
+						activity.updateLayers();
 						return false;
 					}
 				});
@@ -534,6 +536,7 @@ public class ConfigureMapMenu {
 				|| SHOW_MTB_SCALE.equals(attrName)
 				|| SHOW_MTB_SCALE_UPHILL.equals(attrName)
 				|| RENDERING_CATEGORY_OSM_ASSISTANT.equals(category)
+				|| BUILDINGS_3D.equals(category)
 				|| DEPTH_CONTOUR_WIDTH.equals(attrName)
 				|| DEPTH_CONTOUR_COLOR_SCHEME.equals(attrName)
 				|| ALPINE.getRenderingPropertyAttr().equals(attrName)
@@ -576,7 +579,7 @@ public class ConfigureMapMenu {
 	public static ContextMenuItem createRenderingProperty(MapActivity activity, @DrawableRes int icon,
 	                                                      RenderingRuleProperty p, String id,
 	                                                      boolean nightMode) {
-		OsmandApplication app = activity.getMyApplication();
+		OsmandApplication app = activity.getApp();
 		OsmandSettings settings = app.getSettings();
 		if (p.isBoolean()) {
 			String name = AndroidUtils.getRenderingStringPropertyName(activity, p.getAttrName(), p.getName());
@@ -612,7 +615,7 @@ public class ConfigureMapMenu {
 	                                                             @DrawableRes int icon,
 	                                                             boolean nightMode,
 	                                                             @Nullable OnResultCallback<Boolean> callback) {
-		OsmandApplication app = activity.getMyApplication();
+		OsmandApplication app = activity.getApp();
 		OsmandSettings settings = app.getSettings();
 
 		CommonPreference<Boolean> pref = settings.getCustomRenderBooleanProperty(attrName);
@@ -636,7 +639,9 @@ public class ConfigureMapMenu {
 					item.setSelected(pref.get());
 					item.setColor(activity, isChecked ? R.color.osmand_orange : INVALID_ID);
 					item.setDescription(app.getString(isChecked ? R.string.shared_string_enabled : R.string.shared_string_disabled));
-					uiAdapter.onDataSetChanged();
+					if (uiAdapter != null) {
+						uiAdapter.onDataSetChanged();
+					}
 					return false;
 				});
 	}

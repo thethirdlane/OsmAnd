@@ -49,7 +49,6 @@ public class GpxApproximationHelper {
 			currentApproximator = null;
 		}
 		notifyOnNewCalculation();
-		params.getLocationsHolders();
 		List<GpxApproximator> approximateList = new ArrayList<>();
 		for (LocationsHolder locationsHolder : params.getLocationsHolders()) {
 			GpxApproximator approximate = createApproximator(locationsHolder);
@@ -208,9 +207,12 @@ public class GpxApproximationHelper {
 
 	@NonNull
 	public static GpxFile approximateGpxSync(@NonNull OsmandApplication app, @NonNull GpxFile gpxFile,
-			@NonNull GpxApproximationParams params) {
+	                                         @NonNull GpxApproximationParams params,
+	                                         @Nullable GpxApproximationHelper helper) {
 		MeasurementEditingContext context = createEditingContext(app, gpxFile, params);
-		GpxApproximationHelper helper = new GpxApproximationHelper(app, params);
+		if (helper == null) {
+			helper = new GpxApproximationHelper(app, params);
+		}
 		if (helper.canApproximate()) {
 			Pair<List<GpxRouteApproximation>, List<List<WptPt>>> pair = helper.calculateGpxApproximationSync();
 			GpxFile approximatedGpx = createApproximatedGpx(app, context, params, pair.first, pair.second);
@@ -228,6 +230,7 @@ public class GpxApproximationHelper {
 			GpxApproximator approximator = createApproximator(holder);
 			if (approximator != null) {
 				try {
+					this.currentApproximator = approximator;
 					GpxRouteApproximation gctx = approximator.getNewGpxApproximationContext();
 					approximator.calculateGpxApproximationSync(gctx, new ResultMatcher<>() {
 						@Override
@@ -258,7 +261,7 @@ public class GpxApproximationHelper {
 		for (int i = 0; i < approximations.size(); i++) {
 			GpxRouteApproximation approximation = approximations.get(i);
 			List<WptPt> segment = points.get(i);
-			context.setPoints(approximation, segment, params.getAppMode(), false);
+			context.setPoints(i, approximation, segment, params.getAppMode(), false);
 		}
 		String trackName = getSuggestedFileName(app, context.getGpxData());
 		return context.exportGpx(trackName);

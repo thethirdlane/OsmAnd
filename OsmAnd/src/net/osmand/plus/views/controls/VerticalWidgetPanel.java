@@ -2,6 +2,7 @@ package net.osmand.plus.views.controls;
 
 import android.content.Context;
 import android.content.res.TypedArray;
+import android.graphics.Color;
 import android.util.AttributeSet;
 import android.view.View;
 import android.view.ViewGroup;
@@ -22,9 +23,11 @@ import net.osmand.plus.R;
 import net.osmand.plus.helpers.AndroidUiHelper;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.OsmandSettings;
+import net.osmand.plus.settings.enums.ScreenLayoutMode;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
+import net.osmand.plus.utils.ColorUtilities;
+import net.osmand.plus.utils.InsetsUtils;
 import net.osmand.plus.utils.UiUtilities;
-import net.osmand.plus.views.controls.MapHudLayout.ViewChangeListener;
-import net.osmand.plus.views.controls.MapHudLayout.ViewChangeProvider;
 import net.osmand.plus.views.layers.MapInfoLayer.TextState;
 import net.osmand.plus.views.layers.base.OsmandMapLayer.DrawSettings;
 import net.osmand.plus.views.mapwidgets.MapWidgetInfo;
@@ -35,18 +38,20 @@ import net.osmand.plus.views.mapwidgets.widgetinterfaces.ISupportWidgetResizing;
 import net.osmand.plus.views.mapwidgets.widgets.LanesWidget;
 import net.osmand.plus.views.mapwidgets.widgets.MapMarkersBarWidget;
 import net.osmand.plus.views.mapwidgets.widgets.MapWidget;
+import net.osmand.plus.widgets.LinearLayoutEx;
 import net.osmand.util.Algorithms;
 
 import java.util.*;
 
-public class VerticalWidgetPanel extends LinearLayout implements WidgetsContainer, ViewChangeProvider {
+public class VerticalWidgetPanel extends LinearLayoutEx implements WidgetsContainer {
+
+	private final List<VerticalPanelVisibilityListener> visibilityListeners = new ArrayList<>();
 
 	private final OsmandApplication app;
 	private final OsmandSettings settings;
 	private final MapWidgetRegistry widgetRegistry;
 	private final List<Row> visibleRows = new ArrayList<>();
 	private boolean topPanel;
-	private final Set<ViewChangeListener> viewChangeListeners = new HashSet<>();
 	private boolean nightMode;
 
 	public VerticalWidgetPanel(@NonNull Context context) {
@@ -65,7 +70,7 @@ public class VerticalWidgetPanel extends LinearLayout implements WidgetsContaine
 		super(context, attrs, defStyleAttr, defStyleRes);
 		app = (OsmandApplication) context.getApplicationContext();
 		settings = app.getSettings();
-		nightMode = app.getDaynightHelper().isNightMode();
+		nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.MAP);
 		widgetRegistry = app.getOsmandMap().getMapLayers().getMapWidgetRegistry();
 		definePanelSide(context, attrs);
 		init();
@@ -89,13 +94,23 @@ public class VerticalWidgetPanel extends LinearLayout implements WidgetsContaine
 		for (int i = 0; i < pagedWidgets.size(); i++) {
 			List<MapWidgetInfo> rowWidgets = new ArrayList<>(pagedWidgets.get(i));
 			Row row = new Row(rowWidgets, flatOrderedWidgets);
-			addView(row.view);
+			addView(row.getView());
 			visibleRows.add(row);
 		}
 		updateRows();
 	}
 
-	private boolean isAnyRowVisible() {
+	public void addVisibilityListener(@Nullable VerticalPanelVisibilityListener listener) {
+		if (!visibilityListeners.contains(listener)) {
+			visibilityListeners.add(listener);
+		}
+	}
+
+	public void removeVisibilityListener(@Nullable VerticalPanelVisibilityListener listener) {
+		visibilityListeners.remove(listener);
+	}
+
+	public boolean isAnyRowVisible() {
 		for (Row row : visibleRows) {
 			if (row.isAnyWidgetVisible()) {
 				return true;
@@ -105,13 +120,29 @@ public class VerticalWidgetPanel extends LinearLayout implements WidgetsContaine
 	}
 
 	private void applyShadow() {
+		ScreenLayoutMode layoutMode = ScreenLayoutMode.getDefault(getContext());
+		boolean isTransparentWidgets = app.getSettings().getTransparentMapThemePreference(layoutMode).get();
 		setClipToPadding(false);
 		setOutlineProvider(ViewOutlineProvider.BOUNDS);
-		ViewCompat.setElevation(this, isAnyRowVisible() ? 5f : 0);
+		ViewCompat.setElevation(this, isAnyRowVisible() && !isTransparentWidgets? 5f : 0);
 	}
 
 	private void updateVisibility() {
-		AndroidUiHelper.updateVisibility(this, isAnyRowVisible());
+		boolean isAnyRowVisible = isAnyRowVisible();
+		AndroidUiHelper.updateVisibility(this, isAnyRowVisible);
+
+		for (VerticalPanelVisibilityListener listener : visibilityListeners) {
+			listener.isVisible(isAnyRowVisible);
+		}
+		if (InsetsUtils.isEdgeToEdgeSupported() && !topPanel) {
+			ScreenLayoutMode layoutMode = ScreenLayoutMode.getDefault(getContext());
+			boolean transparentWidgets = app.getSettings().getTransparentMapThemePreference(layoutMode).get();
+			if (isAnyRowVisible && !transparentWidgets) {
+				setBackgroundColor(ColorUtilities.getWidgetBackgroundColor(app, nightMode));
+			} else {
+				setBackgroundColor(Color.TRANSPARENT);
+			}
+		}
 	}
 
 	public void update(@Nullable DrawSettings drawSettings) {
@@ -138,13 +169,13 @@ public class VerticalWidgetPanel extends LinearLayout implements WidgetsContaine
 					if (row == null) {
 						break;
 					}
-					View widgetView = row.view;
+					View widgetView = row.getView();
 					ViewParent viewParent = widgetView.getParent();
 					if (viewParent instanceof ViewGroup) {
 						((ViewGroup) viewParent).removeView(widgetView);
 					}
-					row.setupRow(i == count - 1);
-					addView(row.view, position + i);
+					row.setupRow(i, count);
+					addView(row.getView(), position + i);
 					visibleRows.add(position + i , row);
 				}
 				applyShadow();
@@ -168,8 +199,8 @@ public class VerticalWidgetPanel extends LinearLayout implements WidgetsContaine
 				for (int i = 0; i < count; i++) {
 					Row row = newRows.get(position + i);
 					if (row != null) {
-						row.setupRow(i == count - 1);
-						addView(row.view, position + i);
+						row.setupRow(i, count);
+						addView(row.getView(), position + i);
 						visibleRows.add(position + i, row);
 					}
 				}
@@ -197,12 +228,11 @@ public class VerticalWidgetPanel extends LinearLayout implements WidgetsContaine
 	}
 
 	public void updateRow(@NonNull MapWidget widget) {
-		Iterator<Row> rowIterator = visibleRows.iterator();
-		while (rowIterator.hasNext()) {
-			Row row = rowIterator.next();
+		for (int i = 0; i < visibleRows.size(); i++) {
+			Row row = visibleRows.get(i);
 			for (MapWidgetInfo widgetInfo : row.enabledMapWidgets) {
 				if (Algorithms.objectEquals(widget, widgetInfo.widget)) {
-					row.updateRow(!rowIterator.hasNext());
+					row.updateRow(i, visibleRows.size());
 					break;
 				}
 			}
@@ -217,10 +247,9 @@ public class VerticalWidgetPanel extends LinearLayout implements WidgetsContaine
 	}
 
 	public void updateRows() {
-		Iterator<Row> rowIterator = visibleRows.iterator();
-		while (rowIterator.hasNext()) {
-			Row row = rowIterator.next();
-			row.updateRow(!rowIterator.hasNext());
+		for (int i = 0; i < visibleRows.size(); i++) {
+			Row row = visibleRows.get(i);
+			row.updateRow(i, visibleRows.size());
 		}
 	}
 
@@ -251,16 +280,18 @@ public class VerticalWidgetPanel extends LinearLayout implements WidgetsContaine
 	}
 
 	@NonNull
-	protected List<Set<MapWidgetInfo>> getWidgetsToShow(ApplicationMode mode, List<MapWidget> widgetsToShow) {
+	protected List<Set<MapWidgetInfo>> getWidgetsToShow(ApplicationMode appMode, List<MapWidget> widgetsToShow) {
+		ScreenLayoutMode layoutMode = ScreenLayoutMode.getDefault(getContext());
 		Set<MapWidgetInfo> allPanelWidget = widgetRegistry.getWidgetsForPanel(getWidgetsPanel());
+		List<String> widgetsVisibility = MapWidgetInfo.getWidgetsVisibility(app, appMode, layoutMode);
 
 		Map<Integer, Set<MapWidgetInfo>> rowWidgetMap = new TreeMap<>();
 		for (MapWidgetInfo widgetInfo : allPanelWidget) {
-			if (widgetInfo.isEnabledForAppMode(mode)) {
+			if (widgetInfo.isEnabledForAppMode(appMode, widgetsVisibility)) {
 				addWidgetViewToPage(rowWidgetMap, widgetInfo.pageIndex, widgetInfo);
 				widgetsToShow.add(widgetInfo.widget);
 			} else {
-				widgetInfo.widget.detachView(getWidgetsPanel());
+				widgetInfo.widget.detachView(getWidgetsPanel(), new ArrayList<>(allPanelWidget), appMode);
 			}
 		}
 		return new ArrayList<>(rowWidgetMap.values());
@@ -310,53 +341,77 @@ public class VerticalWidgetPanel extends LinearLayout implements WidgetsContaine
 		inflate(UiUtilities.getThemedContext(getContext(), nightMode), R.layout.vertical_divider, container);
 	}
 
-	@Override
-	protected void onSizeChanged(int w, int h, int oldw, int oldh) {
-		super.onSizeChanged(w, h, oldw, oldh);
-		notifySizeChanged(this, w, h, oldw, oldh);
-	}
-
-	@NonNull
-	@Override
-	public Collection<ViewChangeListener> getViewChangeListeners() {
-		return viewChangeListeners;
-	}
-
-	@Override
-	protected void onVisibilityChanged(@NonNull View changedView, int visibility) {
-		super.onVisibilityChanged(changedView, visibility);
-		notifyVisibilityChanged(changedView, visibility);
-	}
-
 	private class Row {
 
-		private final View view;
-		private final View bottomDivider;
-		private final LinearLayout rowContainer;
+		private View view;
+		private View topDivider;
+		private View bottomDivider;
+		private LinearLayout rowContainer;
 
 		private final List<MapWidgetInfo> enabledMapWidgets = new ArrayList<>();
 		private final List<MapWidget> flatOrderedWidgets;
 
 		Row(@NonNull List<MapWidgetInfo> rowWidgets, @NonNull List<MapWidget> flatOrderedWidgets) {
-			this.view = inflate(UiUtilities.getThemedContext(getContext(), nightMode), R.layout.vertical_widget_row, null);
-			this.bottomDivider = view.findViewById(R.id.bottom_divider);
-			this.rowContainer = view.findViewById(R.id.widgets_container);
 			this.flatOrderedWidgets = flatOrderedWidgets;
 
 			ApplicationMode appMode = settings.getApplicationMode();
+			ScreenLayoutMode layoutMode = ScreenLayoutMode.getDefault(getContext());
+			List<String> widgetsVisibility = MapWidgetInfo.getWidgetsVisibility(app, appMode, layoutMode);
+
 			for (int j = 0; j < rowWidgets.size(); j++) {
 				MapWidgetInfo widgetInfo = rowWidgets.get(j);
-				if (widgetInfo.isEnabledForAppMode(appMode)) {
+				if (widgetInfo.isEnabledForAppMode(appMode, widgetsVisibility)) {
 					enabledMapWidgets.add(widgetInfo);
 				} else {
-					widgetInfo.widget.detachView(getWidgetsPanel());
+					widgetInfo.widget.detachView(getWidgetsPanel(), rowWidgets, appMode);
 				}
 			}
 		}
 
-		public void updateRow(boolean lastRow) {
+		public void initView() {
+			if (view == null) {
+				view = getView();
+			}
+		}
+
+		@NonNull
+		public View getView() {
+			if (view == null) {
+				Context context = getContext();
+				view = inflate(UiUtilities.getThemedContext(context, nightMode), R.layout.vertical_widget_row, null);
+				setupView(view);
+			}
+			return view;
+		}
+
+		protected void setupView(@NonNull View view) {
+			this.bottomDivider = view.findViewById(R.id.bottom_divider);
+			this.topDivider = view.findViewById(R.id.top_divider);
+			this.rowContainer = view.findViewById(R.id.widgets_container);
+			AndroidUiHelper.updateVisibility(topDivider, false);
+		}
+
+		@NonNull
+		private LinearLayout getRowContainer() {
+			initView();
+			return rowContainer;
+		}
+
+		@NonNull
+		private View getTopDivider() {
+			initView();
+			return topDivider;
+		}
+
+		@NonNull
+		private View getBottomDivider() {
+			initView();
+			return bottomDivider;
+		}
+
+		public void updateRow(int index, int totalRows) {
 			int visibleViewsInRowCount = 0;
-			boolean showBottomDivider = true;
+			boolean rowWidgetsSupportBottomDivider = true;
 
 			for (int i = 0; i < enabledMapWidgets.size(); i++) {
 				MapWidget widget = enabledMapWidgets.get(i).widget;
@@ -368,34 +423,51 @@ public class VerticalWidgetPanel extends LinearLayout implements WidgetsContaine
 					showHideVerticalDivider(i, false);
 				}
 				if (widget instanceof MapMarkersBarWidget || widget instanceof LanesWidget) {
-					showBottomDivider = false;
+					rowWidgetsSupportBottomDivider = false;
 				}
 			}
 			updateFullRowState(enabledMapWidgets, visibleViewsInRowCount);
 			updateValueAlign(enabledMapWidgets, visibleViewsInRowCount);
-			AndroidUiHelper.updateVisibility(bottomDivider, (visibleViewsInRowCount > 0 && showBottomDivider) && !lastRow);
+
+			Context context = getContext();
+			ScreenLayoutMode layoutMode = ScreenLayoutMode.getDefault(context);
+			boolean transparentMode = app.getSettings().getTransparentMapThemePreference(layoutMode).get();
+			boolean lastRow = index == totalRows - 1;
+			boolean firstRow = index == 0;
+
+			boolean showTopDivider =  (visibleViewsInRowCount > 0 && rowWidgetsSupportBottomDivider)
+					&& (firstRow && !topPanel && transparentMode);
+			boolean showBottomDivider = (visibleViewsInRowCount > 0 && rowWidgetsSupportBottomDivider)
+					&& ((!lastRow || (topPanel && transparentMode))
+					|| ((InsetsUtils.isEdgeToEdgeSupported() && AndroidUiHelper.isOrientationPortrait(context) && lastRow)));
+
+			AndroidUiHelper.updateVisibility(getTopDivider(), showTopDivider);
+			AndroidUiHelper.updateVisibility(getBottomDivider(), showBottomDivider);
 		}
 
 		public void updateDividerColor(boolean nightMode) {
-			for (int i = 1; i <= rowContainer.getChildCount(); i++) {
+			LinearLayout container = getRowContainer();
+			for (int i = 1; i <= container.getChildCount(); i++) {
 				if (i % 2 == 0) {
-					View divider = rowContainer.getChildAt(i - 1).findViewById(R.id.vertical_divider);
+					View divider = container.getChildAt(i - 1).findViewById(R.id.vertical_divider);
 					if (divider != null) {
 						divider.setBackgroundColor(ContextCompat.getColor(app, nightMode ? R.color.divider_color_dark : R.color.divider_color_light));
 					}
 				}
 			}
-			bottomDivider.setBackgroundColor(ContextCompat.getColor(app, nightMode ? R.color.divider_color_dark : R.color.divider_color_light));
+			getTopDivider().setBackgroundColor(ContextCompat.getColor(app, nightMode ? R.color.divider_color_dark : R.color.divider_color_light));
+			getBottomDivider().setBackgroundColor(ContextCompat.getColor(app, nightMode ? R.color.divider_color_dark : R.color.divider_color_light));
 		}
 
 		private void showHideVerticalDivider(int widgetIndex, boolean show) {
 			int dividerIndexInContainer = (widgetIndex * 2) + 1;
-			if (widgetIndex >= 0 && dividerIndexInContainer < rowContainer.getChildCount()) {
-				AndroidUiHelper.updateVisibility(rowContainer.getChildAt(dividerIndexInContainer), show);
+			LinearLayout container = getRowContainer();
+			if (widgetIndex >= 0 && dividerIndexInContainer < container.getChildCount()) {
+				AndroidUiHelper.updateVisibility(container.getChildAt(dividerIndexInContainer), show);
 			}
 		}
 
-		public void setupRow(boolean lastRow) {
+		public void setupRow(int index, int totalRows) {
 			MapWidgetInfo firstMapWidgetInfoInRow = null;
 			for (int j = 0; j < enabledMapWidgets.size(); j++) {
 				MapWidgetInfo widgetInfo = enabledMapWidgets.get(j);
@@ -406,13 +478,13 @@ public class VerticalWidgetPanel extends LinearLayout implements WidgetsContaine
 				} else {
 					setupWidgetSize(firstMapWidgetInfoInRow, widgetInfo);
 				}
-				attachViewToRow(widget, rowContainer, getFollowingWidgets(widget, flatOrderedWidgets));
+				attachViewToRow(widget, getRowContainer(), getFollowingWidgets(widget, flatOrderedWidgets));
 				int nextElementIndex = j + 1;
 				if (nextElementIndex < enabledMapWidgets.size()) {
-					addVerticalDivider(rowContainer);
+					addVerticalDivider(getRowContainer());
 				}
 			}
-			updateRow(lastRow);
+			updateRow(index, totalRows);
 		}
 
 		private void setupWidgetSize(@NonNull MapWidgetInfo firstWidgetInfo, @NonNull MapWidgetInfo widgetInfo) {
@@ -473,5 +545,9 @@ public class VerticalWidgetPanel extends LinearLayout implements WidgetsContaine
 			List<MapWidgetInfo> newMapWidgets = newRow != null ? newRow.enabledMapWidgets : Collections.emptyList();
 			return Algorithms.objectEquals(oldMapWidgets, newMapWidgets);
 		}
+	}
+
+	public interface VerticalPanelVisibilityListener {
+		void isVisible(boolean isVisible);
 	}
 }

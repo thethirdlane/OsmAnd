@@ -4,22 +4,17 @@ import static net.osmand.shared.gpx.GpxParameter.COLOR;
 import static net.osmand.shared.gpx.GpxParameter.COLORING_TYPE;
 import static net.osmand.shared.gpx.GpxParameter.COLOR_PALETTE;
 
-import android.os.AsyncTask;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 
-import net.osmand.shared.gpx.GpxParameter;
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.base.dialog.DialogManager;
 import net.osmand.plus.base.dialog.interfaces.controller.IDialogController;
 import net.osmand.plus.card.color.ColoringStyle;
 import net.osmand.plus.card.color.ColoringStyleCardController.IColorCardControllerListener;
-import net.osmand.plus.card.color.palette.gradient.PaletteGradientColor;
-import net.osmand.plus.card.color.palette.main.data.PaletteColor;
-import net.osmand.shared.gpx.TrackItem;
 import net.osmand.plus.configmap.tracks.appearance.data.AppearanceData;
 import net.osmand.plus.configmap.tracks.appearance.data.AppearanceData.AppearanceChangedListener;
 import net.osmand.plus.configmap.tracks.appearance.subcontrollers.ArrowsCardController;
@@ -28,6 +23,10 @@ import net.osmand.plus.configmap.tracks.appearance.subcontrollers.SplitCardContr
 import net.osmand.plus.configmap.tracks.appearance.subcontrollers.StartFinishCardController;
 import net.osmand.plus.configmap.tracks.appearance.subcontrollers.WidthCardController;
 import net.osmand.plus.myplaces.tracks.tasks.ChangeTracksAppearanceTask;
+import net.osmand.shared.gpx.GpxParameter;
+import net.osmand.shared.gpx.TrackItem;
+import net.osmand.shared.palette.domain.PaletteConstants;
+import net.osmand.shared.palette.domain.PaletteItem;
 import net.osmand.util.Algorithms;
 
 import java.util.Set;
@@ -71,16 +70,16 @@ public class ChangeAppearanceController implements IDialogController, IColorCard
 	@Override
 	public void onColoringStyleSelected(@Nullable ColoringStyle coloringStyle) {
 		data.setParameter(COLORING_TYPE, coloringStyle != null ? coloringStyle.getId() : null);
-		data.setParameter(COLOR_PALETTE, PaletteGradientColor.DEFAULT_NAME);
+		data.setParameter(COLOR_PALETTE, PaletteConstants.DEFAULT_NAME);
 	}
 
 	@Override
-	public void onColorSelectedFromPalette(@NonNull PaletteColor paletteColor) {
-		if (paletteColor instanceof PaletteGradientColor) {
-			data.setParameter(COLOR_PALETTE, ((PaletteGradientColor) paletteColor).getPaletteName());
-		} else {
-			data.setParameter(COLOR_PALETTE, PaletteGradientColor.DEFAULT_NAME);
-			data.setParameter(COLOR, paletteColor.getColor());
+	public void onPaletteItemSelected(@NonNull PaletteItem paletteItem) {
+		if (paletteItem instanceof PaletteItem.Gradient gradientItem) {
+			data.setParameter(COLOR_PALETTE, gradientItem.getId());
+		} else if (paletteItem instanceof PaletteItem.Solid solidItem) {
+			data.setParameter(COLOR_PALETTE, PaletteConstants.DEFAULT_NAME);
+			data.setParameter(COLOR, solidItem.getColorInt());
 		}
 	}
 
@@ -89,14 +88,14 @@ public class ChangeAppearanceController implements IDialogController, IColorCard
 	}
 
 	public void saveChanges(@NonNull FragmentActivity activity) {
-		colorCardController.getColorsPaletteController().refreshLastUsedTime();
+		colorCardController.getColorsPaletteController().renewLastUsedTime();
 
 		ChangeTracksAppearanceTask task = new ChangeTracksAppearanceTask(activity, data, items, result -> {
 			isAppearanceSaved = true;
 			onAppearanceSaved();
 			return true;
 		});
-		task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+		OsmAndTaskManager.executeTask(task);
 	}
 
 	private void onAppearanceSaved() {

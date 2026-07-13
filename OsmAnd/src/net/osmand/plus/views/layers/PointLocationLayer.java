@@ -250,10 +250,13 @@ public class PointLocationLayer extends OsmandMapLayer
 	@Override
 	public void onUpdateFrame(MapRendererView mapRenderer) {
 		super.onUpdateFrame(mapRenderer);
-		if (isMapLinkedToLocation() && !isMovingToMyLocation()) {
+		if (isMarkerLinkedToMapTarget()) {
 			Location location = getPointLocation();
-			PointI target31 = mapRenderer.getTarget();
-			updateMarker(location, target31, 0);
+			updateMarker(location, mapRenderer.getTarget(), 0);
+		} else if (isUserInterruptingMovingToMyLocation()) {
+			updateMarker(getPointLocation(), null, 0);
+		} else if (isMapLinkedToLocation() && !isMovingToMyLocation()) {
+			updateMarker(getPointLocation(), null, 0);
 		}
 		lastMarkerLocation = getCurrentMarkerLocation();
 	}
@@ -398,9 +401,35 @@ public class PointLocationLayer extends OsmandMapLayer
 		return locMarker;
 	}
 
+	private boolean containsLatLon(double lat, double lon) {
+		MapRendererView mapRenderer = getMapRenderer();
+		if (view == null || mapRenderer == null) {
+			return false;
+		}
+		RotatedTileBox tb = view.getRotatedTileBox();
+		PointF pixel = NativeUtilities.getElevatedPixelFromLatLon(mapRenderer, tb, lat, lon);
+		double tx = pixel.x;
+		double ty = pixel.y;
+		return tx >= 0 && tx <= tb.getPixWidth() && ty >= 0 && ty <= tb.getPixHeight();
+	}
+
+	private boolean isMarkerLinkedToMapTarget() {
+		return isMapLinkedToLocation() && !isMovingToMyLocation()
+				&& view != null && !view.isUserMapInteractionActive()
+				&& !view.isMapTargetChanged();
+	}
+
+	private boolean isUserInterruptingMovingToMyLocation() {
+		return isMovingToMyLocation() && view != null && view.isUserMapInteractionActive();
+	}
+
 	private void updateMarker(@Nullable Location location, @Nullable PointI target31, long animationDuration) {
-		Float heading = locationProvider.getHeading();
 		if (location != null) {
+			boolean animateBearing = isAnimateMyLocation();
+			if (target31 == null && !containsLatLon(location.getLatitude(), location.getLongitude())) {
+				animationDuration = 0;
+				animateBearing = false;
+			}
 			updateMarkerPosition(location, target31, animationDuration);
 			if (location.hasBearing()) {
 				float bearing = location.getBearing() - 90.0f;
@@ -408,15 +437,18 @@ public class PointLocationLayer extends OsmandMapLayer
 				boolean updateBearing = cachedBearing == null || Math.abs(bearing - cachedBearing) > 0.1;
 				if (updateBearing) {
 					lastBearingCached = bearing;
-					boolean animateBearing = isAnimateMyLocation();
 					updateMarkerBearing(bearing, animateBearing);
 				}
 			}
 		}
+		Float heading = locationProvider.getHeading();
 		if (heading != null && showHeadingCached) {
 			Float cachedHeading = lastHeadingCached;
 			boolean updateHeading = cachedHeading == null || Math.abs(heading - cachedHeading) > 0.1;
-			if (updateHeading) {
+			if (location == null) {
+				location = getPointLocation();
+			}
+			if (updateHeading && location != null && containsLatLon(location.getLatitude(), location.getLongitude())) {
 				lastHeadingCached = heading;
 				updateMarkerHeading(heading);
 			}
@@ -572,7 +604,9 @@ public class PointLocationLayer extends OsmandMapLayer
 		int locationY;
 		if (isMapLinkedToLocation()
 				&& !MapViewTrackingUtilities.isSmallSpeedForAnimation(lastKnownLocation)
-				&& !isMovingToMyLocation()) {
+				&& !isMovingToMyLocation()
+				&& !view.isUserMapInteractionActive()
+				&& !view.isMapTargetChanged()) {
 			locationX = box.getCenterPixelX();
 			locationY = box.getCenterPixelY();
 		} else {
@@ -625,11 +659,11 @@ public class PointLocationLayer extends OsmandMapLayer
 	public void onPrepareBufferImage(Canvas canvas, RotatedTileBox tileBox, DrawSettings settings) {
 		super.onPrepareBufferImage(canvas, tileBox, settings);
 		Location lastKnownLocation = locationProvider.getLastStaleKnownLocation();
-		if (view == null || tileBox.getZoom() < MIN_ZOOM || lastKnownLocation == null) {
+        MapRendererView mapRenderer = getMapRenderer();
+		if (view == null || (mapRenderer == null && tileBox.getZoom() < MIN_ZOOM) || lastKnownLocation == null) {
 			clearMapMarkersCollections();
 			return;
 		}
-		MapRendererView mapRenderer = getMapRenderer();
 		boolean markersRecreated = false;
 		if (mapRenderer != null && (markersInvalidated || mapMarkersCollection == null)) {
 			markersRecreated = recreateMarkerCollection();
@@ -649,7 +683,7 @@ public class PointLocationLayer extends OsmandMapLayer
 			if (markersRecreated || stateUpdated) {
 				lastBearingCached = null;
 				lastHeadingCached = null;
-				if (!isMapLinkedToLocation()) {
+				if (!isMarkerLinkedToMapTarget()) {
 					updateMarker(lastKnownLocation, null, 0);
 				}
 			}
@@ -661,7 +695,7 @@ public class PointLocationLayer extends OsmandMapLayer
 	@Override
 	public void onDraw(Canvas canvas, RotatedTileBox tileBox, DrawSettings settings) {
 		Location lastKnownLocation = locationProvider.getLastStaleKnownLocation();
-		if (view == null || tileBox.getZoom() < MIN_ZOOM || lastKnownLocation == null) {
+		if (view == null || (!hasMapRenderer() && tileBox.getZoom() < MIN_ZOOM) || lastKnownLocation == null) {
 			return;
 		}
 		if (!hasMapRenderer()) {
@@ -678,28 +712,37 @@ public class PointLocationLayer extends OsmandMapLayer
 
 	@Override
 	public void updateLocation(Location location) {
-		if (view == null || view.getZoom() < MIN_ZOOM || location == null) {
+        MapRendererView mapRenderer = getMapRenderer();
+		if (view == null || (mapRenderer == null && view.getZoom() < MIN_ZOOM) || location == null) {
 			return;
 		}
-		MapRendererView mapRenderer = getMapRenderer();
-		if (mapRenderer != null && (!isMapLinkedToLocation() || isMovingToMyLocation())) {
-			boolean dataChanged = !MapUtils.areLatLonEqual(prevLocation, location, HIGH_LATLON_PRECISION);
+		if (mapRenderer != null && !isMarkerLinkedToMapTarget()) {
+			boolean userInterruptingMovingToMyLocation = isUserInterruptingMovingToMyLocation();
+			Location markerLocation = userInterruptingMovingToMyLocation ? getPointLocation() : location;
+			if (markerLocation == null) {
+				markerLocation = location;
+			}
+			boolean dataChanged = !MapUtils.areLatLonEqual(prevLocation, markerLocation, HIGH_LATLON_PRECISION);
 			if (dataChanged) {
-				long movingTime = prevLocation != null ? location.getTime() - prevLocation.getTime() : 0;
+				long movingTime = prevLocation != null ? markerLocation.getTime() - prevLocation.getTime() : 0;
 				boolean animatePosition = settings.ANIMATE_MY_LOCATION.get();
+				long animationDuration = userInterruptingMovingToMyLocation ? 0
+						: isAnimateMyLocation() ? movingTime : 0;
 				Integer interpolationPercent = settings.LOCATION_INTERPOLATION_PERCENT.get();
-				if (prevLocation != null && getApplication().getRoutingHelper().isFollowingMode() && interpolationPercent > 0 && animatePosition) {
+				if (!userInterruptingMovingToMyLocation
+						&& prevLocation != null && getApplication().getRoutingHelper().isFollowingMode()
+						&& interpolationPercent > 0 && animatePosition) {
 					List<Location> predictedLocations = RoutingHelperUtils.predictLocations(prevLocation, location,
 							movingTime / 1000.0, getApplication().getRoutingHelper().getRoute(), interpolationPercent);
 					if (!predictedLocations.isEmpty()) {
 						// At the moment we get the first predicted location, but there may be several of them
 						Location predictedLocation = predictedLocations.get(0);
-						updateMarker(predictedLocation, null, isAnimateMyLocation() ? movingTime : 0);
+						updateMarker(predictedLocation, null, animationDuration);
 					}
 				} else {
-					updateMarker(location, null, isAnimateMyLocation() ? movingTime : 0);
+					updateMarker(markerLocation, null, animationDuration);
 				}
-				prevLocation = location;
+				prevLocation = markerLocation;
 			}
 		}
 	}
@@ -827,9 +870,8 @@ public class PointLocationLayer extends OsmandMapLayer
 	}
 
 	@Override
-	public void collectObjectsFromPoint(@NonNull MapSelectionResult result,
-	                                    boolean unknownLocation, boolean excludeUntouchableObjects) {
-		if (result.getTileBox().getZoom() >= 3 && !excludeUntouchableObjects) {
+	public void collectObjectsFromPoint(@NonNull MapSelectionResult result, @NonNull MapSelectionRules rules) {
+		if (result.getTileBox().getZoom() >= 3 && !rules.isOnlyTouchableObjects()) {
 			getMyLocationFromPoint(result);
 		}
 	}

@@ -14,6 +14,7 @@ import net.osmand.plus.plugins.externalsensors.devices.sensors.AbstractSensor;
 
 import org.apache.commons.logging.Log;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -21,7 +22,8 @@ public abstract class BLEAbstractSensor extends AbstractSensor {
 
 	private static final Log LOG = PlatformUtil.getLog(BLEAbstractSensor.class);
 
-	private BluetoothGattCharacteristic notifyCharacteristic;
+	protected BluetoothGattCharacteristic notifyCharacteristic;
+	private byte[] lastTimeData = null;
 
 	public BLEAbstractSensor(@NonNull BLEAbstractDevice device, @NonNull String sensorId) {
 		super(device, sensorId);
@@ -51,19 +53,27 @@ public abstract class BLEAbstractSensor extends AbstractSensor {
 	@NonNull
 	public abstract UUID getRequestedCharacteristicUUID();
 
+	protected boolean requestReadCharacteristic() {
+		return true;
+	}
+
+	protected boolean requestNotifyCharacteristic() {
+		return true;
+	}
+
 	public void requestCharacteristic(@NonNull List<BluetoothGattCharacteristic> characteristics) {
 		for (BluetoothGattCharacteristic characteristic : characteristics) {
 			if (getRequestedCharacteristicUUID().equals(characteristic.getUuid())) {
 				BLEAbstractDevice bleDevice = getBLEDevice();
 				final int characteristicProp = characteristic.getProperties();
-				if ((characteristicProp | BluetoothGattCharacteristic.PROPERTY_READ) > 0) {
+				if ((characteristicProp | BluetoothGattCharacteristic.PROPERTY_READ) > 0 && requestReadCharacteristic()) {
 					if (notifyCharacteristic != null) {
 						bleDevice.setCharacteristicNotification(notifyCharacteristic, false);
 						notifyCharacteristic = null;
 					}
 					bleDevice.readCharacteristic(characteristic);
 				}
-				if ((characteristicProp | BluetoothGattCharacteristic.PROPERTY_NOTIFY) > 0) {
+				if ((characteristicProp | BluetoothGattCharacteristic.PROPERTY_NOTIFY) > 0 && requestNotifyCharacteristic()) {
 					notifyCharacteristic = characteristic;
 					bleDevice.setCharacteristicNotification(characteristic, true);
 				}
@@ -77,4 +87,14 @@ public abstract class BLEAbstractSensor extends AbstractSensor {
 
 	public abstract void onCharacteristicChanged(
 			@NonNull BluetoothGatt gatt, @NonNull BluetoothGattCharacteristic characteristic);
+
+	public void checkStaleData(@NonNull BluetoothGattCharacteristic characteristic) {
+		UUID charaUUID = characteristic.getUuid();
+		if (getRequestedCharacteristicUUID().equals(charaUUID)) {
+			if (!Arrays.equals(lastTimeData, characteristic.getValue())) {
+				lastTimeData = characteristic.getValue();
+				lastTimeDifferentValue = System.currentTimeMillis();
+			}
+		}
+	}
 }

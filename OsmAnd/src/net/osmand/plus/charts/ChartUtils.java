@@ -47,6 +47,9 @@ import net.osmand.plus.download.local.dialogs.MemoryInfo;
 import net.osmand.plus.download.local.dialogs.MemoryInfo.MemoryItem;
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.settings.backend.OsmandSettings;
+import net.osmand.plus.settings.backend.preferences.CommonPreference;
+import net.osmand.plus.settings.backend.preferences.ListStringPreference;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.shared.settings.enums.MetricsConstants;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
@@ -63,12 +66,14 @@ import net.osmand.util.Algorithms;
 
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class ChartUtils {
 
 	public static final int CHART_LABEL_COUNT = 3;
 	private static final int MAX_CHART_DATA_ITEMS = 10000;
+	public static final int MAX_CHART_TYPES = 2;
 
 	public static void setupElevationChart(ElevationChart chart) {
 		setupElevationChart(chart, new ElevationChartAppearance());
@@ -509,7 +514,7 @@ public class ChartUtils {
 		dataSet.setDivX(divX);
 		dataSet.setUnits(mainUnitY);
 
-		boolean nightMode = !settings.isLightContent();
+		boolean nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.APP);
 		int color = ColorUtilities.getColor(app, graphType.getFillColorId(false));
 		setupDataSet(app, dataSet, color, color, drawFilled, graphType == GPXDataSetType.ALTITUDE_EXTRM, useRightAxis, nightMode);
 		dataSet.setFillFormatter((ds, dataProvider) -> dataProvider.getYChartMin());
@@ -570,8 +575,7 @@ public class ChartUtils {
 	                                                       boolean setYAxisMinimum,
 	                                                       boolean drawFilled,
 	                                                       boolean calcWithoutGaps) {
-		OsmandSettings settings = app.getSettings();
-		boolean nightMode = !settings.isLightContent();
+		boolean nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.APP);
 
 		float divX = getDivX(app, chart, analysis, axisType, calcWithoutGaps);
 
@@ -714,7 +718,7 @@ public class ChartUtils {
 	                                                       boolean drawFilled,
 	                                                       boolean calcWithoutGaps) {
 		OsmandSettings settings = app.getSettings();
-		boolean nightMode = !settings.isLightContent();
+		boolean nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.APP);
 		MetricsConstants mc = settings.METRIC_SYSTEM.get();
 		boolean useFeet = (mc == MetricsConstants.MILES_AND_FEET) || (mc == MetricsConstants.MILES_AND_YARDS) || (mc == MetricsConstants.NAUTICAL_MILES_AND_FEET);
 		float convEle = useFeet ? 3.28084f : 1.0f;
@@ -938,5 +942,80 @@ public class ChartUtils {
 				return PluginsHelper.getOrderedLineDataSet(chart, analysis, graphType, gpxDataSetAxisType, calcWithoutGaps, useRightAxis);
 			}
 		}
+	}
+
+	@Nullable
+	public static List<GPXDataSetType> getSavedChartTypes(@NonNull ListStringPreference listStringPreference) {
+		List<GPXDataSetType> savedYAxisTypes = new ArrayList<>();
+		List<String> setTypes = listStringPreference.getStringsList();
+		if (Algorithms.isEmpty(setTypes)) {
+			return null;
+		}
+
+		for (GPXDataSetType type : GPXDataSetType.values()) {
+			if (setTypes.contains(type.name())) {
+				savedYAxisTypes.add(type);
+				if (savedYAxisTypes.size() >= MAX_CHART_TYPES) {
+					break;
+				}
+			}
+		}
+
+		return Algorithms.isEmpty(savedYAxisTypes) ? null : savedYAxisTypes;
+	}
+
+	@NonNull
+	public static List<GPXDataSetType> getSavedGeneralYAxis(@NonNull OsmandSettings settings) {
+		List<GPXDataSetType> dataSetTypes = getSavedChartTypes(settings.TRACK_CHART_Y_AXIS);
+		if (!Algorithms.isEmpty(dataSetTypes)) {
+			return dataSetTypes;
+		}
+
+		return Arrays.asList(GPXDataSetType.ALTITUDE, GPXDataSetType.SLOPE);
+	}
+
+	@NonNull
+	public static GPXDataSetAxisType getSavedXAxis(@NonNull CommonPreference<GPXDataSetAxisType> preference,
+	                                               @Nullable GpxTrackAnalysis analysis) {
+		GPXDataSetAxisType axisType = preference.get();
+		if (analysis == null) {
+			return axisType;
+		}
+		for (GPXDataSetAxisType availableType : ChartModeBottomSheet.getAvailableXTypes(analysis)) {
+			if (axisType == availableType) {
+				return axisType;
+			}
+		}
+		return DISTANCE;
+	}
+
+	@NonNull
+	public static GPXDataSetAxisType getSavedGeneralXAxis(@NonNull OsmandSettings settings,
+	                                                      @Nullable GpxTrackAnalysis analysis) {
+		return getSavedXAxis(settings.TRACK_CHART_X_AXIS, analysis);
+	}
+
+	public static void saveYAxis(@NonNull ListStringPreference preference, @NonNull List<GPXDataSetType> dataSetTypes) {
+		List<String> names = new ArrayList<>();
+		for (GPXDataSetType type : dataSetTypes) {
+			names.add(type.name());
+			if (names.size() >= MAX_CHART_TYPES) {
+				break;
+			}
+		}
+		preference.setStringsList(names);
+	}
+
+	public static void saveXAxis(@NonNull CommonPreference<GPXDataSetAxisType> preference,
+	                             @NonNull GPXDataSetAxisType axisType) {
+		preference.set(axisType);
+	}
+
+	public static void saveGeneralYAxis(@NonNull OsmandSettings settings, @NonNull List<GPXDataSetType> dataSetTypes) {
+		saveYAxis(settings.TRACK_CHART_Y_AXIS, dataSetTypes);
+	}
+
+	public static void saveGeneralXAxis(@NonNull OsmandSettings settings, @NonNull GPXDataSetAxisType axisType) {
+		saveXAxis(settings.TRACK_CHART_X_AXIS, axisType);
 	}
 }

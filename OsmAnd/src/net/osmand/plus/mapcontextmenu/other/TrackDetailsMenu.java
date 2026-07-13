@@ -2,6 +2,10 @@ package net.osmand.plus.mapcontextmenu.other;
 
 import static android.text.format.DateUtils.HOUR_IN_MILLIS;
 
+import static net.osmand.plus.charts.ChartModeBottomSheet.getAvailableDefaultYTypes;
+import static net.osmand.plus.charts.GPXDataSetAxisType.TIME;
+import static net.osmand.plus.charts.GPXDataSetAxisType.TIME_OF_DAY;
+
 import android.content.Context;
 import android.graphics.Matrix;
 import android.graphics.PointF;
@@ -26,12 +30,15 @@ import com.github.mikephil.charting.listener.OnChartGestureListener;
 import com.github.mikephil.charting.listener.OnChartValueSelectedListener;
 
 import net.osmand.Location;
+import net.osmand.PlatformUtil;
 import net.osmand.core.android.MapRendererView;
 import net.osmand.core.jni.PointI;
 import net.osmand.data.LatLon;
 import net.osmand.data.QuadRect;
 import net.osmand.data.RotatedTileBox;
 import net.osmand.plus.charts.ElevationChartAppearance;
+import net.osmand.plus.settings.backend.OsmandSettings;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.shared.gpx.GpxFile;
 import net.osmand.shared.gpx.GpxTrackAnalysis;
 import net.osmand.shared.gpx.primitives.TrkSegment;
@@ -61,12 +68,18 @@ import net.osmand.plus.utils.UiUtilities;
 import net.osmand.util.Algorithms;
 import net.osmand.util.MapUtils;
 
+import org.apache.commons.logging.Log;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class TrackDetailsMenu {
+
+	private static final Log log = PlatformUtil.getLog(TrackDetailsMenu.class);
 
 	public static final int MAX_DISTANCE_LOCATION_PROJECTION = 20; // in meters
 
@@ -169,8 +182,7 @@ public class TrackDetailsMenu {
 					gpxItem.locationOnMap = GpxUtils.createProjectionPoint(points.first, points.second, latLon);
 
 					float pos;
-					if (gpxItem.chartAxisType == GPXDataSetAxisType.TIME ||
-							gpxItem.chartAxisType == GPXDataSetAxisType.TIME_OF_DAY) {
+					if (gpxItem.chartAxisType == TIME || gpxItem.chartAxisType == TIME_OF_DAY) {
 						pos = gpxItem.locationOnMap.getTime() / 1000f;
 					} else {
 						double totalDistance = 0;
@@ -249,7 +261,7 @@ public class TrackDetailsMenu {
 		MapActivity mapActivity = getMapActivity();
 		GpxDisplayItem gpxItem = getGpxItem();
 		if (mapActivity != null && gpxItem != null) {
-			OsmandApplication app = mapActivity.getMyApplication();
+			OsmandApplication app = mapActivity.getApp();
 			GpxFile groupGpx = gpxItem.group.getGpxFile();
 			if (gpxItem.chartPointLayer == ChartPointLayer.GPX) {
 				gpxItem.wasHidden = app.getSelectedGpxHelper().getSelectedFileByPath(groupGpx.getPath()) == null;
@@ -275,8 +287,8 @@ public class TrackDetailsMenu {
 				toolbarController.setOnCloseButtonClickListener(v -> hide(false));
 				mapActivity.showTopToolbar(toolbarController);
 			}
-			mapActivity.refreshMap();
 			mapActivity.getMapLayers().getContextMenuLayer().enterGpxDetailsMode();
+			mapActivity.refreshMap();
 		}
 	}
 
@@ -288,7 +300,7 @@ public class TrackDetailsMenu {
 					&& gpxItem.wasHidden && gpxItem.group != null) {
 				GpxSelectionParams params = GpxSelectionParams.newInstance()
 						.hideFromMap().syncGroup().saveSelection();
-				GpxSelectionHelper helper = mapActivity.getMyApplication().getSelectedGpxHelper();
+				GpxSelectionHelper helper = mapActivity.getApp().getSelectedGpxHelper();
 				helper.selectGpxFile(gpxItem.group.getGpxFile(), params);
 			}
 			TrackDetailsToolbarController toolbarController = this.toolbarController;
@@ -331,32 +343,40 @@ public class TrackDetailsMenu {
 	}
 
 	@Nullable
-	private LatLon getLocationAtPos(LineChart chart, float pos) {
+	private LatLon getLocationAtPos(@NonNull LineChart chart, float pos) {
 		GpxDisplayItem gpxItem = getGpxItem();
 		TrkSegment segment = getTrackSegment(chart);
 		boolean joinSegments = selectedGpxFile != null && selectedGpxFile.isJoinSegments();
-		return getLocationAtPos(chart, gpxItem, segment, pos, joinSegments);
+
+		WptPt point = getPointAtChartPos(chart, gpxItem, segment, pos, joinSegments, true);
+		return point == null ? null : new LatLon(point.getLat(), point.getLon());
 	}
 
 	@Nullable
-	public static LatLon getLocationAtPos(LineChart chart, GpxDisplayItem gpxItem, TrkSegment segment,
-	                                      float pos, boolean joinSegments) {
-		WptPt point = null;
-		LineData lineData = chart.getLineData();
-		List<ILineDataSet> ds = lineData != null ? lineData.getDataSets() : null;
-		if (!Algorithms.isEmpty(ds) && gpxItem != null && segment != null) {
-			OrderedLineDataSet dataSet = (OrderedLineDataSet) ds.get(0);
+	public static LatLon getLocationAtPos(@Nullable LineChart chart, @Nullable GpxDisplayItem gpxItem,
+			@Nullable TrkSegment segment, float pos, boolean joinSegments) {
+		WptPt point = getPointAtChartPos(chart, gpxItem, segment, pos, joinSegments, true);
+		return point == null ? null : new LatLon(point.getLat(), point.getLon());
+	}
+
+	@Nullable
+	public static WptPt getPointAtChartPos(@Nullable LineChart chart, @Nullable GpxDisplayItem gpxItem,
+			@Nullable TrkSegment segment, float pos, boolean joinSegments, boolean preciseLocation) {
+		LineData lineData = chart != null ? chart.getLineData() : null;
+		List<ILineDataSet> dataSets = lineData != null ? lineData.getDataSets() : null;
+
+		if (!Algorithms.isEmpty(dataSets) && gpxItem != null && segment != null) {
 			GpxFile gpxFile = gpxItem.group.getGpxFile();
-			if (gpxItem.chartAxisType == GPXDataSetAxisType.TIME ||
-					gpxItem.chartAxisType == GPXDataSetAxisType.TIME_OF_DAY) {
+			if (gpxItem.chartAxisType == TIME || gpxItem.chartAxisType == TIME_OF_DAY) {
 				float time = pos * 1000;
-				point = GpxUtils.getSegmentPointByTime(segment, gpxFile, time, true, joinSegments);
+				return GpxUtils.getSegmentPointByTime(segment, gpxFile, time, preciseLocation, joinSegments);
 			} else {
+				OrderedLineDataSet dataSet = (OrderedLineDataSet) dataSets.get(0);
 				float distance = pos * dataSet.getDivX();
-				point = GpxUtils.getSegmentPointByDistance(segment, gpxFile, distance, true, joinSegments);
+				return GpxUtils.getSegmentPointByDistance(segment, gpxFile, distance, preciseLocation, joinSegments);
 			}
 		}
-		return point == null ? null : new LatLon(point.getLat(), point.getLon());
+		return null;
 	}
 
 	private QuadRect getRect(LineChart chart, float startPos, float endPos) {
@@ -369,7 +389,7 @@ public class TrackDetailsMenu {
 			TrkSegment segment = getTrackSegment(chart);
 			if (segment != null) {
 				OrderedLineDataSet dataSet = (OrderedLineDataSet) ds.get(0);
-				if (gpxItem.chartAxisType == GPXDataSetAxisType.TIME || gpxItem.chartAxisType == GPXDataSetAxisType.TIME_OF_DAY) {
+				if (gpxItem.chartAxisType == TIME || gpxItem.chartAxisType == TIME_OF_DAY) {
 					float startTime = startPos * 1000;
 					float endTime = endPos * 1000;
 					for (WptPt p : segment.getPoints()) {
@@ -572,9 +592,9 @@ public class TrackDetailsMenu {
 		if (mapActivity == null || gpxItem == null) {
 			return;
 		}
-		OsmandApplication app = mapActivity.getMyApplication();
+		OsmandApplication app = mapActivity.getApp();
 		UiUtilities ic = app.getUIUtilities();
-		boolean nightMode = app.getDaynightHelper().isNightModeForMapControls();
+		boolean nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.OVER_MAP);
 		GpxTrackAnalysis analysis = gpxItem.analysis;
 		if (analysis == null || gpxItem.chartTypes == null) {
 			parentView.setVisibility(View.GONE);
@@ -586,6 +606,7 @@ public class TrackDetailsMenu {
 		}
 
 		ElevationChart chart = parentView.findViewById(R.id.chart);
+		GPXDataSetType[] chartTypes = gpxItem.chartTypes;
 
 		chart.setOnChartValueSelectedListener(new OnChartValueSelectedListener() {
 			@Override
@@ -677,39 +698,14 @@ public class TrackDetailsMenu {
 		ChartUtils.setupElevationChart(chart, appearance);
 
 		List<ILineDataSet> dataSets = new ArrayList<>();
-		if (gpxItem.chartTypes != null) {
-			for (GPXDataSetType dataSetType : gpxItem.chartTypes) {
-				OrderedLineDataSet dataSet = null;
-				boolean withoutGaps = selectedGpxFile != null && (!selectedGpxFile.isJoinSegments() && gpxItem.isGeneralTrack());
-				switch (dataSetType) {
-					case ALTITUDE: {
-						dataSet = ChartUtils.createGPXElevationDataSet(app, chart, analysis,
-								dataSetType, gpxItem.chartAxisType, false, true, withoutGaps);
-						break;
-					}
-					case SPEED: {
-						boolean setYAxisMinimum = true;
-						for (GPXDataSetType type : gpxItem.chartTypes) {
-							if (type == GPXDataSetType.ZOOM_ANIMATED || type == GPXDataSetType.ZOOM_NON_ANIMATED) {
-								setYAxisMinimum = false;
-								break;
-							}
-						}
-						dataSet = ChartUtils.createGPXSpeedDataSet(app, chart, analysis,
-								dataSetType, gpxItem.chartAxisType, gpxItem.chartTypes.length > 1, setYAxisMinimum, true, withoutGaps);
-						break;
-					}
-					case SLOPE: {
-						boolean useRightAxis = gpxItem.chartTypes[0] != GPXDataSetType.SLOPE;
-						dataSet = ChartUtils.createGPXSlopeDataSet(app, chart, analysis,
-								dataSetType, gpxItem.chartAxisType, null, useRightAxis, true, withoutGaps);
-						break;
-					}
-					default: {
-						boolean useRightAxis = !dataSets.isEmpty();
-						dataSet = PluginsHelper.getOrderedLineDataSet(chart, analysis, dataSetType, gpxItem.chartAxisType, withoutGaps, useRightAxis);
-					}
-				}
+		if (chartTypes != null) {
+			boolean withoutGaps = shouldCalculateWithoutGaps(gpxItem);
+			for (int i = 0; i < chartTypes.length; i++) {
+				GPXDataSetType dataSetType = chartTypes[i];
+				GPXDataSetType otherDataSetType = chartTypes.length == 2 ? chartTypes[1 - i] : null;
+				boolean useRightAxis = !dataSets.isEmpty();
+				OrderedLineDataSet dataSet = ChartUtils.getDataSet(app, chart, analysis,
+						dataSetType, otherDataSetType, gpxItem.chartAxisType, withoutGaps, useRightAxis);
 				if (dataSet != null) {
 					dataSets.add(dataSet);
 				}
@@ -728,10 +724,10 @@ public class TrackDetailsMenu {
 		ImageView yAxisIcon = parentView.findViewById(R.id.y_axis_icon);
 		TextView yAxisTitle = parentView.findViewById(R.id.y_axis_title);
 		View yAxisArrow = parentView.findViewById(R.id.y_axis_arrow);
-		List<GPXDataSetType[]> availableTypes = getAvailableYTypes(analysis);
+		List<GPXDataSetType> availableTypes = getAvailableYTypes(analysis);
 
-		yAxisIcon.setImageDrawable(getImageDrawable(app, gpxItem.chartTypes));
-		yAxisTitle.setText(getGpxDataSetsName(app, gpxItem.chartTypes));
+		yAxisIcon.setImageDrawable(getImageDrawable(app, chartTypes));
+		yAxisTitle.setText(getGpxDataSetsName(app, chartTypes));
 		if (!availableTypes.isEmpty()) {
 			yAxis.setOnClickListener(v -> ChartModeBottomSheet.showInstance(mapActivity.getSupportFragmentManager(), getGraphModeListener(analysis, gpxItem), true));
 			yAxisArrow.setVisibility(View.VISIBLE);
@@ -745,10 +741,10 @@ public class TrackDetailsMenu {
 		ImageView xAxisIcon = parentView.findViewById(R.id.x_axis_icon);
 		TextView xAxisTitle = parentView.findViewById(R.id.x_axis_title);
 		View xAxisArrow = parentView.findViewById(R.id.x_axis_arrow);
-		if (gpxItem.chartAxisType == GPXDataSetAxisType.TIME) {
+		if (gpxItem.chartAxisType == TIME) {
 			xAxisIcon.setImageDrawable(ic.getThemedIcon(R.drawable.ic_action_time));
 			xAxisTitle.setText(app.getString(R.string.shared_string_time));
-		} else if (gpxItem.chartAxisType == GPXDataSetAxisType.TIME_OF_DAY) {
+		} else if (gpxItem.chartAxisType == TIME_OF_DAY) {
 			xAxisIcon.setImageDrawable(ic.getThemedIcon(R.drawable.ic_action_time_span));
 			xAxisTitle.setText(app.getString(R.string.time_of_day));
 		} else {
@@ -778,6 +774,11 @@ public class TrackDetailsMenu {
 				item.chartTypes = gpxDataSetTypes.toArray(new GPXDataSetType[0]);
 				update();
 				fitTrackOnMapForbidden = false;
+				if (mapActivity != null) {
+					OsmandSettings settings = mapActivity.getApp().getSettings();
+					ChartUtils.saveGeneralXAxis(settings, gpxDataSetAxisType);
+					ChartUtils.saveGeneralYAxis(settings, gpxDataSetTypes);
+				}
 			}
 
 			@Override
@@ -797,28 +798,23 @@ public class TrackDetailsMenu {
 		};
 	}
 
-	@NonNull
-	public List<GPXDataSetType[]> getAvailableYTypes(@NonNull GpxTrackAnalysis analysis) {
-		List<GPXDataSetType[]> availableTypes = new ArrayList<>();
+	private boolean shouldCalculateWithoutGaps(@NonNull GpxDisplayItem gpxItem) {
+		if (selectedGpxFile == null || !gpxItem.isGeneralTrack()) {
+			return false;
+		}
+		if (selectedGpxFile.isShowCurrentTrack()) {
+			GpxFile gpxFile = selectedGpxFile.getGpxFileToDisplay();
+			return !selectedGpxFile.isJoinSegments()
+					&& gpxFile != null
+					&& (Algorithms.isEmpty(gpxFile.getTracks()) || gpxFile.getTracks().get(0).isGeneralTrack());
+		}
+		return selectedGpxFile.isJoinSegments();
+	}
 
-		boolean hasElevationData = analysis.hasElevationData();
-		boolean hasSpeedData = analysis.hasSpeedData();
-		if (hasElevationData) {
-			availableTypes.add(new GPXDataSetType[] {GPXDataSetType.ALTITUDE});
-			availableTypes.add(new GPXDataSetType[] {GPXDataSetType.SLOPE});
-		}
-		if (hasSpeedData) {
-			availableTypes.add(new GPXDataSetType[] {GPXDataSetType.SPEED});
-		}
-		if (hasElevationData) {
-			availableTypes.add(new GPXDataSetType[] {GPXDataSetType.ALTITUDE, GPXDataSetType.SLOPE});
-		}
-		if (hasElevationData && hasSpeedData) {
-			availableTypes.add(new GPXDataSetType[] {GPXDataSetType.ALTITUDE, GPXDataSetType.SPEED});
-		}
-		if (hasElevationData && hasSpeedData) {
-			availableTypes.add(new GPXDataSetType[] {GPXDataSetType.SLOPE, GPXDataSetType.SPEED});
-		}
+	@NonNull
+	public List<GPXDataSetType> getAvailableYTypes(@NonNull GpxTrackAnalysis analysis) {
+		List<GPXDataSetType> availableTypes = getAvailableDefaultYTypes(analysis);
+
 		PluginsHelper.getAvailableGPXDataSetTypes(analysis, availableTypes);
 
 		return availableTypes;

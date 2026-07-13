@@ -115,7 +115,6 @@
     <string name="poi_traffic_calming_choker">Zwężka</string>
     <string name="poi_traffic_signals">Sygnalizacja świetlna</string>
     <string name="poi_car_repair">Warsztat samochodowy</string>
-    <string name="poi_service_tyres">Opony</string>
     <string name="poi_vehicle_inspection">Stacja kontroli pojazdów</string>
     <string name="poi_car_wash">Myjnia samochodowa</string>
     <string name="poi_fuel">Stacja benzynowa;Stacja paliw;CPN;Tanksztela</string>
@@ -625,7 +624,7 @@
     <string name="poi_paddle_tennis">Tenis wiosłowy (paddle tennis)</string>
     <string name="poi_observation_tower">Wieża widokowa</string>
     <string name="poi_bell_tower">Dzwonnica</string>
-    <string name="poi_korfbal">Korfball</string>
+    <string name="poi_korfball">Korfball</string>
     <string name="poi_sport_multi">Wiele dyscyplin</string>
     <string name="poi_pelota">Palant (pelota)</string>
     <string name="poi_racquet">Rakieta</string>
@@ -679,7 +678,6 @@
     <string name="poi_hunting_lodge">Domek myśliwski</string>
     <string name="poi_resort">Obszar ośrodka wypoczynkowego</string>
     <string name="poi_hanami">Hanami</string>
-    <string name="poi_piste_downhill">Trasa zjazdowa</string>
     <string name="poi_piste_nordic">Trasa biegowa</string>
     <string name="poi_piste_skitour">Trasa skitour</string>
     <string name="poi_piste_snow_park">Trasa - park śnieżny</string>
@@ -700,7 +698,7 @@
     <string name="poi_craft_sailmaker">Wytwórca żagli</string>
     <string name="poi_craft_stand_builder">Budowniczy postumentów</string>
     <string name="poi_craft_sun_protection">Osłony przeciwsłoneczne</string>
-    <string name="poi_craft_sweep">Kominiarz</string>
+    <string name="poi_craft_chimney_sweeper">Kominiarz</string>
     <string name="poi_craft_window_construction">Stolarka okienna</string>
     <string name="poi_funeral_directors">Grabarze</string>
     <string name="poi_craft_computer">Składanie komputerów</string>
@@ -788,7 +786,7 @@
     <string name="poi_candles">Sklep ze świecami</string>
     <string name="poi_garden_furniture">Sklep z meblami ogrodowymi</string>
     <string name="poi_music">Sklep muzyczny</string>
-    <string name="poi_tyres">Sklep z oponami</string>
+    <string name="poi_tyres">Opony;Opona;Sklep z oponami</string>
     <string name="poi_watches">Sklep z zegarkami</string>
     <string name="poi_model">Sklep modelarski</string>
     <string name="poi_weapons">Sklep z bronią</string>
@@ -1161,7 +1159,7 @@
     <string name="poi_denomination_spiritist">Spirytyzm</string>
     <string name="poi_denomination_united_church_of_christ">Zjednoczony Kościół Chrystusowy</string>
     <string name="poi_denomination_ethiopian_orthodox_tewahedo">Etiopski ortodoksyjny tewahedo</string>
-    <string name="poi_denomination_iglesia_ni_cristo">Iglesia ni Cristo</string>
+    <string name="poi_denomination_iglesia_ni_cristo">Kościół Chrystusa (Iglesia ni Cristo)</string>
     <string name="poi_denomination_uniting">Kościół Zjednoczony w Australii</string>
     <string name="poi_disease_malaria_yes">Malaria: tak</string>
     <string name="poi_disease_malaria_no">Malaria: nie</string>
@@ -1995,7 +1993,6 @@
     <string name="poi_training_art">Nauka: umiejętności artystyczne</string>
     <string name="poi_training_cooking">Nauka: gotowanie</string>
     <string name="poi_training_computer">Nauka: komputer</string>
-    <string name="poi_training_yoga">Nauka: joga</string>
     <string name="poi_training_martial_art">Nauka: sztuki walki</string>
     <string name="poi_training_aviation">Nauka: latanie</string>
     <string name="poi_training_hairdressing">Nauka: strzyżenie włosów</string>
@@ -2833,9 +2830,9 @@
     <string name="poi_payment_transport_type">Metoda płatności (transport)</string>
     <string name="poi_cuisine_pizza">Pizza</string>
     <string name="poi_cuisine_burger">Hamburger</string>
-    <string name="poi_cuisine_coffee">Kawa</string>
+    <string name="poi_cuisine_coffee_shop">Kawa</string>
     <string name="poi_cuisine_sandwich">Kanapki</string>
-    <string name="poi_cuisine_kebab">Kebab</string>
+    <string name="poi_cuisine_kebab">Kebab;danie</string>
     <string name="poi_cuisine_chicken">Kurczak</string>
     <string name="poi_cuisine_ice_cream">Lody</string>
     <string name="poi_cuisine_sushi">Sushi</string>
@@ -2888,7 +2885,6 @@
     <string name="poi_cuisine_yogurt">Jogurty</string>
     <string name="poi_cuisine_gyros">Gyros</string>
     <string name="poi_cuisine_empanada">Empanada/pastel (pierożek)</string>
-    <string name="poi_cuisine_crepes">Crêpe (cienkie naleśniki)</string>
     <string name="poi_cuisine_yakiniku">Yakiniku (japońskie grilowane mięso)</string>
     <string name="poi_cuisine_suki">Suki (tajski gorący kociełek)</string>
     <string name="poi_cuisine_udon">Udon (japoński makaron)</string>
@@ -3001,7 +2997,7 @@
     <string name="poi_social_facility_for">Grupa docelowa</string>
     <string name="poi_compressed_air_filter">Kompresor</string>
     <string name="poi_vacuum_cleaner_filter">Odkurzacz</string>
-    <string name="poi_cuisine_doner">Kebab (szawarma)</string>
+    <string name="poi_cuisine_doner">Doner kebab (szawarma);danie</string>
     <string name="poi_cuisine_shawarma">Kebab (szawarma)</string>
     <string name="poi_cuisine_bistro">Bistro</string>
     <string name="poi_dish">Potrawa</string>
@@ -3358,7 +3354,7 @@
     <string name="poi_diameter_crown">Średnica korony</string>
     <string name="poi_flooring">Sklep z podłogami</string>
     <string name="poi_pottery">Garncarz</string>
-    <string name="poi_whitewater_rapid_name">Nazwa prądu rzecznego</string>
+    <string name="poi_rapids_name">Nazwa prądu rzecznego</string>
     <string name="poi_outpost">Punkt odbioru towaru</string>
     <string name="poi_water_utility">Biuro firmy wodociągowej</string>
     <string name="poi_climbing_orientation_n">Orientacja ściany: północ</string>
@@ -3390,7 +3386,7 @@
     <string name="poi_service_vehicle_transmission_repair_yes">Naprawa skrzyni biegów</string>
     <string name="poi_service_vehicle_motor_yes">Silnik</string>
     <string name="poi_service_vehicle_insurance_yes">Ubezpieczenia</string>
-    <string name="poi_service_vehicle_tyres_yes">Opony</string>
+    <string name="poi_service_vehicle_tyres_yes">Opony;Opona</string>
     <string name="poi_aerialway_zip_line">Tyrolka</string>
     <string name="poi_via_ferrata">Żelazna perć (via ferrata)</string>
     <string name="poi_cable_number">Numer przewodu</string>
@@ -3548,13 +3544,13 @@
     <string name="poi_climbing_crag">Urwisko wspinaczkowe</string>
     <string name="poi_rescue_box">Skrzynka ratunkowa</string>
     <string name="reddit">Reddit</string>
-    <string name="poi_hazard_additional_erosion">Zagrożenie: erozja</string>
-    <string name="poi_hazard_additional_falling_rocks">Zagrożenie: spadające skały</string>
-    <string name="poi_hazard_additional_nuclear">Zagrożenie: jądrowe</string>
-    <string name="poi_hazard_additional_flood">Zagrożenie: powódź</string>
-    <string name="poi_hazard_additional_avalanche">Zagrożenie: lawina</string>
-    <string name="poi_hazard_additional_minefield">Zagrożenie: pole minowe</string>
-    <string name="poi_hazard_additional_contamination">Zagrożenie: zanieczyszczenie</string>
+    <string name="poi_hazard_additional_erosion">Erozja</string>
+    <string name="poi_hazard_additional_falling_rocks">Spadające skały</string>
+    <string name="poi_hazard_additional_nuclear">Jądrowe</string>
+    <string name="poi_hazard_additional_flood">Powódź</string>
+    <string name="poi_hazard_additional_avalanche">Lawina</string>
+    <string name="poi_hazard_additional_minefield">Pole minowe</string>
+    <string name="poi_hazard_additional_contamination">Zanieczyszczenie</string>
     <string name="poi_defibrillator_location">Lokalizacja</string>
     <string name="poi_changing_table_yes">Tak;Przewijak: tak</string>
     <string name="poi_changing_table_no">Nie;Przewijak: nie</string>
@@ -4215,8 +4211,8 @@
     <string name="poi_playground_balancebeam">Belka równoważąca</string>
     <string name="poi_playground_playhouse">Domek zabaw</string>
     <string name="poi_playground_sandpit">Piaskownica</string>
-    <string name="poi_playground_map">Mapa</string>
-    <string name="poi_playground_bridge">Most</string>
+    <string name="poi_playground_map">Mapa na placu zabaw</string>
+    <string name="poi_playground_bridge">Most na placu zabaw</string>
     <string name="poi_climbing_bolts">Śruby wspinaczkowe</string>
     <string name="poi_climbing_quality_medium">Średni</string>
     <string name="poi_butcher_lamb">Jagnięcina</string>
@@ -4636,7 +4632,6 @@
     <string name="poi_anglican_church">Kościół anglikański</string>
     <string name="poi_protestant_church">Kościół protestancki</string>
     <string name="poi_synagogue">Synagoga</string>
-    <string name="poi_hazard_additional_slippery_road">Śliska droga</string>
     <string name="poi_hazard_falling_rocks">Spadające skały</string>
     <string name="poi_hazard_contamination">Zanieczyszczenie</string>
     <string name="poi_access_main_tag">Dostęp</string>
@@ -4784,4 +4779,17 @@
     <string name="poi_steps">Schody</string>
     <string name="poi_us_maps_recreation_area_activity_boating_motorized">Żeglarstwo motorowe</string>
     <string name="poi_route_activity_type_hang_gliding">Lotniarstwo</string>
+    <string name="poi_us_maps_recreation_area_activity_bicycling">Jazda na rowerze</string>
+    <string name="poi_roundtrip_yes">Lot w obie strony: tak</string>
+    <string name="poi_roundtrip_no">Lot w obie strony: nie</string>
+    <string name="poi_sample_collection_filter">Kolekcja próbek</string>
+    <string name="poi_consulate">Konsulat</string>
+    <string name="poi_historic_spacecraft">Historyczny statek kosmiczny</string>
+    <string name="poi_denomination_ukrainian_greek_catholic">Ukraiński grekokatolicyzm</string>
+    <string name="poi_denomination_ukrainian_orthodox">Ukraińskie prawosławie</string>
+    <string name="poi_denomination_neo_pentecostal">Zielonoświątkowy</string>
+    <string name="poi_denomination_evangelical_lutheran">Ewangeliczny luteranizm</string>
+    <string name="poi_denomination_anabaptist">Anabaptyzm</string>
+    <string name="poi_piste_downhill">Zjazd;Stoki narciarskie;Stok narciarski</string>
+    <string name="poi_yoga">Joga</string>
 </resources>

@@ -14,6 +14,10 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
 
+import net.osmand.plus.myplaces.MyPlacesActivity;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTarget.Type;
+import net.osmand.plus.utils.InsetTargetsCollection;
 import net.osmand.shared.gpx.GpxUtilities.PointsGroup;
 import net.osmand.data.BackgroundType;
 import net.osmand.plus.R;
@@ -39,6 +43,19 @@ public abstract class GroupEditorFragment extends EditorFragment {
 	}
 
 	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+
+		if (getActionBarActivity() instanceof MyPlacesActivity) {
+			collection.removeType(Type.ROOT_INSET);
+		} else {
+			collection = super.getInsetTargets();
+			collection.add(InsetTarget.createScrollable(R.id.editor_scroll_view).build());
+		}
+		return collection;
+	}
+
+	@Override
 	@DrawableRes
 	protected int getToolbarNavigationIconId() {
 		return R.drawable.ic_action_close;
@@ -47,7 +64,7 @@ public abstract class GroupEditorFragment extends EditorFragment {
 	@NonNull
 	@Override
 	protected String getToolbarTitle() {
-		return getString(pointsGroup != null ? R.string.edit_category : R.string.favorite_category_add_new_title);
+		return getString(pointsGroup != null ? getEditToolbarTitleId() : getAddToolbarTitleId());
 	}
 
 	@Nullable
@@ -82,7 +99,7 @@ public abstract class GroupEditorFragment extends EditorFragment {
 	}
 
 	private void setupCategoryNameTextBox() {
-		nameCaption.setHint(getString(R.string.favorite_category_name));
+		nameCaption.setHint(getString(getNameHintId()));
 		nameCaption.setStartIconTintList(ColorStateList.valueOf(getColor()));
 		nameCaption.setDefaultHintTextColor(ColorStateList.valueOf(ColorUtilities.getSecondaryTextColor(app, nightMode)));
 	}
@@ -100,6 +117,27 @@ public abstract class GroupEditorFragment extends EditorFragment {
 
 	protected abstract boolean isCategoryExists(@NonNull String name);
 
+	protected int getEditToolbarTitleId() {
+		return R.string.edit_category;
+	}
+
+	protected int getAddToolbarTitleId() {
+		return R.string.favorite_category_add_new_title;
+	}
+
+	protected int getNameHintId() {
+		return R.string.favorite_category_name;
+	}
+
+	protected int getDuplicateNameErrorId() {
+		return R.string.favorite_category_dublicate_message;
+	}
+
+	@Nullable
+	protected String getInvalidNameError(@NonNull String trimmedName) {
+		return null;
+	}
+
 	@Override
 	protected void setupButtons() {
 		super.setupButtons();
@@ -109,8 +147,15 @@ public abstract class GroupEditorFragment extends EditorFragment {
 	@Override
 	protected void checkEnteredName(@NonNull String name, @NonNull View saveButton) {
 		String trimmedName = name.trim();
-		if (pointsGroup == null && isCategoryExists(trimmedName)) {
-			nameCaption.setError(getString(R.string.favorite_category_dublicate_message));
+		String invalidNameError = getInvalidNameError(trimmedName);
+		if (trimmedName.isEmpty()) {
+			nameCaption.setError(app.getString(R.string.please_provide_point_name_error));
+			saveButton.setEnabled(false);
+		} else if (invalidNameError != null) {
+			nameCaption.setError(invalidNameError);
+			saveButton.setEnabled(false);
+		} else if (pointsGroup == null && isCategoryExists(trimmedName)) {
+			nameCaption.setError(getString(getDuplicateNameErrorId()));
 			saveButton.setEnabled(false);
 		} else {
 			nameCaption.setError(null);

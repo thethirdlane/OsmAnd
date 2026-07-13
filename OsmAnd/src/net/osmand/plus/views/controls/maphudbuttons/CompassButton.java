@@ -4,13 +4,13 @@ import static androidx.core.view.accessibility.AccessibilityNodeInfoCompat.Acces
 import static androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_LONG_CLICK;
 import static net.osmand.plus.settings.enums.CompassMode.MANUALLY_ROTATED;
 import static net.osmand.plus.settings.enums.CompassMode.NORTH_IS_UP;
+import static net.osmand.plus.settings.enums.CompassVisibility.ALWAYS_HIDDEN;
 import static net.osmand.plus.settings.enums.CompassVisibility.ALWAYS_VISIBLE;
 import static net.osmand.plus.settings.enums.CompassVisibility.VISIBLE_IF_MAP_ROTATED;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.GestureDetector;
 import android.view.GestureDetector.SimpleOnGestureListener;
 import android.view.MotionEvent;
@@ -171,13 +171,12 @@ public class CompassButton extends MapButton {
 
 	@Override
 	protected boolean shouldShow() {
-		forceHideCompass = routeDialogOpened || visibilityHelper.shouldHideCompass();
+		CompassVisibility visibility = buttonState.getVisibility();
+		forceHideCompass = routeDialogOpened || visibilityHelper.shouldHideCompass() || visibility == ALWAYS_HIDDEN;
 		if (forceHideCompass) {
 			return false;
-		} else {
-			CompassVisibility visibility = buttonState.getVisibility();
-			return visibility == VISIBLE_IF_MAP_ROTATED ? mapActivity.getMapRotate() != 0 : visibility == ALWAYS_VISIBLE;
 		}
+		return visibility == VISIBLE_IF_MAP_ROTATED ? mapActivity.getMapRotate() != 0 : visibility == ALWAYS_VISIBLE;
 	}
 
 	@Override

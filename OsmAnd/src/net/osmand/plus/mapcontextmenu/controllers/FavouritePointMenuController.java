@@ -6,6 +6,7 @@ import android.graphics.drawable.Drawable;
 import android.text.SpannableString;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 
@@ -21,8 +22,11 @@ import net.osmand.plus.mapcontextmenu.MenuController;
 import net.osmand.plus.mapcontextmenu.builders.FavouritePointMenuBuilder;
 import net.osmand.plus.mapcontextmenu.editors.FavoritePointEditor;
 import net.osmand.plus.mapcontextmenu.editors.FavoritePointEditorFragment;
+import net.osmand.plus.mapcontextmenu.other.ShareMenu;
+import net.osmand.plus.mapcontextmenu.other.SharePoiParams;
 import net.osmand.plus.mapmarkers.MapMarker;
 import net.osmand.plus.mapmarkers.MapMarkersHelper;
+import net.osmand.plus.myplaces.favorites.FavoriteFolderFormatter;
 import net.osmand.plus.myplaces.favorites.FavouritesHelper;
 import net.osmand.plus.transport.TransportStopRoute;
 import net.osmand.plus.views.PointImageUtils;
@@ -40,33 +44,33 @@ public class FavouritePointMenuController extends MenuController {
 
 	private TransportStopController transportStopController;
 
-	public FavouritePointMenuController(@NonNull MapActivity mapActivity, @NonNull PointDescription pointDescription, @NonNull FavouritePoint fav) {
-		super(new FavouritePointMenuBuilder(mapActivity, fav), pointDescription, mapActivity);
-		this.fav = fav;
+	public FavouritePointMenuController(@NonNull MapActivity activity,
+			@NonNull PointDescription description,
+			@NonNull FavouritePoint point, @Nullable Amenity amenity) {
+		super(new FavouritePointMenuBuilder(activity, point, amenity), description, activity);
+		this.fav = point;
 
-		OsmandApplication app = mapActivity.getMyApplication();
+		OsmandApplication app = activity.getApp();
 		MapMarkersHelper markersHelper = app.getMapMarkersHelper();
 
-		mapMarker = markersHelper.getMapMarker(fav);
+		mapMarker = markersHelper.getMapMarker(point);
 		if (mapMarker == null) {
-			mapMarker = markersHelper.getMapMarker(new LatLon(fav.getLatitude(), fav.getLongitude()));
+			mapMarker = markersHelper.getMapMarker(new LatLon(point.getLatitude(), point.getLongitude()));
 		}
 		if (mapMarker != null && mapMarker.history && !app.getSettings().KEEP_PASSED_MARKERS_ON_MAP.get()) {
 			mapMarker = null;
 		}
 		if (mapMarker != null) {
 			MapMarkerMenuController markerMenuController =
-					new MapMarkerMenuController(mapActivity, mapMarker.getPointDescription(mapActivity), mapMarker);
+					new MapMarkerMenuController(activity, mapMarker.getPointDescription(activity), mapMarker);
 			leftTitleButtonController = markerMenuController.getLeftTitleButtonController();
 			rightTitleButtonController = markerMenuController.getRightTitleButtonController();
 		}
-		if (getObject() instanceof TransportStop) {
-			TransportStop stop = (TransportStop) getObject();
-			transportStopController = new TransportStopController(mapActivity, pointDescription, stop);
+		if (getObject() instanceof TransportStop stop) {
+			transportStopController = new TransportStopController(activity, description, stop);
 			transportStopController.processRoutes();
 		}
-
-		Amenity amenity = getBuilder().getAmenity();
+		amenity = getBuilder().getAmenity();
 		if (amenity != null) {
 			openingHoursInfo = OpeningHoursParser.getInfo(amenity.getOpeningHours());
 		}
@@ -132,8 +136,8 @@ public class FavouritePointMenuController extends MenuController {
 	public Drawable getRightIcon() {
 		MapActivity mapActivity = getMapActivity();
 		if (mapActivity != null) {
-			return PointImageUtils.getFromPoint(mapActivity.getMyApplication(),
-					mapActivity.getMyApplication().getFavoritesHelper().getColorWithCategory(fav,
+			return PointImageUtils.getFromPoint(mapActivity.getApp(),
+					mapActivity.getApp().getFavoritesHelper().getColorWithCategory(fav,
 							ContextCompat.getColor(mapActivity, R.color.color_favorite)), false, fav);
 		} else {
 			return null;
@@ -156,6 +160,16 @@ public class FavouritePointMenuController extends MenuController {
 		}
 	}
 
+	public void share(LatLon latLon, String title, String address) {
+		SharePoiParams params = new SharePoiParams(latLon);
+		params.addName(fav.getName());
+
+		MapActivity mapActivity = getMapActivity();
+		if (mapActivity != null) {
+			ShareMenu.show(latLon, title, address, ShareMenu.buildOsmandPoiUri(params), mapActivity);
+		}
+	}
+
 	@NonNull
 	@Override
 	public CharSequence getSubtypeStr() {
@@ -174,7 +188,7 @@ public class FavouritePointMenuController extends MenuController {
 	public Drawable getSecondLineTypeIcon() {
 		MapActivity mapActivity = getMapActivity();
 		if (mapActivity != null) {
-			OsmandApplication app = mapActivity.getMyApplication();
+			OsmandApplication app = mapActivity.getApp();
 			FavouritesHelper helper = app.getFavoritesHelper();
 			String group = fav.getCategory();
 			Drawable line2icon = helper.getGroup(group) != null ? helper.getColoredIconForGroup(group) : null;
@@ -200,6 +214,11 @@ public class FavouritePointMenuController extends MenuController {
 		return R.string.shared_string_edit;
 	}
 
+	@Nullable
+	public String getFavoriteCategory() {
+		return fav.getCategory();
+	}
+
 	@Override
 	public boolean isFavButtonEnabled() {
 		return !fav.isSpecialPoint();
@@ -210,22 +229,17 @@ public class FavouritePointMenuController extends MenuController {
 	public String getTypeStr() {
 		MapActivity mapActivity = getMapActivity();
 		if (mapActivity != null) {
-			return fav.getCategory().length() == 0 ?
-					mapActivity.getString(R.string.shared_string_favorites) : fav.getCategoryDisplayName(mapActivity);
+			return FavoriteFolderFormatter.getBreadcrumb(mapActivity, fav.getCategory());
 		} else {
 			return "";
 		}
-	}
-
-	private FavouritePointMenuBuilder getBuilder() {
-		return (FavouritePointMenuBuilder) builder;
 	}
 
 	@Override
 	public void addPlainMenuItems(String typeStr, PointDescription pointDescription, LatLon latLon) {
 		Amenity amenity = getBuilder().getAmenity();
 		if (amenity != null) {
-			AmenityMenuController.addTypeMenuItem(amenity, builder);
+			AmenityMenuController.addTypeMenuItem(getApplication(), amenity, builder);
 		}
 	}
 }

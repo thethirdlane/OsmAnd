@@ -21,14 +21,13 @@ import androidx.core.view.ViewCompat;
 import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
 
-import com.google.android.material.appbar.CollapsingToolbarLayout;
-
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
-import net.osmand.plus.base.BaseOsmAndFragment;
+import net.osmand.plus.base.BaseFullScreenFragment;
 import net.osmand.plus.helpers.AndroidUiHelper;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.enums.SpeedLimitWarningState;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.plus.settings.enums.WidgetSize;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
@@ -39,7 +38,7 @@ import net.osmand.plus.widgets.alert.CustomAlert;
 import net.osmand.plus.widgets.multistatetoggle.IconToggleButton;
 import net.osmand.plus.widgets.multistatetoggle.IconToggleButton.IconRadioItem;
 
-public class SpeedometerSettingsFragment extends BaseOsmAndFragment {
+public class SpeedometerSettingsFragment extends BaseFullScreenFragment {
 
 	public static final String TAG = SpeedometerSettingsFragment.class.getSimpleName();
 
@@ -67,11 +66,11 @@ public class SpeedometerSettingsFragment extends BaseOsmAndFragment {
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
 	                         @Nullable Bundle savedInstanceState) {
 		updateNightMode();
-		View view = themedInflater.inflate(R.layout.speedometer_settings_fragment, container, false);
+		View view = inflate(R.layout.speedometer_settings_fragment, container, false);
 		AndroidUtils.addStatusBarPadding21v(requireMyActivity(), view);
 
 		View speedometerView = view.findViewById(R.id.speedometer_widget);
-		widget = new SpeedometerWidget(app, getMapActivity(), speedometerView);
+		widget = new SpeedometerWidget(app, getMapActivity(), speedometerView, ThemeUsageContext.OVER_MAP);
 		widget.updatePreviewInfo(nightMode);
 
 		setupToolbar(view);
@@ -219,11 +218,6 @@ public class SpeedometerSettingsFragment extends BaseOsmAndFragment {
 		if (mapActivity != null) {
 			mapActivity.enableDrawer();
 		}
-	}
-
-	@Nullable
-	private MapActivity getMapActivity() {
-		return (MapActivity) getActivity();
 	}
 
 	public static void showInstance(@NonNull FragmentActivity activity) {

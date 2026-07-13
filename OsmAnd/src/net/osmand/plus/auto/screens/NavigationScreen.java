@@ -9,7 +9,6 @@ import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.car.app.CarContext;
-import androidx.car.app.CarToast;
 import androidx.car.app.model.Action;
 import androidx.car.app.model.ActionStrip;
 import androidx.car.app.model.CarColor;
@@ -40,6 +39,7 @@ import net.osmand.plus.routing.IRouteInformationListener;
 import net.osmand.plus.routing.RoutingHelper;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.enums.CompassMode;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.plus.views.OsmandMap;
 import net.osmand.plus.views.OsmandMapTileView;
 import net.osmand.plus.views.OsmandMapTileView.ElevationListener;
@@ -93,7 +93,7 @@ public final class NavigationScreen extends BaseAndroidAutoScreen implements Sur
 
 		OsmandApplication app = getApp();
 		alarmWidget = new AlarmWidget(app, null);
-		speedometerWidget = new SpeedometerWidget(app, null, null);
+		speedometerWidget = new SpeedometerWidget(app, ThemeUsageContext.MAP);
 		updateUse3DButton();
 		getLifecycle().addObserver(this);
 	}
@@ -142,7 +142,7 @@ public final class NavigationScreen extends BaseAndroidAutoScreen implements Sur
 			DrawSettings drawSettings = new DrawSettings(getCarContext().isDarkMode(), false, surfaceRenderer.getDensity());
 
 			alarmWidget.updateInfo(drawSettings, true);
-			speedometerWidget.updateInfo(drawSettings, true, drawSettings.isNightMode());
+			speedometerWidget.updateInfo(drawSettings, drawSettings.isNightMode());
 
 			Bitmap alarmBitmap = alarmWidget.getWidgetBitmap();
 			Bitmap speedometerBitmap = speedometerWidget.getWidgetBitmap();
@@ -231,7 +231,7 @@ public final class NavigationScreen extends BaseAndroidAutoScreen implements Sur
 
 	@NonNull
 	@Override
-	public Template onGetTemplate() {
+	public Template getTemplate() {
 		NavigationTemplate.Builder builder = new NavigationTemplate.Builder();
 		builder.setBackgroundColor(CarColor.SECONDARY);
 
@@ -274,18 +274,14 @@ public final class NavigationScreen extends BaseAndroidAutoScreen implements Sur
 		}
 		builder.setActionStrip(actionStripBuilder.build());
 
-		// Set the map action strip with the pan and zoom buttons.
-		//CarIcon.Builder panIconBuilder = new CarIcon.Builder(
-		//		IconCompat.createWithResource(getCarContext(), R.drawable.ic_action_item_move));
-		//if (mIsInPanMode) {
-		//	panIconBuilder.setTint(CarColor.BLUE);
-		//}
+		CarIcon.Builder panIconBuilder = new CarIcon.Builder(
+				IconCompat.createWithResource(getCarContext(), panMode ? R.drawable.ic_action_close : R.drawable.ic_action_map_pan));
 
 		ActionStrip.Builder mapActionStripBuilder = new ActionStrip.Builder();
 		builder.setMapActionStrip(
 				mapActionStripBuilder
 						.addAction(new Action.Builder(Action.PAN)
-								//.setIcon(panIconBuilder.build())
+								.setIcon(panIconBuilder.build())
 								.build())
 						.addAction(new Action.Builder()
 								.setIcon(

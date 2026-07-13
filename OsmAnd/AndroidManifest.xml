@@ -25,6 +25,7 @@
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 	<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+	<uses-permission android:name="androidx.car.app.MAP_TEMPLATES"/>
 
 	<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
@@ -132,9 +133,17 @@
 			</intent-filter>
 
 			<intent-filter>
+				<action android:name="android.intent.action.SEND" />
+				<action android:name="android.intent.action.SEND_MULTIPLE" />
+				<category android:name="android.intent.category.DEFAULT" />
+				<data android:mimeType="application/gpx+xml" />
+			</intent-filter>
+
+			<intent-filter>
 				<action android:name="android.intent.action.MAIN" />
 				<category android:name="android.intent.category.LAUNCHER" />
 				<category android:name="android.intent.category.MULTIWINDOW_LAUNCHER" />
+				<category android:name="android.intent.category.APP_MAPS" />
 			</intent-filter>
 
 			<!-- Open osmand.net/go links in OsmAnd app by default (without showing chooser dialog). -->
@@ -1134,6 +1143,7 @@
 
 		<!-- keep android:process on a separate line !! -->
 		<service
+			android:process="${applicationId}"
 			android:label="@string/process_navigation_service"
 			android:name="net.osmand.plus.NavigationService"
 			android:exported="true"

@@ -2,10 +2,13 @@ package net.osmand.plus.plugins.weather.widgets;
 
 import android.view.View;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
 import net.osmand.IndexConstants;
 import net.osmand.core.android.MapRendererView;
-import net.osmand.core.jni.PointI;
 import net.osmand.core.jni.Metric;
+import net.osmand.core.jni.PointI;
 import net.osmand.core.jni.WeatherTileResourcesManager;
 import net.osmand.core.jni.WeatherTileResourcesManager.IObtainValueAsyncCallback;
 import net.osmand.core.jni.WeatherTileResourcesManager.ValueRequest;
@@ -20,6 +23,7 @@ import net.osmand.plus.plugins.weather.WeatherHelper;
 import net.osmand.plus.plugins.weather.WeatherPlugin;
 import net.osmand.plus.plugins.weather.WeatherUtils;
 import net.osmand.plus.plugins.weather.enums.WeatherSource;
+import net.osmand.plus.plugins.weather.units.WeatherUnit;
 import net.osmand.plus.utils.NativeUtilities;
 import net.osmand.plus.views.layers.base.OsmandMapLayer;
 import net.osmand.plus.views.mapwidgets.WidgetType;
@@ -32,11 +36,8 @@ import java.io.File;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Locale;
 import java.util.TimeZone;
-
-import androidx.annotation.LayoutRes;
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 
 public class WeatherWidget extends SimpleWidget {
 
@@ -46,13 +47,6 @@ public class WeatherWidget extends SimpleWidget {
 
 	private static final int MAX_METERS_TO_PREVIOUS_FORECAST = 30 * 1000;
 	private static final int HIDE_OLD_DATA_DELAY = 1000;
-
-	private static final DateFormat forecastNamingFormat = new SimpleDateFormat("yyyyMMdd_HH00");
-	private static final DateFormat timeFormat = new SimpleDateFormat("d MMM HH:mm");
-
-	static {
-		forecastNamingFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
-	}
 
 	private final WeatherHelper weatherHelper;
 	private final IObtainValueAsyncCallback callback;
@@ -69,6 +63,7 @@ public class WeatherWidget extends SimpleWidget {
 	private PointI lastDisplayedForecastPoint31;
 	private long lastDisplayedForecastTime;
 	private WeatherPlugin plugin;
+	private WeatherSource cachedWeatherSource;
 
 	public WeatherWidget(@NonNull MapActivity mapActivity, @NonNull WidgetType widgetType, @Nullable String customId, @Nullable WidgetsPanel panel, short band) {
 		super(mapActivity, widgetType, customId, panel);
@@ -84,9 +79,13 @@ public class WeatherWidget extends SimpleWidget {
 			}
 		};
 		this.callback.swigReleaseOwnership();
+	}
+
+	@Override
+	protected void setupView(@NonNull View view) {
+		super.setupView(view);
 		setIcons(widgetType);
 		setText(NO_VALUE, null);
-		setOnClickListener(getOnClickListener());
 	}
 
 	@Override
@@ -123,13 +122,15 @@ public class WeatherWidget extends SimpleWidget {
 	public void updateContent(@Nullable String formattedValue) {
 		app.removeMessagesInUiThread(hideOldDataMessageId);
 		if (!Algorithms.isEmpty(formattedValue)) {
-			WeatherSource weatherSource = plugin.getWeatherSource();
+			WeatherUnit bandUnit = weatherBand.getBandUnit();
+			String unit = bandUnit != null ? bandUnit.getUnit(app) : null;
+			WeatherSource weatherSource = plugin != null ? plugin.getWeatherSource() : null;
 			if (weatherSource == WeatherSource.ECMWF &&
 					(widgetType == WidgetType.WEATHER_CLOUDS_WIDGET || widgetType == WidgetType.WEATHER_WIND_WIDGET) &&
 					"0".equals(formattedValue)) {
-				setText(NO_VALUE, weatherBand.getBandUnit().getUnit(app));
+				setText(NO_VALUE, unit);
 			} else {
-				setText(formattedValue, weatherBand.getBandUnit().getUnit(app));
+				setText(formattedValue, unit);
 			}
 		} else {
 			setText(NO_VALUE, null);
@@ -171,10 +172,15 @@ public class WeatherWidget extends SimpleWidget {
 		if (lastPotition31 == null || lastZoom == null || lastDateTime == 0) {
 			return true;
 		}
+		
+		WeatherSource currentWeatherSource = plugin.getWeatherSource();
+		boolean weatherSourceChanged = cachedWeatherSource != currentWeatherSource;
+		
 		return point31.getX() != lastPotition31.getX()
 				|| point31.getY() != lastPotition31.getY()
 				|| zoom.ordinal() != lastZoom.ordinal()
-				|| dateTime != lastDateTime;
+				|| dateTime != lastDateTime
+				|| weatherSourceChanged;
 	}
 
 	@Override
@@ -213,6 +219,7 @@ public class WeatherWidget extends SimpleWidget {
 			lastPotition31 = point31;
 			lastZoom = zoom;
 			lastDateTime = dateTime;
+			cachedWeatherSource = plugin.getWeatherSource();
 			resourcesManager.obtainValueAsync(request, callback.getBinding());
 		}
 	}
@@ -228,12 +235,12 @@ public class WeatherWidget extends SimpleWidget {
 		if (lastDisplayedForecastTime != 0) {
 			long forecastTime = lastDisplayedForecastTime / TRUNCATE_MINUTES * TRUNCATE_MINUTES;
 			stringBuilder.append("For date: ")
-					.append(timeFormat.format(new Date(forecastTime)));
+					.append(formatDisplayTime(forecastTime));
 
 			long lastDownload = getForecastDbLastDownload(lastDisplayedForecastTime);
 			if (lastDownload != 0) {
 				stringBuilder.append(". Downloaded: ")
-						.append(timeFormat.format(new Date(lastDownload)));
+						.append(formatDisplayTime(lastDownload));
 			}
 		}
 
@@ -253,7 +260,7 @@ public class WeatherWidget extends SimpleWidget {
 
 	private long getForecastDbLastDownload(long forecastSystemTime) {
 		File weatherForecastDir = app.getAppPath(IndexConstants.WEATHER_FORECAST_DIR);
-		String forecastDbFileName = forecastNamingFormat.format(new Date(forecastSystemTime)) + IndexConstants.TIFF_DB_EXT;
+		String forecastDbFileName = formatForecastDbFileName(forecastSystemTime) + IndexConstants.TIFF_DB_EXT;
 		File usedForecastDb = new File(weatherForecastDir, forecastDbFileName);
 
 		return usedForecastDb.exists() && usedForecastDb.canRead()
@@ -276,5 +283,17 @@ public class WeatherWidget extends SimpleWidget {
 		}
 
 		return "ready";
+	}
+
+	@NonNull
+	private static String formatForecastDbFileName(long forecastSystemTime) {
+		DateFormat format = new SimpleDateFormat("yyyyMMdd_HH00", Locale.US);
+		format.setTimeZone(TimeZone.getTimeZone("UTC"));
+		return format.format(new Date(forecastSystemTime));
+	}
+
+	@NonNull
+	private static String formatDisplayTime(long timeMs) {
+		return new SimpleDateFormat("d MMM HH:mm", Locale.getDefault()).format(new Date(timeMs));
 	}
 }

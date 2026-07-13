@@ -10,10 +10,12 @@ import net.osmand.Location;
 import net.osmand.data.LatLon;
 import net.osmand.data.RotatedTileBox;
 import net.osmand.plus.OsmandApplication;
-import net.osmand.plus.helpers.ColorPaletteHelper;
 import net.osmand.plus.render.MapRenderRepositories;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.plus.track.Gpx3DLinePositionType;
 import net.osmand.plus.track.Gpx3DVisualizationType;
+import net.osmand.shared.palette.domain.PaletteItem;
+import net.osmand.shared.palette.domain.category.GradientPaletteCategory;
 import net.osmand.shared.routing.Gpx3DWallColorType;
 import net.osmand.plus.track.Track3DStyle;
 import net.osmand.plus.track.helpers.GpxUiHelper;
@@ -144,12 +146,20 @@ public abstract class MultiColoringGeometryWay<C extends MultiColoringGeometryWa
 		GradientScaleType gradientScaleType = coloringType.toGradientScaleType();
 		if (gradientScaleType != null) {
 			ColorizationType colorizationType = gradientScaleType.toColorizationType();
-			ColorPaletteHelper paletteHelper = getContext().getApp().getColorPaletteHelper();
-			ColorPalette colorPalette = paletteHelper.getGradientColorPaletteSync(colorizationType, gradientPalette);
+			GradientPaletteCategory category = gradientScaleType.toPaletteCategory();
 
-			RouteColorize routeColorize = new RouteColorize(gpxFile, null, colorizationType, colorPalette, 0);
-			List<RouteColorizationPoint> points = routeColorize.getResult();
-			updateWay(new GradientGeometryWayProvider(routeColorize, points, null), createGradientStyles(points), tb);
+			boolean fixedValues = false;
+			ColorPalette colorPalette = null;
+
+			PaletteItem item = getContext().getApp().getPaletteRepository().findPaletteItem(category.getId(), gradientPalette);
+			if (item instanceof PaletteItem.Gradient gradient) {
+				fixedValues = gradient.isFixed();
+				colorPalette = gradient.getColorPalette();
+			}
+
+			RouteColorize colorize = new RouteColorize(gpxFile, null, colorizationType, colorPalette, 0, fixedValues);
+			List<RouteColorizationPoint> points = colorize.getResult();
+			updateWay(new GradientGeometryWayProvider(colorize, points, null), createGradientStyles(points), tb);
 		}
 	}
 
@@ -263,14 +273,14 @@ public abstract class MultiColoringGeometryWay<C extends MultiColoringGeometryWa
 
 	private RouteStatisticComputer createRouteStatisticsComputer() {
 		OsmandApplication app = getContext().getApp();
-		boolean night = app.getDaynightHelper().isNightModeForMapControls();
+		boolean nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.OVER_MAP);
 		RenderingRulesStorage currentRenderer = app.getRendererRegistry().getCurrentSelectedRenderer();
 		RenderingRulesStorage defaultRenderer = app.getRendererRegistry().defaultRender();
 		MapRenderRepositories maps = app.getResourceManager().getRenderer();
 		RenderingRuleSearchRequest currentSearchRequest =
-				maps.getSearchRequestWithAppliedCustomRules(currentRenderer, night);
+				maps.getSearchRequestWithAppliedCustomRules(currentRenderer, nightMode);
 		RenderingRuleSearchRequest defaultSearchRequest =
-				maps.getSearchRequestWithAppliedCustomRules(defaultRenderer, night);
+				maps.getSearchRequestWithAppliedCustomRules(defaultRenderer, nightMode);
 
 		return new RouteStatisticComputer(currentRenderer, defaultRenderer,
 				currentSearchRequest, defaultSearchRequest);
@@ -300,10 +310,10 @@ public abstract class MultiColoringGeometryWay<C extends MultiColoringGeometryWa
 
 	@Override
 	protected boolean addInitialPoint(RotatedTileBox tb, double topLatitude, double leftLongitude,
-	                                  double bottomLatitude, double rightLongitude, GeometryWayStyle<?> style,
-	                                  Location lastPoint, int startLocationIndex) {
+			double bottomLatitude, double rightLongitude, GeometryWayStyle<?> style,
+			Location lastPoint, int startLocationIndex, List<GeometryWayPoint> points) {
 		boolean added = super.addInitialPoint(tb, topLatitude, leftLongitude, bottomLatitude, rightLongitude,
-				style, lastPoint, startLocationIndex);
+				style, lastPoint, startLocationIndex, points);
 		if (!added) {
 			return false;
 		}

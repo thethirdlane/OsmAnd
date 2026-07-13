@@ -13,6 +13,8 @@ public class ShareSheetReceiver extends BroadcastReceiver {
 	public static final String KEY_SHARE_TITLE = "key_share_title";
 	public static final String KEY_SHARE_COORDINATES = "key_share_coordinates";
 	public static final String KEY_SHARE_GEOURL = "key_share_geourl";
+	public static final String KEY_SHARE_LINK = "key_share_link";
+	public static final String KEY_SHARE_LIST = "key_share_list";
 
 	@Override
 	public void onReceive(Context context, Intent intent) {
@@ -27,9 +29,10 @@ public class ShareSheetReceiver extends BroadcastReceiver {
 			String title = bundle.getString(KEY_SHARE_TITLE, "");
 			String coordinates = bundle.getString(KEY_SHARE_COORDINATES, "");
 			String geoUrl = bundle.getString(KEY_SHARE_GEOURL, "");
+			String link = bundle.getString(KEY_SHARE_LINK, "");
 
 			ShareItem item = ShareItem.values()[actionId];
-			ShareMenu.startAction(context, item, sms, address, title, coordinates, geoUrl);
+			ShareMenu.startAction(context, item, sms, address, title, coordinates, geoUrl, link);
 		}
 	}
 }

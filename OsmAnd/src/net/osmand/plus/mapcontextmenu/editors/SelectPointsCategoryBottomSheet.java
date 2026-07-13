@@ -13,7 +13,6 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.widget.AppCompatImageView;
 
-import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.base.MenuBottomSheetDialogFragment;
 import net.osmand.plus.base.bottomsheetmenu.BaseBottomSheetItem;
@@ -21,7 +20,6 @@ import net.osmand.plus.base.bottomsheetmenu.BottomSheetItemWithDescription;
 import net.osmand.plus.base.bottomsheetmenu.SimpleBottomSheetItem;
 import net.osmand.plus.base.bottomsheetmenu.simpleitems.DividerItem;
 import net.osmand.plus.helpers.AndroidUiHelper;
-import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
 import net.osmand.plus.utils.FontCache;
 import net.osmand.plus.utils.UiUtilities;
@@ -37,8 +35,6 @@ public abstract class SelectPointsCategoryBottomSheet extends MenuBottomSheetDia
 
 	protected static final String KEY_SELECTED_CATEGORY = "selected_category";
 
-	protected OsmandApplication app;
-
 	protected String selectedCategory;
 	protected Map<String, PointsGroup> pointsGroups = new LinkedHashMap<>();
 
@@ -51,8 +47,6 @@ public abstract class SelectPointsCategoryBottomSheet extends MenuBottomSheetDia
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		app = requiredMyApplication();
-
 		if (savedInstanceState != null) {
 			restoreState(savedInstanceState);
 		} else if (getArguments() != null) {
@@ -79,18 +73,16 @@ public abstract class SelectPointsCategoryBottomSheet extends MenuBottomSheetDia
 	@NonNull
 	private BaseBottomSheetItem createTitleItem() {
 		return new BottomSheetItemWithDescription.Builder()
-				.setDescription(getString(R.string.select_category_descr))
-				.setTitle(getString(R.string.favorite_category_select))
+				.setDescription(getString(getDescriptionStringId()))
+				.setTitle(getString(getTitleStringId()))
 				.setLayoutId(R.layout.bottom_sheet_item_title_with_description)
 				.create();
 	}
 
 	@NonNull
 	private BaseBottomSheetItem createAddNewCategoryItem() {
-		OsmandApplication app = requiredMyApplication();
-		View container = UiUtilities.getInflater(requireContext(), nightMode)
-				.inflate(R.layout.bottom_sheet_item_with_descr_64dp, null);
-		container.setMinimumHeight(getResources().getDimensionPixelSize(R.dimen.bottom_sheet_list_item_height));
+		View container = inflate(R.layout.bottom_sheet_item_with_descr_64dp);
+		container.setMinimumHeight(getDimensionPixelSize(R.dimen.bottom_sheet_list_item_height));
 
 		TextView title = container.findViewById(R.id.title);
 		title.setTypeface(FontCache.getMediumFont());
@@ -98,7 +90,7 @@ public abstract class SelectPointsCategoryBottomSheet extends MenuBottomSheetDia
 		AndroidUiHelper.updateVisibility(container.findViewById(R.id.description), false);
 
 		return new SimpleBottomSheetItem.Builder()
-				.setTitle(getString(R.string.add_group))
+				.setTitle(getString(getAddNewCategoryStringId()))
 				.setTitleColorId(ColorUtilities.getActiveColorId(nightMode))
 				.setIcon(getActiveIcon(R.drawable.ic_action_folder_add))
 				.setOnClickListener(v -> showAddNewCategoryFragment(listener))
@@ -107,13 +99,12 @@ public abstract class SelectPointsCategoryBottomSheet extends MenuBottomSheetDia
 	}
 
 	@NonNull
-	protected View createCategoryItem(PointsGroup pointsGroup, boolean isHidden) {
+	protected View createCategoryItem(@NonNull PointsGroup pointsGroup, boolean isHidden) {
 		Context context = requireContext();
-		int dp8 = AndroidUtils.dpToPx(context, 8f);
-		int dp16 = AndroidUtils.dpToPx(context, 16f);
+		int dp8 = dpToPx(8f);
+		int dp16 = dpToPx(16f);
 
-		View itemView = UiUtilities.getInflater(context, nightMode)
-				.inflate(R.layout.bottom_sheet_item_with_descr_and_radio_btn, null);
+		View itemView = inflate(R.layout.bottom_sheet_item_with_descr_and_radio_btn);
 
 		LinearLayout descriptionContainer = itemView.findViewById(R.id.descriptionContainer);
 		descriptionContainer.setPadding(dp16, 0, dp16, 0);
@@ -138,22 +129,54 @@ public abstract class SelectPointsCategoryBottomSheet extends MenuBottomSheetDia
 
 		TextView text = itemView.findViewById(R.id.title);
 		TextView description = itemView.findViewById(R.id.description);
-		String name = categoryName.length() == 0 ? getString(R.string.shared_string_favorites) : categoryName;
-		text.setText(name);
-		description.setText(String.valueOf(pointsGroup.getPoints().size()));
+		text.setText(getCategoryDisplayName(pointsGroup));
+		setupCategoryTitle(text, pointsGroup);
+		description.setText(getCategoryDescription(pointsGroup));
 
 		itemView.setOnClickListener(v -> {
+			PointsGroup selectedPointsGroup = prepareSelectedPointsGroup(pointsGroup);
 			PointEditor pointEditor = getPointEditor();
 			if (pointEditor != null) {
-				pointEditor.setPointsGroup(pointsGroup);
+				pointEditor.setPointsGroup(selectedPointsGroup);
 			}
 			if (listener != null) {
-				listener.onCategorySelected(pointsGroup);
+				listener.onCategorySelected(selectedPointsGroup);
 			}
 			dismiss();
 		});
 
 		return itemView;
+	}
+
+	protected int getTitleStringId() {
+		return R.string.favorite_category_select;
+	}
+
+	protected int getDescriptionStringId() {
+		return R.string.select_category_descr;
+	}
+
+	protected int getAddNewCategoryStringId() {
+		return R.string.add_group;
+	}
+
+	@NonNull
+	protected String getCategoryDisplayName(@NonNull PointsGroup pointsGroup) {
+		String categoryName = pointsGroup.getName();
+		return categoryName.isEmpty() ? getString(R.string.shared_string_favorites) : categoryName;
+	}
+
+	protected void setupCategoryTitle(@NonNull TextView title, @NonNull PointsGroup pointsGroup) {
+	}
+
+	@NonNull
+	protected String getCategoryDescription(@NonNull PointsGroup pointsGroup) {
+		return String.valueOf(pointsGroup.getPoints().size());
+	}
+
+	@NonNull
+	protected PointsGroup prepareSelectedPointsGroup(@NonNull PointsGroup pointsGroup) {
+		return pointsGroup;
 	}
 
 	@Override
@@ -176,5 +199,9 @@ public abstract class SelectPointsCategoryBottomSheet extends MenuBottomSheetDia
 	public interface CategorySelectionListener {
 
 		void onCategorySelected(PointsGroup pointsGroup);
+
+		default void onAddGroupOpened(){
+
+		}
 	}
 }

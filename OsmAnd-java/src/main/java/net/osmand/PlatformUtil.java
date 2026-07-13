@@ -34,8 +34,7 @@ public class PlatformUtil {
 
 	public static OsmandRegions getOsmandRegions() throws IOException {
 		if (osmandRegions == null) {
-			osmandRegions = new OsmandRegions();
-			osmandRegions.prepareFile();
+			osmandRegions = new OsmandRegions(null);
 		}
 		return osmandRegions;
 	}

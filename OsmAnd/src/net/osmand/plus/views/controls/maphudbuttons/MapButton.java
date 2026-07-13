@@ -41,24 +41,23 @@ import net.osmand.plus.helpers.AndroidUiHelper;
 import net.osmand.plus.quickaction.ButtonAppearanceParams;
 import net.osmand.plus.render.RenderingIcons;
 import net.osmand.plus.settings.backend.OsmandSettings;
+import net.osmand.plus.settings.enums.CompassMode;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
 import net.osmand.plus.utils.UiUtilities;
 import net.osmand.plus.views.OsmandMapTileView;
-import net.osmand.plus.views.controls.MapHudLayout.ViewChangeListener;
-import net.osmand.plus.views.controls.MapHudLayout.ViewChangeProvider;
+import net.osmand.plus.views.controls.ViewChangeProvider;
 import net.osmand.plus.views.layers.base.OsmandMapLayer;
 import net.osmand.plus.views.mapwidgets.WidgetsVisibilityHelper;
 import net.osmand.plus.views.mapwidgets.configure.buttons.MapButtonState;
+import net.osmand.plus.widgets.FrameLayoutEx;
+import net.osmand.shared.grid.ButtonPositionSize;
 import net.osmand.util.Algorithms;
 
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Set;
-
-public abstract class MapButton extends FrameLayout implements OnAttachStateChangeListener, ViewChangeProvider {
+public abstract class MapButton extends FrameLayoutEx implements OnAttachStateChangeListener, ViewChangeProvider {
 
 	protected final OsmandApplication app;
 	protected final OsmandSettings settings;
@@ -93,8 +92,6 @@ public abstract class MapButton extends FrameLayout implements OnAttachStateChan
 	protected int backgroundColor;
 	@ColorInt
 	protected int backgroundPressedColor;
-
-	private final Set<ViewChangeListener> viewChangeListeners = new HashSet<>();
 
 	public MapButton(@NonNull Context context) {
 		this(context, null);
@@ -141,13 +138,13 @@ public abstract class MapButton extends FrameLayout implements OnAttachStateChan
 		addOnAttachStateChangeListener(this);
 		setBackgroundColor(Color.TRANSPARENT);
 		setPadding((int) shadowPadding, (int) shadowPadding, (int) shadowPadding, (int) shadowPadding);
-		setNightMode(app.getDaynightHelper().isNightMode());
+		setNightMode(app.getDaynightHelper().isNightMode(ThemeUsageContext.MAP));
 	}
 
 	@NonNull
 	public String getButtonId() {
 		MapButtonState buttonState = getButtonState();
-		return buttonState != null ? buttonState.getId() : "";
+		return buttonState != null ? buttonState.getId() : AndroidUtils.getViewName(this);
 	}
 
 	@NonNull
@@ -158,10 +155,19 @@ public abstract class MapButton extends FrameLayout implements OnAttachStateChan
 	public void setMapActivity(@NonNull MapActivity mapActivity) {
 		this.mapActivity = mapActivity;
 		this.visibilityHelper = mapActivity.getWidgetsVisibilityHelper();
+		updatePositions(mapActivity);
+	}
 
+	public void updatePositions(@NonNull MapActivity mapActivity) {
 		MapButtonState buttonState = getButtonState();
 		if (buttonState != null) {
 			buttonState.updatePositions(mapActivity);
+		}
+	}
+
+	public void updatePositions() {
+		if (mapActivity != null) {
+			updatePositions(mapActivity);
 		}
 	}
 
@@ -177,7 +183,7 @@ public abstract class MapButton extends FrameLayout implements OnAttachStateChan
 	public ButtonAppearanceParams getAppearanceParams() {
 		MapButtonState buttonState = getButtonState();
 		if (buttonState != null) {
-			return useDefaultAppearance ? buttonState.createDefaultAppearanceParams() : buttonState.createAppearanceParams();
+			return useDefaultAppearance ? buttonState.createDefaultAppearanceParams(nightMode) : buttonState.createAppearanceParams(nightMode);
 		}
 		return createDefaultAppearanceParams();
 	}
@@ -285,6 +291,19 @@ public abstract class MapButton extends FrameLayout implements OnAttachStateChan
 			this.appearanceParams = params;
 			this.invalidated = false;
 			updateContent();
+		}
+		updateCustomDrawable();
+	}
+
+	private void updateCustomDrawable(){
+		if (imageView.getDrawable() instanceof CompassDrawable drawable) {
+			float mapRotation = mapActivity.getMapRotate();
+			if (drawable.getLinkedToMapRotation() && drawable.getMapRotation() != mapRotation) {
+				drawable.setMapRotation(mapRotation);
+				imageView.invalidate();
+			}
+			CompassMode compassMode = settings.getCompassMode();
+			setContentDescription(app.getString(compassMode.getTitleId()));
 		}
 	}
 
@@ -418,7 +437,7 @@ public abstract class MapButton extends FrameLayout implements OnAttachStateChan
 	public boolean updateVisibility() {
 		MapButtonState buttonState = getButtonState();
 		boolean enabled = buttonState != null && buttonState.isEnabled();
-		return updateVisibility(alwaysVisible || enabled && shouldShow());
+		return updateVisibility(alwaysVisible || enabled & shouldShow());
 	}
 
 	protected boolean updateVisibility(boolean visible) {
@@ -446,24 +465,6 @@ public abstract class MapButton extends FrameLayout implements OnAttachStateChan
 	@NonNull
 	public ButtonAppearanceParams createDefaultAppearanceParams() {
 		return new ButtonAppearanceParams("ic_quick_action", BIG_SIZE_DP, TRANSPARENT_ALPHA, ROUND_RADIUS_DP);
-	}
-
-	@NonNull
-	@Override
-	public Collection<ViewChangeListener> getViewChangeListeners() {
-		return viewChangeListeners;
-	}
-
-	@Override
-	protected void onSizeChanged(int w, int h, int oldw, int oldh) {
-		super.onSizeChanged(w, h, oldw, oldh);
-		notifySizeChanged(this, w, h, oldw, oldh);
-	}
-
-	@Override
-	protected void onVisibilityChanged(@NonNull View changedView, int visibility) {
-		super.onVisibilityChanged(changedView, visibility);
-		notifyVisibilityChanged(changedView, visibility);
 	}
 
 	public int getSize() {

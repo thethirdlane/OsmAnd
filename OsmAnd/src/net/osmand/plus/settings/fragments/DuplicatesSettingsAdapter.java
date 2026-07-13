@@ -20,13 +20,12 @@ import net.osmand.plus.R;
 import net.osmand.plus.avoidroads.AvoidRoadInfo;
 import net.osmand.plus.helpers.ColorsPaletteUtils;
 import net.osmand.plus.helpers.FileNameTranslationHelper;
-import net.osmand.plus.helpers.SearchHistoryHelper.HistoryEntry;
+import net.osmand.plus.search.history.HistoryEntry;
 import net.osmand.plus.mapmarkers.ItineraryType;
 import net.osmand.plus.mapmarkers.MapMarker;
 import net.osmand.plus.mapmarkers.MapMarkersGroup;
 import net.osmand.plus.myplaces.favorites.FavoriteGroup;
 import net.osmand.plus.onlinerouting.engine.OnlineRoutingEngine;
-import net.osmand.plus.plugins.audionotes.AudioVideoNotesPlugin;
 import net.osmand.plus.plugins.audionotes.Recording;
 import net.osmand.plus.poi.PoiUIFilter;
 import net.osmand.plus.profiles.ProfileIconColors;
@@ -35,10 +34,9 @@ import net.osmand.plus.render.RenderingIcons;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.ApplicationModeBean;
 import net.osmand.plus.utils.AndroidUtils;
-import net.osmand.plus.utils.ColorUtilities;
 import net.osmand.plus.utils.UiUtilities;
 import net.osmand.plus.views.mapwidgets.configure.buttons.ButtonStateBean;
-import net.osmand.plus.views.mapwidgets.configure.buttons.QuickActionButtonState;
+import net.osmand.shared.gpx.GpxDirItem;
 import net.osmand.shared.gpx.GpxHelper;
 import net.osmand.util.Algorithms;
 
@@ -155,7 +153,7 @@ public class DuplicatesSettingsAdapter extends RecyclerView.Adapter<RecyclerView
 					itemHolder.title.setText(GpxHelper.INSTANCE.getGpxTitle(file.getName()));
 					itemHolder.icon.setImageDrawable(uiUtilities.getIcon(R.drawable.ic_action_route_distance, activeColorRes));
 				} else if (file.getAbsolutePath().contains(IndexConstants.AV_INDEX_DIR)) {
-					int iconId = AudioVideoNotesPlugin.getIconIdForRecordingFile(file);
+					int iconId = Recording.getIconIdForRecordingFile(file);
 					if (iconId == -1) {
 						iconId = R.drawable.ic_action_photo_dark;
 					}
@@ -165,7 +163,7 @@ public class DuplicatesSettingsAdapter extends RecyclerView.Adapter<RecyclerView
 					itemHolder.icon.setImageDrawable(uiUtilities.getIcon(R.drawable.ic_action_folder_favorites, activeColorRes));
 				} else if (fileSubtype == FileSubtype.COLOR_PALETTE) {
 					itemHolder.icon.setImageDrawable(uiUtilities.getIcon(fileSubtype.getIconId(), activeColorRes));
-					itemHolder.title.setText(ColorsPaletteUtils.getPaletteName(file));
+					itemHolder.title.setText(ColorsPaletteUtils.getPaletteName(app, file));
 					itemHolder.subTitle.setText(ColorsPaletteUtils.getPaletteTypeName(app, file));
 				} else if (fileSubtype.isMap()
 						|| fileSubtype == FileSubtype.TTS_VOICE
@@ -200,6 +198,9 @@ public class DuplicatesSettingsAdapter extends RecyclerView.Adapter<RecyclerView
 				}
 				itemHolder.title.setText(groupName);
 				itemHolder.icon.setImageDrawable(app.getUIUtilities().getIcon(R.drawable.ic_action_flag, activeColorRes));
+			} else if (currentItem instanceof GpxDirItem dirItem) {
+				itemHolder.title.setText(GpxHelper.INSTANCE.getGpxTitle(dirItem.getFile().name()));
+				itemHolder.icon.setImageDrawable(uiUtilities.getIcon(R.drawable.ic_action_route_distance, activeColorRes));
 			}
 			itemHolder.divider.setVisibility(shouldShowDivider(position) ? View.VISIBLE : View.GONE);
 		}

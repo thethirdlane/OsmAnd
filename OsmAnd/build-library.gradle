@@ -1,13 +1,16 @@
 apply plugin: 'com.android.library'
 apply plugin: 'ivy-publish'
 apply from: 'build-common.gradle'
+apply from: rootProject.file("versions.gradle")
 
 apply plugin: 'kotlin-android'
+apply plugin: 'kotlin-parcelize'
+apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 
 android {
 
 	defaultConfig {
-		minSdkVersion 24
+		minSdkVersion osmand_minSdk
 	}
 
 	lintOptions {
@@ -21,6 +24,7 @@ android {
 
 	buildFeatures {
 		aidl true
+		compose true
 	}
 
 	sourceSets {
@@ -53,28 +57,23 @@ android {
 			osmandTask.dependsOn(copyBundledAssets)
 			osmandTask.dependsOn(copy3DModels)
 			osmandTask.dependsOn(collectVoiceAssets)
+			osmandTask.dependsOn(downloadStarsDb)
 			osmandTask.dependsOn(downloadWorldMiniBasemap)
 		}
 		def mapSourceSetPathsName= "map${taskName}SourceSetPaths"
 		tasks.named(mapSourceSetPathsName).configure { osmandTask ->
 			println(osmandTask.getName())
-			osmandTask.dependsOn(copyMapShaderIcons)
-			osmandTask.dependsOn(copyMapPOIIcons)
-			osmandTask.dependsOn(copyLargePOIIcons)
+			osmandTask.dependsOn(copyIcons)
 		}
 		def packageResources= "package${taskName}Resources"
 		tasks.named(packageResources).configure { osmandTask ->
 			println(osmandTask.getName())
-			osmandTask.dependsOn(copyMapShaderIcons)
-			osmandTask.dependsOn(copyMapPOIIcons)
-			osmandTask.dependsOn(copyLargePOIIcons)
+			osmandTask.dependsOn(copyIcons)
 		}
 		def generateResources= "generate${taskName}Resources"
 		tasks.named(generateResources).configure { osmandTask ->
 			println(osmandTask.getName() + " generate resources")
-			osmandTask.dependsOn(copyMapShaderIcons)
-			osmandTask.dependsOn(copyMapPOIIcons)
-			osmandTask.dependsOn(copyLargePOIIcons)
+			osmandTask.dependsOn(copyIcons)
 		}
 	}
 }
@@ -108,6 +107,3 @@ project.afterEvaluate {
 	}
 }
 
-dependencies {
-	implementation 'com.google.android.gms:play-services-location:21.3.0'
-}

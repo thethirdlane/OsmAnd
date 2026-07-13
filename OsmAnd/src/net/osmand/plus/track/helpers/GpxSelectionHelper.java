@@ -5,19 +5,22 @@ import static net.osmand.shared.gpx.GpxParameter.JOIN_SEGMENTS;
 import static net.osmand.shared.gpx.GpxParameter.SHOW_AS_MARKERS;
 
 import android.app.Activity;
-import android.os.AsyncTask;
 import android.os.AsyncTask.Status;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import net.osmand.CallbackWithObject;
+import net.osmand.Collator;
 import net.osmand.IProgress;
+import net.osmand.OsmAndCollator;
 import net.osmand.PlatformUtil;
 import net.osmand.data.LatLon;
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
-import net.osmand.plus.helpers.SearchHistoryHelper;
+import net.osmand.plus.plugins.PluginsHelper;
+import net.osmand.plus.plugins.development.OsmandDevelopmentPlugin;
 import net.osmand.plus.mapmarkers.MapMarkersGroup;
 import net.osmand.plus.mapmarkers.MapMarkersHelper;
 import net.osmand.plus.plugins.monitoring.SavingTrackHelper;
@@ -70,6 +73,7 @@ public class GpxSelectionHelper {
 	@NonNull
 	private List<SelectedGpxFile> selectedGPXFiles = new ArrayList<>();
 	private final Map<GpxFile, Long> selectedGpxFilesBackUp = new ConcurrentHashMap<>();
+	private final Collator collator = OsmAndCollator.primaryCollator();
 	private List<WeakReference<SelectGpxTaskListener>> listeners = new ArrayList<>();
 	private SelectGpxTask selectGpxTask;
 
@@ -99,21 +103,19 @@ public class GpxSelectionHelper {
 			if (!Algorithms.isEmpty(gpxEntry.getKey().getPath())) {
 				File file = new File(gpxEntry.getKey().getPath());
 				if (file.exists() && !file.isDirectory()) {
-					GpxSelectionParams selectionParams = GpxSelectionParams.getDefaultSelectionParams();
 					if (file.lastModified() > gpxEntry.getValue()) {
-						new GpxFileLoaderTask(file, null, result -> {
+						OsmAndTaskManager.executeTask(new GpxFileLoaderTask(file, null, result -> {
 							if (result != null) {
-								selectGpxFile(result, selectionParams);
+								selectGpxFile(result, GpxSelectionParams.getDefaultSelectionParams());
 							}
 							return true;
-						}).execute();
+						}));
 					} else {
-						selectGpxFile(gpxEntry.getKey(), selectionParams);
+						selectGpxFile(gpxEntry.getKey(), GpxSelectionParams.getDefaultSelectionParams());
 					}
 				}
 			} else if (gpxEntry.getKey().equals(savingTrackHelper.getCurrentTrack().gpxFile)) {
-				GpxSelectionParams selectionParams = GpxSelectionParams.getDefaultSelectionParams();
-				selectGpxFile(gpxEntry.getKey(), selectionParams);
+				selectGpxFile(gpxEntry.getKey(), GpxSelectionParams.getDefaultSelectionParams());
 			}
 			saveCurrentSelections();
 		}
@@ -186,6 +188,29 @@ public class GpxSelectionHelper {
 		return null;
 	}
 
+	@Nullable
+	public GpxFile getBackupedFileByPath(@NonNull String path) {
+		for (Entry<GpxFile, Long> entry : selectedGpxFilesBackUp.entrySet()) {
+			GpxFile gpxFile = entry.getKey();
+			if (Algorithms.stringsEqual(path, gpxFile.getPath())) {
+				File file = new File(path);
+				boolean modified = file.lastModified() > entry.getValue();
+				return file.isFile() && !modified ? gpxFile : null;
+			}
+		}
+		return null;
+	}
+
+	@NonNull
+	public List<SelectedGpxFile> getSelectedFilesByDir(@NonNull String dirPath) {
+		List<SelectedGpxFile> list = new ArrayList<>();
+		for (SelectedGpxFile selectedGpxFile : selectedGPXFiles) {
+			if (selectedGpxFile.getGpxFile().getPath().startsWith(dirPath)) {
+				list.add(selectedGpxFile);
+			}
+		}
+		return list;
+	}
 
 	/**
 	 * @deprecated Use the {@link #getSelectedFileByPath(String filePath)} method.
@@ -240,6 +265,7 @@ public class GpxSelectionHelper {
 				boolean save = false;
 				for (int i = 0; i < ar.length(); i++) {
 					JSONObject obj = ar.getJSONObject(i);
+					boolean backup = obj.has(BACKUP);
 					boolean selectedByUser = obj.optBoolean(SELECTED_BY_USER, true);
 					if (obj.has(FILE)) {
 						File fl = new File(obj.getString(FILE));
@@ -253,7 +279,7 @@ public class GpxSelectionHelper {
 						}
 						if (gpx.getError() != null) {
 							save = true;
-						} else if (obj.has(BACKUP)) {
+						} else if (backup) {
 							selectedGpxFilesBackUp.put(gpx, gpx.getModifiedTime());
 						} else {
 							save = true;
@@ -268,7 +294,13 @@ public class GpxSelectionHelper {
 					} else if (obj.has(CURRENT_TRACK)) {
 						SelectedGpxFile file = savingTrackHelper.getCurrentTrack();
 						file.selectedByUser = selectedByUser;
-						updateSelected(true, file);
+
+						if (backup) {
+							long backupTime = obj.optLong(BACKUP_MODIFIED_TIME, file.getModifiedTime());
+							selectedGpxFilesBackUp.put(file.getGpxFile(), backupTime);
+						} else {
+							updateSelected(true, file);
+						}
 					}
 				}
 				if (save) {
@@ -308,7 +340,7 @@ public class GpxSelectionHelper {
 		String relativePath = GpxUiHelper.getGpxFileRelativePath(app, gpx.getPath());
 		GPXInfo gpxInfo = GpxUiHelper.getGpxInfoByFileName(app, relativePath);
 		if (gpxInfo != null) {
-			SearchHistoryHelper.getInstance(app).addNewItemToHistory(gpxInfo, HistorySource.SEARCH);
+			app.getSearchHistoryHelper().addNewItemToHistory(gpxInfo, HistorySource.SEARCH);
 		}
 	}
 
@@ -335,22 +367,24 @@ public class GpxSelectionHelper {
 				array.put(obj);
 			}
 		}
-		for (Map.Entry<GpxFile, Long> entry : selectedGpxFilesBackUp.entrySet()) {
-			if (entry != null) {
-				try {
-					JSONObject obj = new JSONObject();
-					if (Algorithms.isEmpty(entry.getKey().getPath())) {
-						obj.put(CURRENT_TRACK, true);
-					} else {
-						obj.put(FILE, entry.getKey().getPath());
-					}
-					obj.put(SELECTED_BY_USER, true);
-					obj.put(BACKUP, true);
-					obj.put(BACKUP_MODIFIED_TIME, entry.getValue());
-					array.put(obj);
-				} catch (JSONException e) {
-					log.error(e);
+		List<GpxFile> gpxFiles = new ArrayList<>(selectedGpxFilesBackUp.keySet());
+		gpxFiles.sort((o1, o2) -> collator.compare(o1.getPath(), o2.getPath()));
+
+		for (GpxFile gpxFile : gpxFiles) {
+			try {
+				String path = gpxFile.getPath();
+				JSONObject obj = new JSONObject();
+				if (Algorithms.isEmpty(path)) {
+					obj.put(CURRENT_TRACK, true);
+				} else {
+					obj.put(FILE, path);
 				}
+				obj.put(SELECTED_BY_USER, true);
+				obj.put(BACKUP, true);
+				obj.putOpt(BACKUP_MODIFIED_TIME, selectedGpxFilesBackUp.get(gpxFile));
+				array.put(obj);
+			} catch (JSONException e) {
+				log.error(e);
 			}
 		}
 		app.getSettings().SELECTED_GPX.set(array.toString());
@@ -432,11 +466,6 @@ public class GpxSelectionHelper {
 		}
 	}
 
-	public void clearPoints(GpxFile gpxFile) {
-		gpxFile.clearPoints();
-		syncGpxWithMarkers(gpxFile);
-	}
-
 	public void addPoint(WptPt point, GpxFile gpxFile) {
 		gpxFile.addPoint(point);
 		syncGpxWithMarkers(gpxFile);
@@ -453,7 +482,7 @@ public class GpxSelectionHelper {
 		return res;
 	}
 
-	private void syncGpxWithMarkers(GpxFile gpxFile) {
+	public void syncGpxWithMarkers(GpxFile gpxFile) {
 		MapMarkersHelper mapMarkersHelper = app.getMapMarkersHelper();
 		MapMarkersGroup group = mapMarkersHelper.getMarkersGroup(gpxFile);
 		if (group != null) {
@@ -508,7 +537,7 @@ public class GpxSelectionHelper {
 			selectGpxTask.cancel(false);
 		}
 		selectGpxTask = new SelectGpxTask(app, selectedPaths, getGpxSelectionListener());
-		selectGpxTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+		OsmAndTaskManager.executeTask(selectGpxTask);
 	}
 
 	@NonNull

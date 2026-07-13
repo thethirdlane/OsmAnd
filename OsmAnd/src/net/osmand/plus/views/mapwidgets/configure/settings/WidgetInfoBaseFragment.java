@@ -2,10 +2,9 @@ package net.osmand.plus.views.mapwidgets.configure.settings;
 
 import static net.osmand.plus.views.mapwidgets.MapWidgetRegistry.ENABLED_MODE;
 import static net.osmand.plus.views.mapwidgets.MapWidgetRegistry.MATCHING_PANELS_MODE;
+import static net.osmand.plus.views.mapwidgets.configure.dialogs.ConfigureScreenFragment.SCREEN_LAYOUT_MODE;
 
-import android.app.Activity;
 import android.graphics.drawable.Drawable;
-import android.os.Build;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -28,12 +27,16 @@ import net.osmand.aidl.AidlMapWidgetWrapper;
 import net.osmand.aidl.ConnectedApp;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
-import net.osmand.plus.base.BaseOsmAndFragment;
+import net.osmand.plus.base.BaseFullScreenFragment;
 import net.osmand.plus.base.dialog.DialogManager;
 import net.osmand.plus.helpers.AndroidUiHelper;
 import net.osmand.plus.settings.backend.ApplicationMode;
+import net.osmand.plus.settings.enums.ScreenLayoutMode;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTargetsCollection;
+import net.osmand.plus.utils.InsetsUtils;
 import net.osmand.plus.utils.UiUtilities;
 import net.osmand.plus.views.layers.MapInfoLayer;
 import net.osmand.plus.views.mapwidgets.MapWidgetInfo;
@@ -46,6 +49,7 @@ import net.osmand.plus.views.mapwidgets.banner.WidgetPromoBanner;
 import net.osmand.plus.views.mapwidgets.configure.panel.ConfigureWidgetsController;
 import net.osmand.plus.views.mapwidgets.configure.panel.ConfigureWidgetsFragment;
 import net.osmand.plus.views.mapwidgets.configure.panel.WidgetsConfigurationChangeListener;
+import net.osmand.plus.views.mapwidgets.dialogs.DeleteWidgetConfirmationController;
 import net.osmand.plus.views.mapwidgets.widgets.MapWidget;
 import net.osmand.plus.views.mapwidgets.widgetstates.WidgetState;
 import net.osmand.plus.widgets.dialogbutton.DialogButton;
@@ -61,7 +65,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-public class WidgetInfoBaseFragment extends BaseOsmAndFragment {
+public class WidgetInfoBaseFragment extends BaseFullScreenFragment {
 
 	public static final String KEY_APP_MODE = "app_mode";
 	public static final String KEY_WIDGET_ID = "widget_id";
@@ -81,6 +85,8 @@ public class WidgetInfoBaseFragment extends BaseOsmAndFragment {
 	private MenuProvider menuProvider;
 	protected View view;
 
+	protected ScreenLayoutMode layoutMode;
+
 	private boolean addNewWidgetMode = false;
 	protected boolean isVerticalPanel;
 
@@ -95,6 +101,7 @@ public class WidgetInfoBaseFragment extends BaseOsmAndFragment {
 		widgetRegistry = app.getOsmandMap().getMapLayers().getMapWidgetRegistry();
 		DialogManager dialogManager = app.getDialogManager();
 		controller = (ConfigureWidgetsController) dialogManager.findController(ConfigureWidgetsController.PROCESS_ID);
+		DeleteWidgetConfirmationController.askUpdateListener(app, this::dismiss);
 
 		createMenuProvider();
 	}
@@ -109,10 +116,7 @@ public class WidgetInfoBaseFragment extends BaseOsmAndFragment {
 					deleteAction.setIcon(getContentIcon(R.drawable.ic_action_delete_outlined));
 					deleteAction.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
 					deleteAction.setOnMenuItemClickListener(item -> {
-						if (widgetInfo != null) {
-							widgetRegistry.enableDisableWidgetForMode(appMode, widgetInfo, false, true);
-							dismiss();
-						}
+						showDeleteWidgetConfirmationDialog();
 						return true;
 					});
 
@@ -150,6 +154,12 @@ public class WidgetInfoBaseFragment extends BaseOsmAndFragment {
 		};
 	}
 
+	private void showDeleteWidgetConfirmationDialog() {
+		callActivity(activity -> { if (widgetInfo != null) {
+			DeleteWidgetConfirmationController.showDialog(activity, appMode, widgetInfo, isUsedOnMap(), this::dismiss, layoutMode);
+		}});
+	}
+
 	private void showDuplicateAddedSnackbar() {
 		Snackbar snackbar = Snackbar.make(view, R.string.duplacate_widget_added_snackbar, Snackbar.LENGTH_LONG);
 		UiUtilities.setupSnackbar(snackbar, nightMode);
@@ -165,7 +175,7 @@ public class WidgetInfoBaseFragment extends BaseOsmAndFragment {
 
 		int filter = ENABLED_MODE | MATCHING_PANELS_MODE;
 		List<WidgetsPanel> panels = Collections.singletonList(widgetPanel);
-		List<MapWidgetInfo> widgetInfos = new ArrayList<>(widgetRegistry.getWidgetsForPanel(mapActivity, appMode, filter, panels));
+		List<MapWidgetInfo> widgetInfos = new ArrayList<>(widgetRegistry.getWidgetsForPanel(mapActivity, appMode, layoutMode, filter, panels));
 
 		int index = widgetInfos.indexOf(widgetInfo);
 		if (index == -1) {
@@ -175,17 +185,17 @@ public class WidgetInfoBaseFragment extends BaseOsmAndFragment {
 		WidgetType widgetType = getWidget();
 		String duplicateId = WidgetType.getDuplicateWidgetId(widgetType);
 		MapWidget duplicateWidget = new MapWidgetsFactory(mapActivity).createMapWidget(duplicateId, widgetType, widgetPanel);
-		WidgetInfoCreator creator = new WidgetInfoCreator(app, appMode);
+		WidgetInfoCreator creator = new WidgetInfoCreator(app, appMode, layoutMode);
 		MapWidgetInfo duplicateWidgetInfo = creator.askCreateWidgetInfo(duplicateId, duplicateWidget, widgetType, widgetPanel);
 		if (duplicateWidgetInfo == null) {
 			return null;
 		}
-		settings.CUSTOM_WIDGETS_KEYS.addModeValue(appMode, duplicateId);
+		settings.getCustomWidgetsKeys(layoutMode).addModeValue(appMode, duplicateId);
 		WidgetState widgetState = widgetInfo.getWidgetState();
 		if (widgetState != null) {
 			widgetState.copyPrefs(appMode, duplicateId);
 		}
-		duplicateWidgetInfo.enableDisableForMode(appMode, true);
+		duplicateWidgetInfo.enableDisableForMode(appMode, true, layoutMode);
 		widgetInfo.widget.copySettings(appMode, duplicateId);
 
 		Map<Integer, List<String>> pagedOrder = new LinkedHashMap<>();
@@ -198,7 +208,7 @@ public class WidgetInfoBaseFragment extends BaseOsmAndFragment {
 			}
 		}
 
-		widgetPanel.setWidgetsOrder(appMode, new ArrayList<>(pagedOrder.values()), settings);
+		widgetPanel.setWidgetsOrder(appMode, new ArrayList<>(pagedOrder.values()), settings, layoutMode);
 
 		MapInfoLayer mapInfoLayer = app.getOsmandMap().getMapLayers().getMapInfoLayer();
 		if (mapInfoLayer != null) {
@@ -219,8 +229,11 @@ public class WidgetInfoBaseFragment extends BaseOsmAndFragment {
 		}
 
 		updateNightMode();
-		view = themedInflater.inflate(R.layout.widget_settings_info_fragment, container, false);
-		if (Build.VERSION.SDK_INT < 30) {
+		view = inflate(R.layout.widget_settings_info_fragment, container, false);
+		if (widgetInfo == null) {
+			return view;
+		}
+		if (!InsetsUtils.isEdgeToEdgeSupported()) {
 			AndroidUtils.addStatusBarPadding21v(requireMyActivity(), view);
 		}
 		promoBannerContainer = view.findViewById(R.id.promo_banner_container);
@@ -228,12 +241,19 @@ public class WidgetInfoBaseFragment extends BaseOsmAndFragment {
 
 		setupToolbar();
 		setupInfo();
-		setupTopContent(themedInflater, view.findViewById(R.id.top_settings_container));
-		setupMainContent(themedInflater, view.findViewById(R.id.main_settings_container));
+		setupTopContent(view.findViewById(R.id.top_settings_container));
+		setupMainContent(view.findViewById(R.id.main_settings_container));
 		setupApplyButton();
 		updateStatusBar();
 
 		return view;
+	}
+
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.replace(InsetTarget.createCollapsingAppBar(R.id.appbar));
+		return collection;
 	}
 
 	protected void initParams(@NonNull Bundle bundle) {
@@ -242,6 +262,8 @@ public class WidgetInfoBaseFragment extends BaseOsmAndFragment {
 		addNewWidgetMode = bundle.getBoolean(KEY_ADD_MODE, false);
 		widgetPanel = WidgetsPanel.valueOf(bundle.getString(KEY_SELECTED_PANEL));
 		isVerticalPanel = widgetPanel.isPanelVertical();
+
+		layoutMode = AndroidUtils.getSerializable(bundle, SCREEN_LAYOUT_MODE, ScreenLayoutMode.class);
 
 		if (addNewWidgetMode && controller != null) {
 			MapWidgetInfo controllerAddedWidgetInfo = controller.getAddedWidget();
@@ -309,16 +331,15 @@ public class WidgetInfoBaseFragment extends BaseOsmAndFragment {
 		}
 	}
 
-	protected void setupTopContent(@NonNull LayoutInflater themedInflater, @NonNull ViewGroup container) {
-
+	protected void setupTopContent(@NonNull ViewGroup container) {
 	}
 
-	protected void setupMainContent(@NonNull LayoutInflater themedInflater, @NonNull ViewGroup container) {
+	protected void setupMainContent(@NonNull ViewGroup container) {
 		AndroidUiHelper.updateVisibility(view.findViewById(R.id.main_container), false);
 	}
 
 	private void setupApplyButton() {
-		View buttonsContainer = view.findViewById(R.id.buttons_container);
+		View buttonsContainer = view.findViewById(R.id.bottom_buttons_container);
 		if (addNewWidgetMode) {
 			buttonsContainer.setBackgroundColor(ColorUtilities.getListBgColor(app, nightMode));
 			DialogButton applyButton = view.findViewById(R.id.dismiss_button);
@@ -373,6 +394,10 @@ public class WidgetInfoBaseFragment extends BaseOsmAndFragment {
 		outState.putString(KEY_WIDGET_ID, widgetId);
 		outState.putBoolean(KEY_ADD_MODE, addNewWidgetMode);
 		outState.putString(KEY_SELECTED_PANEL, widgetPanel.name());
+
+		if (layoutMode != null) {
+			outState.putSerializable(SCREEN_LAYOUT_MODE, layoutMode);
+		}
 	}
 
 	@Override
@@ -391,14 +416,10 @@ public class WidgetInfoBaseFragment extends BaseOsmAndFragment {
 		return UiUtilities.getColoredSelectableDrawable(app, activeColor);
 	}
 
-	@Nullable
-	protected MapActivity getMapActivity() {
-		Activity activity = getActivity();
-		return activity != null ? ((MapActivity) activity) : null;
-	}
-
-	private static void showFragment(@NonNull FragmentManager manager, @NonNull WidgetInfoBaseFragment fragment,
-	                                 @Nullable Fragment target, @NonNull ApplicationMode appMode, @NonNull String widgetId, @NonNull WidgetsPanel widgetsPanel, boolean addNewWidgetMode) {
+	private static void showInstance(@NonNull FragmentManager manager, @NonNull WidgetInfoBaseFragment fragment,
+	                                 @Nullable Fragment target, @NonNull ApplicationMode appMode,
+	                                 @NonNull String widgetId, @NonNull WidgetsPanel widgetsPanel,
+	                                 boolean addNewWidgetMode, @Nullable ScreenLayoutMode layoutMode) {
 		String tag = fragment.getClass().getSimpleName();
 		if (AndroidUtils.isFragmentCanBeAdded(manager, tag, true)) {
 			Bundle args = new Bundle();
@@ -407,26 +428,29 @@ public class WidgetInfoBaseFragment extends BaseOsmAndFragment {
 			args.putBoolean(KEY_ADD_MODE, addNewWidgetMode);
 			args.putString(KEY_SELECTED_PANEL, widgetsPanel.name());
 
+			if (layoutMode != null) {
+				args.putSerializable(SCREEN_LAYOUT_MODE, layoutMode);
+			}
+
 			fragment.setArguments(args);
 			fragment.setTargetFragment(target, 0);
 
 			manager.beginTransaction()
-					.add(R.id.fragmentContainer, fragment, tag)
+					.replace(R.id.fragmentContainer, fragment, tag)
 					.addToBackStack(tag)
 					.commitAllowingStateLoss();
 		}
 	}
 
-	public static void showFragment(@NonNull FragmentManager manager, @NonNull WidgetInfoBaseFragment fragment,
-	                                @Nullable Fragment target, @NonNull ApplicationMode appMode, @NonNull String widgetId, @NonNull WidgetsPanel widgetsPanel) {
-		showFragment(manager, fragment, target, appMode, widgetId, widgetsPanel, false);
-
+	public static void showInstance(@NonNull FragmentManager manager, @NonNull WidgetInfoBaseFragment fragment,
+	                                @Nullable Fragment target, @NonNull ApplicationMode appMode, @NonNull String widgetId,
+	                                @NonNull WidgetsPanel widgetsPanel, @Nullable ScreenLayoutMode layoutMode) {
+		showInstance(manager, fragment, target, appMode, widgetId, widgetsPanel, false, layoutMode);
 	}
 
 	public static void showAddWidgetFragment(@NonNull FragmentManager manager, @NonNull WidgetInfoBaseFragment fragment,
-	                                         @Nullable Fragment target, @NonNull ApplicationMode appMode, @NonNull String widgetId, @NonNull WidgetsPanel widgetsPanel) {
-		showFragment(manager, fragment, target, appMode, widgetId, widgetsPanel, true);
+	                                @Nullable Fragment target, @NonNull ApplicationMode appMode, @NonNull String widgetId,
+	                                @NonNull WidgetsPanel widgetsPanel, @Nullable ScreenLayoutMode layoutMode) {
+		showInstance(manager, fragment, target, appMode, widgetId, widgetsPanel, true, layoutMode);
 	}
-
-
 }

@@ -3,7 +3,6 @@ package net.osmand.plus.settings.datastorage.task;
 import android.content.Context;
 import android.os.AsyncTask;
 import android.util.Pair;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -62,7 +61,7 @@ public class MoveFilesTask extends AsyncTask<Void, Object, Map<String, Pair<Stri
 	                     @NonNull Pair<Long, Long> filesSize,
 	                     @Nullable StorageMigrationRestartListener listener,
 	                     @Nullable MoveFilesStopListener stopTaskListener) {
-		app = activity.getMyApplication();
+		app = activity.getApp();
 		this.activity = new WeakReference<>(activity);
 		this.context = new WeakReference<>(activity);
 		this.from = from;
@@ -84,7 +83,7 @@ public class MoveFilesTask extends AsyncTask<Void, Object, Map<String, Pair<Stri
 			});
 			progressHelper.setTimeInterval(100); // update progress each 100 ms
 			migrationListener = StorageMigrationFragment.showInstance(manager, to, from, filesSize,
-					copyProgress, files.size(), false, restartListener, stopTaskListener);
+					copyProgress, files.size(), false, true, restartListener, stopTaskListener);
 		}
 	}
 

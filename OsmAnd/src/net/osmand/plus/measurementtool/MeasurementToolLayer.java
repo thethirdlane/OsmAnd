@@ -26,11 +26,14 @@ import net.osmand.plus.charts.TrackChartPoints;
 import net.osmand.plus.measurementtool.MeasurementEditingContext.AdditionMode;
 import net.osmand.plus.render.OsmandDashPathEffect;
 import net.osmand.plus.utils.NativeUtilities;
+import net.osmand.plus.utils.UiUtilities;
 import net.osmand.plus.views.OsmandMapTileView;
 import net.osmand.plus.views.Renderable.RenderableSegment;
 import net.osmand.plus.views.Renderable.StandardTrack;
 import net.osmand.plus.views.layers.ContextMenuLayer.IContextMenuProvider;
+import net.osmand.plus.views.layers.ContextMenuLayer.IContextMenuProviderSelection;
 import net.osmand.plus.views.layers.MapSelectionResult;
+import net.osmand.plus.views.layers.MapSelectionRules;
 import net.osmand.plus.views.layers.base.OsmandMapLayer;
 import net.osmand.plus.views.layers.core.LocationPointsTileProvider;
 import net.osmand.plus.views.layers.core.TilePointsProvider;
@@ -51,7 +54,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-public class MeasurementToolLayer extends OsmandMapLayer implements IContextMenuProvider {
+public class MeasurementToolLayer extends OsmandMapLayer implements IContextMenuProvider, IContextMenuProviderSelection {
 
 	private static final int START_ZOOM = 8;
 	private static final int MIN_POINTS_PERCENTILE = 20;
@@ -136,11 +139,11 @@ public class MeasurementToolLayer extends OsmandMapLayer implements IContextMenu
 	}
 
 	private void createResources(@NonNull OsmandMapTileView view) {
-		centerIconDay = BitmapFactory.decodeResource(view.getResources(), R.drawable.map_ruler_center_day);
-		centerIconNight = BitmapFactory.decodeResource(view.getResources(), R.drawable.map_ruler_center_night);
-		pointIcon = BitmapFactory.decodeResource(view.getResources(), R.drawable.map_measure_point_day);
-		oldMovedPointIcon = BitmapFactory.decodeResource(view.getResources(), R.drawable.map_measure_point_day_disable);
-		applyingPointIcon = BitmapFactory.decodeResource(view.getResources(), R.drawable.map_measure_point_move_day);
+		centerIconDay = UiUtilities.decodeResource(view.getResources(), R.drawable.map_ruler_center_day);
+		centerIconNight = UiUtilities.decodeResource(view.getResources(), R.drawable.map_ruler_center_night);
+		pointIcon = UiUtilities.decodeResource(view.getResources(), R.drawable.map_measure_point_day);
+		oldMovedPointIcon = UiUtilities.decodeResource(view.getResources(), R.drawable.map_measure_point_day_disable);
+		applyingPointIcon = UiUtilities.decodeResource(view.getResources(), R.drawable.map_measure_point_move_day);
 		highlightedPointImage = chartPointsHelper.createHighlightedPointBitmap();
 
 		multiProfileGeometryWayContext = new MultiProfileGeometryWayContext(getContext(),
@@ -216,6 +219,14 @@ public class MeasurementToolLayer extends OsmandMapLayer implements IContextMenu
 	@Override
 	public boolean onSingleTap(@NonNull PointF point, @NonNull RotatedTileBox tileBox) {
 		if (inMeasurementMode && !tapsDisabled && editingCtx.getSelectedPointPosition() == -1) {
+			MapActivity mapActivity = getMapActivity();
+
+			// Ignore the tap if the context menu is visible,
+			// allowing the map to just dismiss the menu without adding a new point.
+			if (mapActivity != null && mapActivity.getContextMenu().isVisible()) {
+				return false;
+			}
+
 			boolean pointSelected = showPointsMinZoom && selectPoint(point.x, point.y, true);
 			boolean profileIconSelected = !pointSelected && selectPointForAppModeChange(point, tileBox);
 			if (!pointSelected && !profileIconSelected) {
@@ -928,6 +939,7 @@ public class MeasurementToolLayer extends OsmandMapLayer implements IContextMenu
 		return null;
 	}
 
+	@Nullable
 	public WptPt addPoint(boolean addPointBefore) {
 		if (pressedPointLatLon != null) {
 			WptPt pt = new WptPt();
@@ -946,15 +958,20 @@ public class MeasurementToolLayer extends OsmandMapLayer implements IContextMenu
 		return null;
 	}
 
+	@Nullable
 	WptPt getMovedPointToApply() {
-		RotatedTileBox tb = view.getCurrentRotatedTileBox();
-		LatLon latLon = tb.getCenterLatLon();
 		WptPt originalPoint = editingCtx.getOriginalPointToMove();
-		WptPt point = new WptPt(originalPoint);
-		point.setLat(latLon.getLatitude());
-		point.setLon(latLon.getLongitude());
-		point.copyExtensions(originalPoint);
-		return point;
+		if (originalPoint != null) {
+			RotatedTileBox tb = view.getCurrentRotatedTileBox();
+			LatLon latLon = tb.getCenterLatLon();
+			WptPt point = new WptPt(originalPoint);
+			point.setLat(latLon.getLatitude());
+			point.setLon(latLon.getLongitude());
+			point.copyExtensions(originalPoint);
+
+			return point;
+		}
+		return null;
 	}
 
 	public void exitMovePointMode() {
@@ -1084,9 +1101,31 @@ public class MeasurementToolLayer extends OsmandMapLayer implements IContextMenu
 	}
 
 	@Override
-	public void collectObjectsFromPoint(@NonNull MapSelectionResult result,
-	                                    boolean unknownLocation, boolean excludeUntouchableObjects) {
+	public boolean customizeMapSelectionRules(@NonNull MapSelectionRules rules) {
+		if (isInMeasurementMode()) {
+			rules.setOnlyPoints(true);
+			return true;
+		}
+		return false;
+	}
 
+	@Override
+	public void collectObjectsFromPoint(@NonNull MapSelectionResult result, @NonNull MapSelectionRules rules) {
+		if (isInMeasurementMode() && !rules.isOnlyTouchableObjects() && editingCtx.getSelectedPointPosition() == -1) {
+			PointF point = result.getPoint();
+			if (selectPoint(point.x, point.y, false)) {
+				result.collect(new PlanRoutePoint(editingCtx.getSelectedPointPosition()), this);
+			}
+		}
+	}
+
+	@Override
+	public boolean showMenuAction(@Nullable Object o) {
+		if (o instanceof PlanRoutePoint point) {
+			selectPoint(point.position());
+			return true;
+		}
+		return false;
 	}
 
 	@Override
@@ -1100,11 +1139,6 @@ public class MeasurementToolLayer extends OsmandMapLayer implements IContextMenu
 	}
 
 	@Override
-	public boolean disableSingleTap() {
-		return isInMeasurementMode();
-	}
-
-	@Override
 	public boolean disableLongPressOnMap(PointF point, RotatedTileBox tileBox) {
 		return isInMeasurementMode();
 	}
@@ -1114,6 +1148,22 @@ public class MeasurementToolLayer extends OsmandMapLayer implements IContextMenu
 		l.setLatitude(lat);
 		l.setLongitude(lon);
 		return l;
+	}
+
+	@Override
+	public int getOrder(Object o) {
+		return -1;
+	}
+
+	@Override
+	public void setSelectedObject(Object o) {
+	}
+
+	@Override
+	public void clearSelectedObject() {
+		if (editingCtx != null) {
+			editingCtx.setSelectedPointPosition(-1);
+		}
 	}
 
 	interface OnSingleTapListener {

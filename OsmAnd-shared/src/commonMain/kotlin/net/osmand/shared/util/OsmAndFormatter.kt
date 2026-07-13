@@ -1,5 +1,6 @@
 package net.osmand.shared.util
 
+import net.osmand.shared.settings.enums.AltitudeMetrics
 import net.osmand.shared.settings.enums.MetricsConstants
 import net.osmand.shared.settings.enums.SpeedConstants.KILOMETERS_PER_HOUR
 import net.osmand.shared.settings.enums.SpeedConstants.MILES_PER_HOUR
@@ -18,10 +19,10 @@ object OsmAndFormatter {
 
 	const val KILOGRAMS_IN_ONE_TON = 1000
 	const val POUNDS_IN_ONE_KILOGRAM = 2.2046f
+	const val POUNDS_IN_ONE_TON = POUNDS_IN_ONE_KILOGRAM * KILOGRAMS_IN_ONE_TON
 
 
-	fun convertSpeedToMetersPerSecond(
-		formattedValueSrc: Float): Float {
+	fun convertSpeedToMetersPerSecond(formattedValueSrc: Float): Float {
 		val mc = PlatformUtil.getOsmAndContext().getSpeedSystem()
 		return when (mc) {
 			KILOMETERS_PER_HOUR -> formattedValueSrc / 3.6f
@@ -32,9 +33,8 @@ object OsmAndFormatter {
 	}
 
 	fun getMetersFromFormattedAltitudeValue(altitude: Float): Float {
-		val mc = PlatformUtil.getOsmAndContext().getMetricSystem()
-		val useFeet =
-			mc == MetricsConstants.MILES_AND_FEET || mc == MetricsConstants.MILES_AND_YARDS || mc == MetricsConstants.NAUTICAL_MILES_AND_FEET
+		val am = PlatformUtil.getOsmAndContext().getAltitudeMetric()
+		val useFeet = AltitudeMetrics.FEET == am
 		return if (useFeet) {
 			altitude / FEET_IN_ONE_METER
 		} else {
@@ -53,6 +53,4 @@ object OsmAndFormatter {
 			}
 		return distance * mainUnitInMeters
 	}
-
-
 }

@@ -38,12 +38,13 @@ public class ExportBackupTask extends AsyncTask<Void, Object, String> {
 	                 @NonNull List<SettingsItem> items,
 	                 @NonNull List<SettingsItem> itemsToDelete,
 	                 @NonNull List<SettingsItem> itemsToLocalDelete,
-	                 @Nullable BackupExportListener listener) {
+	                 @Nullable BackupExportListener listener,
+	                 boolean autoSync) {
 		this.key = key;
 		this.helper = helper;
 		this.listener = listener;
 		BackupHelper backupHelper = helper.getApp().getBackupHelper();
-		this.exporter = new BackupExporter(backupHelper, getProgressListener());
+		this.exporter = new BackupExporter(backupHelper, getProgressListener(), autoSync);
 		for (SettingsItem item : items) {
 			exporter.addSettingsItem(item);
 
@@ -128,10 +129,7 @@ public class ExportBackupTask extends AsyncTask<Void, Object, String> {
 				for (SettingsItem item : oldItemsToDelete) {
 					SettingsItem remoteFileItem = remoteFile.item;
 					if (remoteFileItem != null && item.getType() == remoteFileItem.getType()) {
-						String itemFileName = item.getFileName();
-						if (itemFileName != null && itemFileName.startsWith("/")) {
-							itemFileName = itemFileName.substring(1);
-						}
+						String itemFileName = BackupUtils.removeLeadingSlash(item.getFileName());
 						if (Algorithms.stringsEqual(itemFileName, remoteFileItem.getFileName())) {
 							size += APPROXIMATE_FILE_SIZE_BYTES;
 						}

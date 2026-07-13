@@ -16,6 +16,7 @@ import androidx.fragment.app.FragmentManager;
 import net.osmand.data.BackgroundType;
 import net.osmand.data.LatLon;
 import net.osmand.data.WptLocationPoint;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.shared.gpx.GpxFile;
 import net.osmand.shared.gpx.GpxUtilities.PointsGroup;
 import net.osmand.shared.gpx.primitives.WptPt;
@@ -282,7 +283,7 @@ public class WptPtEditorFragment extends PointEditorFragment {
 		FragmentActivity activity = getActivity();
 		if (activity != null) {
 			OsmandApplication app = (OsmandApplication) activity.getApplication();
-			boolean nightMode = app.getDaynightHelper().isNightModeForMapControls();
+			boolean nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.OVER_MAP);
 			AlertDialog.Builder builder = new AlertDialog.Builder(UiUtilities.getThemedContext(activity, nightMode));
 			builder.setMessage(getString(R.string.context_menu_item_delete_waypoint));
 			builder.setNegativeButton(R.string.shared_string_no, null);
@@ -383,10 +384,8 @@ public class WptPtEditorFragment extends PointEditorFragment {
 	@NonNull
 	@Override
 	public Map<String, PointsGroup> getPointsGroups() {
-		if (editor != null) {
-			return editor.getPointsGroups();
-		}
-		return new LinkedHashMap<>();
+		Map<String, PointsGroup> groups = editor != null ? editor.getPointsGroups() : null;
+		return groups != null ? groups : new LinkedHashMap<>();
 	}
 
 	@NonNull

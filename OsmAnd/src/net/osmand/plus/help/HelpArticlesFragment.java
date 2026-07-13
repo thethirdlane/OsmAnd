@@ -18,8 +18,12 @@ import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
 
 import net.osmand.plus.R;
-import net.osmand.plus.base.BaseOsmAndFragment;
+import net.osmand.plus.base.BaseFullScreenFragment;
 import net.osmand.plus.utils.AndroidUtils;
+import net.osmand.plus.utils.ColorUtilities;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTarget.Type;
+import net.osmand.plus.utils.InsetTargetsCollection;
 import net.osmand.plus.widgets.ctxmenu.ContextMenuAdapter;
 import net.osmand.plus.widgets.ctxmenu.ContextMenuListAdapter;
 import net.osmand.plus.widgets.ctxmenu.ViewCreator;
@@ -30,12 +34,17 @@ import net.osmand.util.Algorithms;
 import java.util.ArrayList;
 import java.util.List;
 
-public class HelpArticlesFragment extends BaseOsmAndFragment implements OnItemClickListener {
+public class HelpArticlesFragment extends BaseFullScreenFragment implements OnItemClickListener {
 
 	private static final String TAG = HelpArticlesFragment.class.getSimpleName();
 
 	private HelpArticle article;
 	private ContextMenuListAdapter adapter;
+
+	@Override
+	public int getStatusBarColorId() {
+		return ColorUtilities.getStatusBarColorId(nightMode);
+	}
 
 	@Override
 	public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -47,7 +56,7 @@ public class HelpArticlesFragment extends BaseOsmAndFragment implements OnItemCl
 	@Override
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
 		updateNightMode();
-		View view = themedInflater.inflate(R.layout.help_articles_fragment, container, false);
+		View view = inflate(R.layout.help_articles_fragment, container, false);
 
 		ContextMenuAdapter menuAdapter = new ContextMenuAdapter(app);
 		List<ContextMenuItem> items = createItems();
@@ -65,6 +74,14 @@ public class HelpArticlesFragment extends BaseOsmAndFragment implements OnItemCl
 		listView.setOnItemClickListener(this);
 
 		return view;
+	}
+
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.removeType(Type.ROOT_INSET);
+		collection.add(InsetTarget.createScrollable(R.id.list_view).build());
+		return collection;
 	}
 
 	@Override

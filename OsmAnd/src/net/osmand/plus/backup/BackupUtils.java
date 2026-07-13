@@ -13,6 +13,7 @@ import androidx.annotation.Nullable;
 import net.osmand.OperationLog;
 import net.osmand.plus.AppInitializer;
 import net.osmand.plus.OsmandApplication;
+import net.osmand.plus.mapmarkers.MapMarkersGroup;
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.plugins.audionotes.AudioVideoNotesPlugin;
 import net.osmand.plus.settings.backend.backup.exporttype.ExportType;
@@ -25,23 +26,21 @@ import net.osmand.plus.settings.backend.backup.items.ProfileSettingsItem;
 import net.osmand.plus.settings.backend.backup.items.SettingsItem;
 import net.osmand.plus.settings.backend.preferences.CommonPreference;
 import net.osmand.plus.utils.AndroidNetworkUtils;
+import net.osmand.plus.utils.FileUtils;
 import net.osmand.util.Algorithms;
+import net.osmand.util.CollectionUtils;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class BackupUtils {
 
-
-	private static final String BACKUP_TYPE_PREFIX = "backup_type_";
-	private static final String VERSION_HISTORY_PREFIX = "save_version_history_";
+	public static final String BACKUP_TYPE_PREFIX = "backup_type_";
+	public static final String AUTO_BACKUP_TYPE_PREFIX = "auto_backup_type_";
+	public static final String VERSION_HISTORY_PREFIX = "save_version_history_";
 
 	public static void setLastModifiedTime(@NonNull Context ctx, @NonNull String name) {
 		setLastModifiedTime(ctx, name, System.currentTimeMillis());
@@ -92,7 +91,7 @@ public class BackupUtils {
 	@NonNull
 	public static Map<RemoteFile, SettingsItem> getRemoteFilesSettingsItems(@NonNull List<SettingsItem> items,
 			@NonNull List<RemoteFile> remoteFiles, boolean infoFiles) {
-		Map<RemoteFile, SettingsItem> res = new HashMap<>();
+		Map<RemoteFile, SettingsItem> res = new LinkedHashMap<>();
 		Map<String, SettingsItem> settingsItemMap = new HashMap<>();
 		List<FileSettingsItem> subtypeFolders = new ArrayList<>();
 		String DELIMETER = "___";
@@ -104,7 +103,7 @@ public class BackupUtils {
 			// https://github.com/osmandapp/OsmAnd/commit/bf93162bd13ef7ab16622bb662c953e931c34a21
 			if (item instanceof FileSettingsItem fileItem) {
 				String subtypeFolder = fileItem.getSubtype().getSubtypeFolder();
-				if (subtypeFolder != null && fileItem.getFile().isDirectory()) {
+				if (subtypeFolder != null && FileUtils.isProbablyDir(fileItem.getFile())) {
 					subtypeFolders.add(fileItem);
 				}
 			}
@@ -137,19 +136,25 @@ public class BackupUtils {
 		return res;
 	}
 
+	@NonNull
 	public static CommonPreference<Boolean> getBackupTypePref(@NonNull OsmandApplication app, @NonNull ExportType type) {
-		return app.getSettings().registerBooleanPreference(BACKUP_TYPE_PREFIX + type.name(), true).makeGlobal();
+		return app.getSettings().registerBooleanPreference(type.getBackupTypePrefId(), true).makeGlobal();
 	}
 
-	public static CommonPreference<Boolean> getVersionHistoryTypePref(@NonNull OsmandApplication app, @NonNull ExportType exportType) {
-		return app.getSettings().registerBooleanPreference(VERSION_HISTORY_PREFIX + exportType.name(), true).makeGlobal().makeShared();
+	@NonNull
+	public static CommonPreference<Boolean> getVersionHistoryTypePref(@NonNull OsmandApplication app, @NonNull ExportType type) {
+		return app.getSettings().registerBooleanPreference(type.getVersionHistoryTypePrefId(), true).makeGlobal().makeShared();
+	}
+
+	@NonNull
+	public static CommonPreference<Boolean> getAutoBackupTypePref(@NonNull OsmandApplication app, @NonNull ExportType type) {
+		return app.getSettings().registerBooleanPreference(type.getAutoBackupTypePrefId(), false).makeGlobal().makeShared();
 	}
 
 	@NonNull
 	public static String getItemFileName(@NonNull SettingsItem item) {
 		String fileName;
-		if (item instanceof FileSettingsItem) {
-			FileSettingsItem fileItem = (FileSettingsItem) item;
+		if (item instanceof FileSettingsItem fileItem) {
 			fileName = getFileItemName(fileItem);
 		} else {
 			fileName = item.getFileName();
@@ -157,10 +162,7 @@ public class BackupUtils {
 				fileName = item.getDefaultFileName();
 			}
 		}
-		if (!Algorithms.isEmpty(fileName) && fileName.charAt(0) == '/') {
-			fileName = fileName.substring(1);
-		}
-		return fileName;
+		return removeLeadingSlash(fileName);
 	}
 
 	@NonNull
@@ -182,6 +184,10 @@ public class BackupUtils {
 		} else {
 			fileName = file.getPath().substring(file.getPath().indexOf(subtypeFolder) - 1);
 		}
+		return removeLeadingSlash(fileName);
+	}
+
+	public static String removeLeadingSlash(@Nullable String fileName) {
 		if (!Algorithms.isEmpty(fileName) && fileName.charAt(0) == '/') {
 			fileName = fileName.substring(1);
 		}
@@ -242,6 +248,9 @@ public class BackupUtils {
 	}
 
 	public static void updateCacheForItems(@NonNull OsmandApplication app, @NonNull List<SettingsItem> items) {
+		if (Algorithms.isEmpty(items)) {
+			return;
+		}
 		boolean updateIndexes = false;
 		boolean updateRouting = false;
 		boolean updateRenderers = false;
@@ -277,5 +286,42 @@ public class BackupUtils {
 				plugin.indexingFiles(true, true);
 			}
 		}
+	}
+
+	public static long calculateItemsSize(@NonNull List<?> items) {
+		long size = 0;
+		for (Object item : items) {
+			size += getItemSize(item);
+		}
+		return size;
+	}
+
+	public static long getItemSize(@NonNull Object object) {
+		if (object instanceof FileSettingsItem fileSettingsItem) {
+			return fileSettingsItem.getSize();
+		} else if (object instanceof File file) {
+			return file.length();
+		} else if (object instanceof RemoteFile remoteFile) {
+			return  remoteFile.getZipSize();
+		} else if (object instanceof MapMarkersGroup markersGroup) {
+			if (CollectionUtils.equalsToAny(markersGroup.getId(),
+					ExportType.ACTIVE_MARKERS.name(), ExportType.HISTORY_MARKERS.name())) {
+				return  markersGroup.getMarkers().size();
+			}
+		}
+		return 0;
+	}
+
+	@NonNull
+	public static String encodeExportTypes(@NonNull List<ExportType> types) {
+		StringBuilder builder = new StringBuilder();
+		Iterator<ExportType> iterator = types.iterator();
+		while (iterator.hasNext()) {
+			builder.append(iterator.next().getItemName());
+			if (iterator.hasNext()) {
+				builder.append(",");
+			}
+		}
+		return builder.toString();
 	}
 }

@@ -45,7 +45,14 @@ class OBDSimulationSource {
 				"01" -> "41"
 				"09" -> "49"
 				else -> {
-					throw IllegalArgumentException("Not supported command group $commandCode")
+					when (fullCommand.replace("\r", "").trim()) {
+						"AT RV" -> {
+							bufferToRead = "12.9V>"
+							return@runBlocking
+						}
+
+						else -> throw IllegalArgumentException("Not supported command group $commandCode")
+					}
 				}
 			}
 			val command = splitCommand[1]
@@ -60,6 +67,7 @@ class OBDSimulationSource {
 				OBDCommand.OBD_ENGINE_OIL_TEMPERATURE_COMMAND -> toNormalizedHex(130)
 				OBDCommand.OBD_FUEL_PRESSURE_COMMAND -> toNormalizedHex(Random.nextInt(24500, 35000))
 				OBDCommand.OBD_BATTERY_VOLTAGE_COMMAND -> toNormalizedHex(12700)
+				OBDCommand.OBD_ALT_BATTERY_VOLTAGE_COMMAND -> toNormalizedHex(12900)
 				OBDCommand.OBD_AMBIENT_AIR_TEMPERATURE_COMMAND -> toNormalizedHex(45)
 				OBDCommand.OBD_RPM_COMMAND -> toNormalizedHex(8000)
 				OBDCommand.OBD_ENGINE_RUNTIME_COMMAND -> toNormalizedHex(2000)

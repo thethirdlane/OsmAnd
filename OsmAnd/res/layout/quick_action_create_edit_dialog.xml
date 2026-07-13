@@ -36,6 +36,7 @@
         android:background="?attr/actionModeBackground"/>
 
     <RelativeLayout
+	    android:id="@+id/action_name"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:minHeight="72dp"
@@ -97,6 +98,7 @@
         android:layout_height="match_parent">
 
         <ScrollView
+	        android:id="@+id/scroll_view"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:layout_marginBottom="56dp"
@@ -123,18 +125,28 @@
             android:layout_marginBottom="56dp"
             app:srcCompat="@drawable/bg_shadow_list_top"/>
 
-        <Button
-            android:id="@+id/btnApply"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:text="@string/shared_string_apply"
-            android:textAllCaps="true"
-            android:textColor="@color/card_and_list_background_light"
-            android:textSize="@dimen/default_list_text_size"
-            android:gravity="center"
-            android:layout_gravity="bottom"
-            android:foreground="?attr/selectableItemBackground"
-            android:background="?attr/color_dialog_buttons"/>
+	    <FrameLayout
+		    android:id="@+id/bottom_buttons_container"
+		    android:layout_width="match_parent"
+		    android:layout_height="wrap_content"
+		    android:gravity="center"
+		    android:layout_gravity="bottom"
+		    android:background="?attr/bottom_bar_background_color">
+
+		    <Button
+			    android:id="@+id/btnApply"
+			    android:layout_width="match_parent"
+			    android:layout_height="56dp"
+			    android:text="@string/shared_string_apply"
+			    android:textAllCaps="true"
+			    android:textColor="@color/card_and_list_background_light"
+			    android:textSize="@dimen/default_list_text_size"
+			    android:gravity="center"
+			    android:layout_gravity="bottom"
+			    android:foreground="?attr/selectableItemBackground"
+			    android:background="?attr/color_dialog_buttons"/>
+
+	    </FrameLayout>
 
     </FrameLayout>
 

@@ -1,8 +1,7 @@
 package net.osmand;
 
-import static net.osmand.IndexConstants.GPX_FILE_EXT;
-import static net.osmand.IndexConstants.GPX_GZ_FILE_EXT;
 import static net.osmand.data.Amenity.ROUTE_ID;
+import static net.osmand.data.Amenity.WIKIDATA;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -260,7 +259,7 @@ public class NativeLibrary {
 		final float CPP_NO_DIRECTION = -2 * (float) Math.PI;
 		return nativeRouting(c, hhRoutingConfig, c.config.initialDirection == null ?
 				CPP_NO_DIRECTION : c.config.initialDirection.floatValue(),
-				regions, basemap);
+				regions, basemap, c.requestNativePrepareResult);
 	}
 
 	private void setHHNativeFilterAndParameters(RoutingContext ctx) {
@@ -360,7 +359,9 @@ public class NativeLibrary {
 
 	protected static native RouteDataObject[] getRouteDataObjects(RouteRegion reg, long rs, int x31, int y31);
 
-	protected static native RouteSegmentResult[] nativeRouting(RoutingContext c, HHRoutingConfig hhRoutingConfig,  float initDirection, RouteRegion[] regions, boolean basemap);
+	protected static native RouteSegmentResult[] nativeRouting(RoutingContext c, HHRoutingConfig hhRoutingConfig,
+	                                                           float initDirection, RouteRegion[] regions,
+	                                                           boolean basemap, boolean requestNativePrepareResult);
 
 	protected static native NativeTransportRoutingResult[] nativeTransportRouting(int[] coordinates, TransportRoutingConfiguration cfg,
 																				  RouteCalculationProgress progress);
@@ -404,6 +405,7 @@ public class NativeLibrary {
 	protected static native ByteBuffer getGeotiffTile(
 		String tilePath, String outColorFilename, String midColorFilename, int type, int size, int zoom, int x, int y);
 
+	protected static native byte[] getMapboxVectorTileData(int zoom, int x, int y);
 	/**/
 	// Empty native impl
 	/*
@@ -680,6 +682,10 @@ public class NativeLibrary {
 			return isPolygon;
 		}
 
+		public boolean isSimplePoint() {
+			return x.size() == 1 && y.size() == 1;
+		}
+
 		public List<String> getOriginalNames() {
 			List<String> names = new ArrayList<>();
 			if (!Algorithms.isEmpty(name)) {
@@ -714,6 +720,17 @@ public class NativeLibrary {
 			return s;
 		}
 
+		@Override
+		public String toStringEn() {
+			String s = "MapObject " + name + " ";
+			s += ObfConstants.getOsmEntityType(this) + "/";
+			s += ObfConstants.getOsmObjectId(this);
+			if (this.getTags().containsKey(WIKIDATA)) {
+				s += " " + this.getTags().get(WIKIDATA);
+			}
+			return s;
+		}
+
 		public List<LatLon> getPolygon() {
 			List<LatLon> res = new ArrayList<>();
 			for (int i = 0; i < this.x.size(); i++) {
@@ -742,6 +759,18 @@ public class NativeLibrary {
 				bottom = Math.max(bottom, y);
 			}
 			return new QuadRect(MapUtils.get31LongitudeX(left), MapUtils.get31LatitudeY(top), MapUtils.get31LongitudeX(right), MapUtils.get31LatitudeY(bottom));
+		}
+
+		public LatLon getLatLon() {
+			LatLon latLon = getLabelLatLon();
+			if (latLon == null && getLabelX() != 0) {
+				latLon = new LatLon(MapUtils.get31LatitudeY(getLabelY()), MapUtils.get31LongitudeX(getLabelX()));
+			}
+			QuadRect rect = getRectLatLon();
+			if (latLon == null && rect != null) {
+				latLon = new LatLon(rect.centerY(), rect.centerX());
+			}
+			return latLon;
 		}
 	}
 }

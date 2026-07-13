@@ -1,6 +1,8 @@
 package net.osmand.plus.views.mapwidgets.configure.panel;
 
-import static androidx.recyclerview.widget.DiffUtil.*;
+import static androidx.recyclerview.widget.DiffUtil.Callback;
+import static androidx.recyclerview.widget.DiffUtil.DiffResult;
+import static androidx.recyclerview.widget.DiffUtil.calculateDiff;
 import static net.osmand.plus.views.mapwidgets.MapWidgetRegistry.AVAILABLE_MODE;
 import static net.osmand.plus.views.mapwidgets.MapWidgetRegistry.DEFAULT_MODE;
 
@@ -27,14 +29,19 @@ import androidx.fragment.app.FragmentManager.FragmentLifecycleCallbacks;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import net.osmand.aidl.AidlMapWidgetWrapper;
+import net.osmand.aidl.AidlWidgetGroupWrapper;
+import net.osmand.aidl.ConnectedApp;
+import net.osmand.aidl.OsmandAidlApi;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
-import net.osmand.plus.activities.MapActivity;
-import net.osmand.plus.base.BaseOsmAndFragment;
+import net.osmand.plus.base.BaseFullScreenFragment;
 import net.osmand.plus.chooseplan.ChoosePlanFragment;
 import net.osmand.plus.chooseplan.OsmAndFeature;
 import net.osmand.plus.helpers.AndroidUiHelper;
 import net.osmand.plus.settings.backend.ApplicationMode;
+import net.osmand.plus.settings.enums.ScreenLayoutMode;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
 import net.osmand.plus.views.mapwidgets.MapWidgetInfo;
@@ -46,16 +53,9 @@ import net.osmand.plus.views.mapwidgets.configure.WidgetIconsHelper;
 import net.osmand.plus.views.mapwidgets.configure.dialogs.AddWidgetFragment;
 import net.osmand.util.Algorithms;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.TreeMap;
+import java.util.*;
 
-public class SearchWidgetsFragment extends BaseOsmAndFragment implements SearchWidgetListener {
+public class SearchWidgetsFragment extends BaseFullScreenFragment implements SearchWidgetListener {
 
 	public static final String TAG = SearchWidgetsFragment.class.getSimpleName();
 
@@ -87,7 +87,7 @@ public class SearchWidgetsFragment extends BaseOsmAndFragment implements SearchW
 		app = (OsmandApplication) requireContext().getApplicationContext();
 		widgetRegistry = app.getOsmandMap().getMapLayers().getMapWidgetRegistry();
 		settings = app.getSettings();
-		nightMode = !settings.isLightContent();
+		nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.APP);
 		selectedAppMode = settings.getApplicationMode();
 		iconsHelper = new WidgetIconsHelper(app, selectedAppMode.getProfileColor(nightMode), nightMode);
 
@@ -120,7 +120,7 @@ public class SearchWidgetsFragment extends BaseOsmAndFragment implements SearchW
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
 	                         @Nullable Bundle savedInstanceState) {
 		updateNightMode();
-		View view = themedInflater.inflate(R.layout.fragment_search_widgets, container, false);
+		View view = inflate(R.layout.fragment_search_widgets, container, false);
 		AndroidUtils.addStatusBarPadding21v(requireMapActivity(), view);
 		actionButton = view.findViewById(R.id.clearButton);
 		backButton = view.findViewById(R.id.back_button);
@@ -261,11 +261,6 @@ public class SearchWidgetsFragment extends BaseOsmAndFragment implements SearchW
 	}
 
 	@NonNull
-	protected MapActivity requireMapActivity() {
-		return ((MapActivity) requireActivity());
-	}
-
-	@NonNull
 	private List<WidgetType> listDefaultWidgets(@NonNull Set<MapWidgetInfo> widgets) {
 		Map<Integer, WidgetType> defaultWidgets = new TreeMap<>();
 		for (MapWidgetInfo widgetInfo : widgets) {
@@ -278,17 +273,17 @@ public class SearchWidgetsFragment extends BaseOsmAndFragment implements SearchW
 	private void loadWidgets() {
 		int filter = AVAILABLE_MODE | DEFAULT_MODE;
 
-		Set<MapWidgetInfo> availableWidgets = widgetRegistry.getWidgetsForPanel(
-				requireMapActivity(), selectedAppMode, filter, Collections.singletonList(selectedPanel));
+		Set<MapWidgetInfo> availableWidgets = widgetRegistry.getWidgetsForPanel(requireMapActivity(),
+				selectedAppMode, getScreenLayoutMode(), filter, Collections.singletonList(selectedPanel));
 		boolean hasAvailableWidgets = !Algorithms.isEmpty(availableWidgets);
 
 		if (hasAvailableWidgets) {
 			List<WidgetType> allWidgetTypes;
-			List<MapWidgetInfo> externalWidgets;
+			List<Object> externalItems;
 			Map<WidgetGroup, List<WidgetType>> groupedWidgets = new HashMap<>();
 
 			allWidgetTypes = listDefaultWidgets(availableWidgets);
-			externalWidgets = getExternalWidgets(availableWidgets);
+			externalItems = getExternalItems(availableWidgets);
 
 
 			for (WidgetType widgetType : allWidgetTypes) {
@@ -297,10 +292,17 @@ public class SearchWidgetsFragment extends BaseOsmAndFragment implements SearchW
 				}
 			}
 			widgetItems.clear();
-			widgetItems.addAll(externalWidgets);
+			widgetItems.addAll(externalItems);
 			allWidgetItems.clear();
 			allWidgetItems.addAll(allWidgetTypes);
-			allWidgetItems.addAll(externalWidgets);
+			allWidgetItems.addAll(externalItems);
+			// Add external group members individually so search lists them like
+			// standard group widgets (the default view still shows only the group row).
+			for (Object item : externalItems) {
+				if (item instanceof ExternalGroupItem externalGroupItem) {
+					allWidgetItems.addAll(externalGroupItem.getWidgetInfos());
+				}
+			}
 
 			for (Map.Entry<WidgetGroup, List<WidgetType>> entry : groupedWidgets.entrySet()) {
 				GroupItem groupItem = new GroupItem(entry.getKey(), entry.getValue().size());
@@ -326,6 +328,8 @@ public class SearchWidgetsFragment extends BaseOsmAndFragment implements SearchW
 			return widgetInfo.getTitle(app);
 		} else if (item instanceof GroupItem groupItem) {
 			return app.getString(groupItem.group().titleId);
+		} else if (item instanceof ExternalGroupItem externalGroupItem) {
+			return externalGroupItem.getGroupName();
 		}
 		return null;
 	}
@@ -342,14 +346,42 @@ public class SearchWidgetsFragment extends BaseOsmAndFragment implements SearchW
 	}
 
 	@NonNull
-	private List<MapWidgetInfo> getExternalWidgets(Set<MapWidgetInfo> availableWidgets) {
-		List<MapWidgetInfo> externalWidgets = new ArrayList<>();
+	private List<Object> getExternalItems(Set<MapWidgetInfo> availableWidgets) {
+		List<Object> externalItems = new ArrayList<>();
+		Map<String, ExternalGroupItem> groups = new LinkedHashMap<>();
+		OsmandAidlApi aidlApi = app.getAidlApi();
 		for (MapWidgetInfo widgetInfo : availableWidgets) {
-			if (widgetInfo.isExternal()) {
-				externalWidgets.add(widgetInfo);
+			if (!widgetInfo.isExternal()) {
+				continue;
+			}
+			String packageName = widgetInfo.getExternalProviderPackage();
+			ConnectedApp connectedApp = !Algorithms.isEmpty(packageName) && aidlApi != null
+					? aidlApi.getConnectedApp(packageName) : null;
+			AidlMapWidgetWrapper data = connectedApp != null ? connectedApp.getWidgetData(widgetInfo.key) : null;
+			String groupId = data != null ? data.getGroupId() : null;
+			if (!Algorithms.isEmpty(groupId)) {
+				String key = packageName + "$" + groupId;
+				ExternalGroupItem groupItem = groups.get(key);
+				if (groupItem == null) {
+					AidlWidgetGroupWrapper groupData = connectedApp.getWidgetGroups().get(groupId);
+					String name = groupData != null && !Algorithms.isEmpty(groupData.getName())
+							? groupData.getName() : groupId;
+					String description = groupData != null ? groupData.getDescription() : null;
+					String dayIcon = groupData != null ? groupData.getDayIconName() : null;
+					String nightIcon = groupData != null ? groupData.getNightIconName() : null;
+					String dayIconUri = groupData != null ? groupData.getDayIconUri() : null;
+					String nightIconUri = groupData != null ? groupData.getNightIconUri() : null;
+					groupItem = new ExternalGroupItem(packageName, groupId, name, description,
+							dayIcon, nightIcon, dayIconUri, nightIconUri);
+					groups.put(key, groupItem);
+					externalItems.add(groupItem);
+				}
+				groupItem.addWidget(widgetInfo);
+			} else {
+				externalItems.add(widgetInfo);
 			}
 		}
-		return externalWidgets;
+		return externalItems;
 	}
 
 	private void setWidgetList(boolean allWidgets) {
@@ -387,7 +419,7 @@ public class SearchWidgetsFragment extends BaseOsmAndFragment implements SearchW
 					searchResults.add(widgetType);
 				}
 			} else if (object instanceof MapWidgetInfo widgetInfo) {
-				String widgetTitle = widgetInfo.key.toLowerCase();
+				String widgetTitle = widgetInfo.getTitle(app).toLowerCase();
 				if (widgetTitle.contains(query.toLowerCase())) {
 					searchResults.add(widgetInfo);
 				}
@@ -398,10 +430,24 @@ public class SearchWidgetsFragment extends BaseOsmAndFragment implements SearchW
 				if (groupTitle.contains(query.toLowerCase())) {
 					searchResults.add(groupItem);
 				}
+			} else if (object instanceof ExternalGroupItem externalGroupItem) {
+				String groupTitle = externalGroupItem.getGroupName();
+				if (groupTitle != null && groupTitle.toLowerCase().contains(query.toLowerCase())) {
+					searchResults.add(externalGroupItem);
+				}
 			}
 		}
 
 		updateWidgetItems(searchResults);
+	}
+
+	@Nullable
+	private ScreenLayoutMode getScreenLayoutMode() {
+		Fragment fragment = getParentFragment();
+		if (fragment instanceof ConfigureWidgetsFragment configureFragment) {
+			return configureFragment.getScreenLayoutMode();
+		}
+		return null;
 	}
 
 	@Override
@@ -453,6 +499,19 @@ public class SearchWidgetsFragment extends BaseOsmAndFragment implements SearchW
 	}
 
 	@Override
+	public void externalGroupSelected(@NonNull ExternalGroupItem group) {
+
+		FragmentActivity activity = getActivity();
+		Fragment target = getTargetFragment();
+		if (activity != null && target != null) {
+			FragmentManager fragmentManager = activity.getSupportFragmentManager();
+			AddWidgetFragment.showExternalGroupDialog(fragmentManager, target,
+					selectedAppMode, selectedPanel, group.getPackageName(), group.getGroupId(),
+					group.getWidgetSourceIds(), null);
+		}
+	}
+
+	@Override
 	public void onSaveInstanceState(@NonNull Bundle outState) {
 		super.onSaveInstanceState(outState);
 		outState.putString(KEY_SELECTED_PANEL, selectedPanel.name());
@@ -488,6 +547,9 @@ public class SearchWidgetsFragment extends BaseOsmAndFragment implements SearchW
 				return ((WidgetType) oldItem).ordinal() == ((WidgetType) newItem).ordinal();
 			} else if (oldItem instanceof GroupItem && newItem instanceof GroupItem) {
 				return ((GroupItem) oldItem).group() == ((GroupItem) newItem).group();
+			} else if (oldItem instanceof ExternalGroupItem && newItem instanceof ExternalGroupItem) {
+				return Objects.equals(((ExternalGroupItem) oldItem).getGroupId(), ((ExternalGroupItem) newItem).getGroupId())
+						&& Objects.equals(((ExternalGroupItem) oldItem).getPackageName(), ((ExternalGroupItem) newItem).getPackageName());
 			} else if (oldItem instanceof MapWidgetInfo && newItem instanceof MapWidgetInfo) {
 				return Objects.equals(((MapWidgetInfo) oldItem).key, ((MapWidgetInfo) newItem).key);
 			}
@@ -523,6 +585,85 @@ public class SearchWidgetsFragment extends BaseOsmAndFragment implements SearchW
 
 	public record GroupItem(WidgetGroup group, int count) {
 
+	}
+
+	public static class ExternalGroupItem {
+
+		private final String packageName;
+		private final String groupId;
+		private final String groupName;
+		private final String groupDescription;
+		private final String dayIconName;
+		private final String nightIconName;
+		private final String dayIconUri;
+		private final String nightIconUri;
+		private final List<MapWidgetInfo> widgets = new ArrayList<>();
+
+		public ExternalGroupItem(@NonNull String packageName, @NonNull String groupId,
+		                         @Nullable String groupName, @Nullable String groupDescription,
+		                         @Nullable String dayIconName, @Nullable String nightIconName,
+		                         @Nullable String dayIconUri, @Nullable String nightIconUri) {
+			this.packageName = packageName;
+			this.groupId = groupId;
+			this.groupName = groupName;
+			this.groupDescription = groupDescription;
+			this.dayIconName = dayIconName;
+			this.nightIconName = nightIconName;
+			this.dayIconUri = dayIconUri;
+			this.nightIconUri = nightIconUri;
+		}
+
+		@NonNull
+		public String getPackageName() {
+			return packageName;
+		}
+
+		@NonNull
+		public String getGroupId() {
+			return groupId;
+		}
+
+		@Nullable
+		public String getGroupName() {
+			return groupName;
+		}
+
+		@Nullable
+		public String getGroupDescription() {
+			return groupDescription;
+		}
+
+		@Nullable
+		public String getIconName(boolean nightMode) {
+			return nightMode ? nightIconName : dayIconName;
+		}
+
+		@Nullable
+		public String getIconUri(boolean nightMode) {
+			return nightMode ? nightIconUri : dayIconUri;
+		}
+
+		public void addWidget(@NonNull MapWidgetInfo widgetInfo) {
+			widgets.add(widgetInfo);
+		}
+
+		@NonNull
+		public List<MapWidgetInfo> getWidgetInfos() {
+			return widgets;
+		}
+
+		public int count() {
+			return widgets.size();
+		}
+
+		@NonNull
+		public ArrayList<String> getWidgetSourceIds() {
+			ArrayList<String> ids = new ArrayList<>();
+			for (MapWidgetInfo info : widgets) {
+				ids.add(info.key.replaceFirst(OsmandAidlApi.WIDGET_ID_PREFIX, ""));
+			}
+			return ids;
+		}
 	}
 
 	public static void showInstance(@NonNull FragmentActivity activity, @NonNull WidgetsPanel selectedPanel, @NonNull Fragment target) {

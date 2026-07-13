@@ -1,8 +1,14 @@
 package net.osmand.plus.plugins.externalsensors.devices.sensors;
 
+import android.graphics.drawable.Drawable;
+import android.view.View;
+import android.widget.ImageView;
+
+import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.plugins.externalsensors.ExternalSensorsPlugin;
@@ -10,25 +16,31 @@ import net.osmand.plus.plugins.externalsensors.devices.AbstractDevice;
 import net.osmand.plus.plugins.externalsensors.devices.DeviceConnectionResult;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.preferences.CommonPreference;
+import net.osmand.plus.settings.backend.preferences.OsmandPreference;
+import net.osmand.plus.settings.enums.ExternalDeviceShowMode;
 import net.osmand.plus.utils.FormattedValue;
 import net.osmand.plus.views.layers.base.OsmandMapLayer.DrawSettings;
 import net.osmand.plus.views.mapwidgets.WidgetsPanel;
 import net.osmand.plus.views.mapwidgets.widgets.SimpleWidget;
+import net.osmand.plus.views.mapwidgets.widgetstates.ExternalSensorWidgetState;
 import net.osmand.util.Algorithms;
 
 import java.util.List;
 
 public class SensorTextWidget extends SimpleWidget {
 
+	protected static final String NOT_ACTUAL_VALUE = "0";
+
 	private final ExternalSensorsPlugin plugin;
 	private final SensorWidgetDataFieldType fieldType;
 	private final CommonPreference<String> deviceIdPref;
+	private final ExternalSensorWidgetState widgetState;
 
 	private AbstractSensor sensor;
 	private String externalDeviceId;
 
 	private Number cachedNumber;
-
+	private boolean forceUpdate;
 
 	public SensorTextWidget(@NonNull MapActivity mapActivity, @NonNull ApplicationMode appMode,
 	                        @NonNull SensorWidgetDataFieldType fieldType, @Nullable String customId,
@@ -38,9 +50,42 @@ public class SensorTextWidget extends SimpleWidget {
 		plugin = PluginsHelper.getPlugin(ExternalSensorsPlugin.class);
 		deviceIdPref = registerSensorDevicePref(customId);
 		externalDeviceId = getDeviceId(appMode);
+		this.widgetState = new ExternalSensorWidgetState(app, customId, fieldType);
 		applyDeviceId();
+	}
+
+	@Override
+	protected void setupView(@NonNull View view) {
+		super.setupView(view);
 		updateInfo(null);
-		setIcons(fieldType.getWidgetType());
+		setImageDrawable(getIconId());
+		updateWidgetName();
+	}
+
+	@Override
+	public void setImageDrawable(@NonNull ImageView imageView, @Nullable Drawable drawable, int visibility) {
+		if (isDeviceConnected()) {
+			super.setImageDrawable(imageView, drawable, visibility);
+		} else {
+			if (shouldShowIcon()) {
+				if (isShowSensorData()) {
+					imageView.setImageDrawable(drawable);
+				} else {
+					imageView.setImageDrawable(app.getUIUtilities().getThemedIcon(fieldType.disconnectedBatteryIconId));
+				}
+				imageView.setVisibility(View.VISIBLE);
+			} else {
+				imageView.setVisibility(View.GONE);
+			}
+		}
+	}
+
+	private boolean isDeviceConnected() {
+		AbstractDevice<?> currentDevice = null;
+		if (sensor != null) {
+			currentDevice = this.sensor.getDevice();
+		}
+		return currentDevice != null && currentDevice.isConnected();
 	}
 
 	private void applyDeviceId() {
@@ -74,6 +119,33 @@ public class SensorTextWidget extends SimpleWidget {
 		return null;
 	}
 
+	@Override
+	protected View.OnClickListener getOnClickListener() {
+		return v -> {
+			forceUpdate = true;
+			widgetState.changeToNextState();
+			updateInfo(null);
+			setImageDrawable(getIconId());
+			updateWidgetName();
+			if (this.sensor != null && this.sensor.device.isDisconnected()) {
+				plugin.connectDevice(mapActivity, this.sensor.device);
+			}
+		};
+	}
+
+	@Nullable
+	protected String getAdditionalWidgetName() {
+		if (widgetState != null) {
+			return getPreference().get() == ExternalDeviceShowMode.SENSOR_DATA ? null : getString(R.string.battery);
+		}
+		return null;
+	}
+
+	@NonNull
+	public OsmandPreference<ExternalDeviceShowMode> getPreference() {
+		return widgetState.getShowModePreference();
+	}
+
 	public void setSensor(@Nullable AbstractSensor sensor) {
 		if (this.sensor != null) {
 			this.sensor.device.removeListener(deviceListener);
@@ -91,36 +163,50 @@ public class SensorTextWidget extends SimpleWidget {
 
 	@Override
 	protected void updateSimpleWidgetInfo(@Nullable DrawSettings drawSettings) {
-		AbstractDevice<?> currentDevice = null;
-		if (sensor != null) {
-			currentDevice = this.sensor.getDevice();
-		}
-		if (sensor != null && currentDevice.isConnected() && !Algorithms.isEmpty(sensor.getLastSensorDataList())) {
-			List<SensorData> dataList = sensor.getLastSensorDataList();
-			SensorWidgetDataField field = null;
-			for (SensorData data : dataList) {
-				if (data != null) {
-					field = data.getWidgetField(fieldType);
-					if (field != null) {
-						break;
+		if (isDeviceConnected() && (sensor != null && !Algorithms.isEmpty(sensor.getLastSensorDataList()))) {
+			if (isShowSensorData()) {
+				List<SensorData> dataList = sensor.getLastSensorDataList();
+				SensorWidgetDataField field = null;
+				for (SensorData data : dataList) {
+					if (data != null) {
+						field = data.getWidgetField(fieldType);
+						if (field != null) {
+							break;
+						}
 					}
 				}
-			}
-			if (field != null) {
-				if (isUpdateNeeded() || !Algorithms.objectEquals(cachedNumber, field.getNumberValue())) {
-					cachedNumber = field.getNumberValue();
-					FormattedValue formattedValue = field.getFormattedValue(app);
-					if (formattedValue != null) {
-						setText(formattedValue.value, formattedValue.unit);
-					} else {
-						setText(NO_VALUE, null);
+				if (field != null) {
+					Number correctValue = sensor.hasActualData() ? field.getNumberValue() : 0;
+					if (isUpdateNeeded() || !Algorithms.objectEquals(cachedNumber, correctValue)) {
+						cachedNumber = correctValue;
+						FormattedValue formattedValue = field.getFormattedValue(app);
+						if (formattedValue != null) {
+							if (sensor.hasActualData()) {
+								setText(formattedValue.value, formattedValue.unit);
+							} else {
+								setText(NOT_ACTUAL_VALUE, formattedValue.unit);
+							}
+						} else {
+							setText(NO_VALUE, null);
+						}
 					}
+				} else {
+					setText(NO_VALUE, null);
 				}
 			} else {
-				setText(NO_VALUE, null);
+				AbstractDevice<?> device = sensor.getDevice();
+				if (device.hasBatteryLevel()) {
+					setText(String.valueOf(device.getBatteryLevel()), "%");
+				} else {
+					setText(app.getString(R.string.n_a), null);
+				}
 			}
 		} else {
 			setText(NO_VALUE, null);
+		}
+		AbstractDevice<?> currentDevice = null;
+		if (sensor != null) {
+			currentDevice = this.sensor.getDevice();
 		}
 		if (plugin.isAnyConnectedDeviceId(externalDeviceId) &&
 				(currentDevice == null || (!currentDevice.isConnected() && !currentDevice.isConnecting()))) {
@@ -135,6 +221,13 @@ public class SensorTextWidget extends SimpleWidget {
 				}
 			}
 		}
+		setImageDrawable(getIconId());
+		forceUpdate = false;
+	}
+
+	@Override
+	public boolean isUpdateNeeded() {
+		return forceUpdate || super.isUpdateNeeded();
 	}
 
 	@Override
@@ -159,6 +252,14 @@ public class SensorTextWidget extends SimpleWidget {
 
 		@Override
 		public void onDeviceConnecting(@NonNull AbstractDevice<?> device) {
+		}
+
+		@Override
+		public void onActualStateChanged() {
+			app.runInUIThread(() -> {
+				forceUpdate = true;
+				updateInfo(null);
+			});
 		}
 	};
 
@@ -189,15 +290,50 @@ public class SensorTextWidget extends SimpleWidget {
 	@Override
 	public void copySettings(@NonNull ApplicationMode appMode, @Nullable String customId) {
 		copySettingsFromMode(appMode, appMode, customId);
+		widgetState.copyPrefs(appMode, customId);
 	}
 
 	@Override
 	public void copySettingsFromMode(@NonNull ApplicationMode sourceAppMode, @NonNull ApplicationMode appMode, @Nullable String customId) {
 		super.copySettingsFromMode(sourceAppMode, appMode, customId);
 		registerSensorDevicePref(customId).setModeValue(appMode, deviceIdPref.getModeValue(sourceAppMode));
+		widgetState.copyPrefsFromMode(sourceAppMode, appMode, customId);
 	}
 
 	public SensorWidgetDataFieldType getFieldType() {
 		return fieldType;
+	}
+
+	private boolean isShowSensorData() {
+		return getPreference().get() == ExternalDeviceShowMode.SENSOR_DATA;
+	}
+
+	@DrawableRes
+	@Override
+	public int getIconId(boolean nightMode) {
+		AbstractDevice<?> currentDevice = null;
+		if (sensor != null) {
+			currentDevice = this.sensor.getDevice();
+		}
+		boolean isConnected = sensor != null && currentDevice.isConnected();
+		if (isConnected) {
+			if (isShowSensorData()) {
+				return nightMode ? fieldType.nightIconId : fieldType.dayIconId;
+			} else {
+				return nightMode ? fieldType.nightBatteryIconId : fieldType.dayBatteryIconId;
+			}
+		} else {
+			if (isShowSensorData()) {
+				return nightMode ? fieldType.nightDisconnectedIconId : fieldType.dayDisconnectedIconId;
+			} else {
+				return fieldType.disconnectedBatteryIconId;
+			}
+		}
+	}
+
+	@DrawableRes
+	@Override
+	public int getMapIconId(boolean nightMode) {
+		return isShowSensorData() ? nightMode ? fieldType.nightIconId : fieldType.dayIconId : nightMode ? fieldType.nightBatteryIconId : fieldType.dayBatteryIconId;
 	}
 }

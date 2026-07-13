@@ -1,5 +1,7 @@
 package net.osmand.plus.views.layers.geometry;
 
+import static net.osmand.util.MapUtils.VECTOR_LINE_EARTH_RADIUS_METERS;
+
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -11,6 +13,7 @@ import androidx.annotation.Nullable;
 import net.osmand.Location;
 import net.osmand.core.android.MapRendererView;
 import net.osmand.core.jni.PointI;
+import net.osmand.core.jni.QListVectorLine;
 import net.osmand.core.jni.QVectorPointI;
 import net.osmand.core.jni.VectorLine;
 import net.osmand.core.jni.VectorLineBuilder;
@@ -146,11 +149,11 @@ public class RouteGeometryWay extends
 	}
 
 	@Override
-	protected boolean addInitialPoint(RotatedTileBox tb,
-	                                  double topLatitude, double leftLongitude, double bottomLatitude, double rightLongitude,
-	                                  GeometryWayStyle<?> style, Location lastPoint, int startLocationIndex) {
+	protected boolean addInitialPoint(RotatedTileBox tb, double topLatitude, double leftLongitude,
+			double bottomLatitude, double rightLongitude, GeometryWayStyle<?> style,
+			Location lastPoint, int startLocationIndex, List<GeometryWayPoint> points) {
 		boolean added = super.addInitialPoint(tb, topLatitude, leftLongitude, bottomLatitude, rightLongitude,
-				style, lastPoint, startLocationIndex);
+				style, lastPoint, startLocationIndex, points);
 		if (added) {
 			if (currentCachedSegment == null) {
 				currentCachedSegment = new Segment();
@@ -181,12 +184,12 @@ public class RouteGeometryWay extends
 			for (int pathIndex = 0; pathIndex < segmentData.size(); pathIndex++) {
 				DrawPathData31 path31 = segmentData.get(pathIndex);
 				boolean lastPath = pathIndex + 1 == segmentData.size();
-				int endIndex = lastPath ? path31.indexes.size() : path31.indexes.size() - 1;
+				int endIndex = lastPath ? path31.indexes.length : path31.indexes.length - 1;
 				for (int i = 0; i < endIndex; i++) {
-					int index = path31.indexes.get(i);
+					int index = path31.indexes[i];
 					if (index >= INITIAL_POINT_INDEX_SHIFT) {
-						int x31 = path31.tx.get(i);
-						int y31 = path31.ty.get(i);
+						int x31 = path31.tx[i];
+						int y31 = path31.ty[i];
 						double lat = MapUtils.get31LatitudeY(y31);
 						double lon = MapUtils.get31LongitudeX(x31);
 						segment.initialLocations.add(new Location("", lat, lon));
@@ -270,6 +273,21 @@ public class RouteGeometryWay extends
 		return drawDirectionArrows;
 	}
 
+	@Override
+	protected double getSegmentDistance(double lat1, double lon1, double lat2, double lon2) {
+		return MapUtils.getDistance(lat1, lon1, lat2, lon2, VECTOR_LINE_EARTH_RADIUS_METERS);
+	}
+
+	@Override
+	protected double getProjectionDistance(@NonNull Location projection, int x31, int y31) {
+		return MapUtils.getDistance(
+				projection.getLatitude(),
+				projection.getLongitude(),
+				MapUtils.get31LatitudeY(y31),
+				MapUtils.get31LongitudeX(x31),
+				VECTOR_LINE_EARTH_RADIUS_METERS);
+	}
+
 	public void clearRoute() {
 		if (route != null) {
 			route = null;
@@ -323,10 +341,14 @@ public class RouteGeometryWay extends
 		List<List<RouteActionPoint>> actionArrows = getActionArrows(actionPoints);
 		if (!actionArrows.isEmpty()) {
 			int lineIdx = 0;
-			if (actionLinesCollection == null) {
-				actionLinesCollection = new VectorLinesCollection();
+
+			VectorLinesCollection linesCollection = actionLinesCollection;
+			if (linesCollection == null) {
+				linesCollection = new VectorLinesCollection();
+				actionLinesCollection = linesCollection;
 			}
-			long initialLinesCount = actionLinesCollection.getLines().size();
+			QListVectorLine lines = linesCollection.getLines();
+			long initialLinesCount = lines.size();
 			for (List<RouteActionPoint> line : actionArrows) {
 				int arrowColor = getContrastArrowColor(line, customTurnArrowColor);
 				QVectorPointI points = new QVectorPointI();
@@ -337,7 +359,7 @@ public class RouteGeometryWay extends
 				}
 				float vectorLineScale = GeometryWayDrawer.getVectorLineScale(getContext().getApp()) / 2.0f;
 				if (lineIdx < initialLinesCount) {
-					VectorLine vectorLine = actionLinesCollection.getLines().get(lineIdx);
+					VectorLine vectorLine = lines.get(lineIdx);
 					vectorLine.setPoints(points);
 					vectorLine.setIsHidden(false);
 					vectorLine.setLineWidth(customWidth * vectorLineScale);
@@ -347,19 +369,19 @@ public class RouteGeometryWay extends
 					VectorLineBuilder vectorLineBuilder = new VectorLineBuilder();
 					vectorLineBuilder.setBaseOrder(baseOrder--)
 							.setIsHidden(false)
-							.setLineId((int) actionLinesCollection.getLines().size())
+							.setLineId(linesCollection.getLinesCount())
 							.setLineWidth(customWidth * vectorLineScale)
 							.setPoints(points)
 							.setEndCapStyle(VectorLine.EndCapStyle.ARROW.ordinal())
 							.setFillColor(NativeUtilities.createFColorARGB(arrowColor));
-					vectorLineBuilder.buildAndAddToCollection(actionLinesCollection);
+					vectorLineBuilder.buildAndAddToCollection(linesCollection);
 				}
 			}
 			while (lineIdx < initialLinesCount) {
-				actionLinesCollection.getLines().get(lineIdx).setIsHidden(true);
+				lines.get(lineIdx).setIsHidden(true);
 				lineIdx++;
 			}
-			mapRenderer.addSymbolsProvider(actionLinesCollection);
+			mapRenderer.addSymbolsProvider(linesCollection);
 		}
 	}
 

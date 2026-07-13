@@ -16,10 +16,13 @@ public class MapillaryMapWidget extends SimpleWidget {
 
 	public MapillaryMapWidget(@NonNull MapActivity mapActivity, @Nullable String customId, @Nullable WidgetsPanel widgetsPanel) {
 		super(mapActivity, MAPILLARY, customId, widgetsPanel);
+	}
 
+	@Override
+	protected void setupView(@NonNull View view) {
+		super.setupView(view);
 		setText(app.getString(R.string.mapillary), "");
 		setIcons(MAPILLARY);
-		setOnClickListener(getOnClickListener());
 	}
 
 	@Override

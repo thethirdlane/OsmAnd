@@ -1,6 +1,7 @@
 package net.osmand.search;
 
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import net.osmand.OsmAndCollator;
 import net.osmand.data.LatLon;
@@ -9,7 +10,6 @@ import net.osmand.search.core.SearchCoreFactory;
 import net.osmand.search.core.SearchPhrase;
 
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
 
 
@@ -28,10 +28,23 @@ public class LocationSearchTest {
 		search("geo:34.99393,-106.61568 (Treasure Island, other irrelevant info) ", new LatLon(34.99393, -106.61568));
 		search("http://download.osmand.net/go?lat=34.99393&lon=-106.61568&z=11", new LatLon(34.99393, -106.61568));
 	}
+
+	@Test
+	public void testGooGlRedirectSkippedWithoutInternetConnection() throws IOException {
+		AtomicBoolean internetConnectionChecked = new AtomicBoolean(false);
+		SearchResultMatcher srm = new SearchUICore.SearchResultMatcher(null, null, 0, null, 100);
+		new SearchCoreFactory.SearchLocationAndUrlAPI(null, () -> {
+			internetConnectionChecked.set(true);
+			return false;
+		}).search(SearchPhrase.emptyPhrase().generateNewPhrase("http://goo.gl/maps/Cji0V", null), srm);
+		Assert.assertTrue(internetConnectionChecked.get());
+		Assert.assertEquals(0, srm.getRequestResults().size());
+	}
 	
 	@Test
 	public void testBasicCommaSearch() throws IOException {
 		search("5.0,3.0", new LatLon(5, 3));
+		search("(5.0,3.0)", new LatLon(5, 3));
 		search("5.445,3.523", new LatLon(5.445, 3.523));
 		search("5:1:1,3:1", new LatLon(5 + 1/60f + 1/3600f, 3 + 1/60f));
 	}
@@ -41,6 +54,7 @@ public class LocationSearchTest {
 		search("17N6734294749123", new LatLon(42.875017, -78.87659050764749));
 		search("17 N 673429 4749123", new LatLon(42.875017, -78.87659050764749));
 		search("36N 609752 5064037", new LatLon(45.721184, 34.410328));
+		search("35U 332274 5421365", new LatLon(48.922478, 24.71033));
 		
 	}
 	
@@ -91,13 +105,12 @@ public class LocationSearchTest {
 
 	@Test
 	public void testCommaLatLonSearch() throws IOException {
-		
+		search("(33,95060 °S, 151,14453° E)", new LatLon(-33.95060, 151.14453));
 		search("33,95060 °S, 151,14453° E", new LatLon(-33.95060, 151.14453));
 		search("33,95060, 151,14453", new LatLon(33.95060, 151.14453));
 		search("33,95060 151,14453", new LatLon(33.95060,151.14453));
 
 		search("15,1235 S, 23,1244 W", new LatLon(-15.1235, -23.1244));
 		search("-15,1235, 23,1244", new LatLon(-15.1235, 23.1244));
-//		search("15,1235 S, 23,1244", new LatLon(-15.1235, 23.1244));
 	}
 }

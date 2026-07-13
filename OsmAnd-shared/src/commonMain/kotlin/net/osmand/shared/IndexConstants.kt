@@ -49,7 +49,10 @@ object IndexConstants {
 	const val ADDON_RENDERER_INDEX_EXT = ".addon$RENDERER_INDEX_EXT"
 
 	const val GPX_FILE_EXT = ".gpx"
+	const val GPX_FILE_PREFIX = "gpx_"
 	const val GPX_GZ_FILE_EXT = ".gpx.gz"
+	const val KML_SUFFIX = ".kml"
+	const val KMZ_SUFFIX = ".kmz"
 
 	const val WPT_CHART_FILE_EXT = ".wpt.chart"
 	const val SQLITE_CHART_FILE_EXT = ".3d.chart"
@@ -58,6 +61,8 @@ object IndexConstants {
 	const val AVOID_ROADS_FILE_EXT = ".geojson"
 
 	const val OBJ_FILE_EXT = ".obj"
+
+	const val TMP_FILE_EXT = ".tmp"
 
 	const val POI_TABLE = "poi"
 

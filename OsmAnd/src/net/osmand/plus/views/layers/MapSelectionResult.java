@@ -8,15 +8,19 @@ import androidx.annotation.Nullable;
 import net.osmand.data.LatLon;
 import net.osmand.data.RotatedTileBox;
 import net.osmand.plus.OsmandApplication;
+import net.osmand.plus.helpers.LocaleHelper;
 import net.osmand.plus.utils.NativeUtilities;
 import net.osmand.plus.views.layers.ContextMenuLayer.IContextMenuProvider;
-import net.osmand.util.Algorithms;
+import net.osmand.search.AmenitySearcher;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class MapSelectionResult {
 
+	private final AmenitySearcher searcher;
+	private final AmenitySearcher.Settings searchSettings;
+	private final String lang;
 	private final PointF point;
 	private final LatLon pointLatLon;
 	private final RotatedTileBox tileBox;
@@ -25,14 +29,17 @@ public class MapSelectionResult {
 	private final List<SelectedMapObject> allObjects = new ArrayList<>();
 	private final List<SelectedMapObject> processedObjects = new ArrayList<>();
 
-	protected LatLon objectLatLon;
+	private LatLon objectLatLon;
 
-	public MapSelectionResult(@NonNull OsmandApplication app, @NonNull RotatedTileBox tileBox,
-			@NonNull PointF point) {
+	public MapSelectionResult(@NonNull OsmandApplication app,
+	                          @NonNull RotatedTileBox tileBox, @NonNull PointF point) {
 		this.point = point;
 		this.tileBox = tileBox;
+		this.lang = LocaleHelper.getPreferredPlacesLanguage(app);
 		this.poiProvider = app.getOsmandMap().getMapLayers().getPoiMapLayer();
 		this.pointLatLon = NativeUtilities.getLatLonFromElevatedPixel(app.getOsmandMap().getMapView().getMapRenderer(), tileBox, point);
+		this.searcher = app.getResourceManager().getAmenitySearcher();
+		this.searchSettings = app.getResourceManager().getDefaultAmenitySearchSettings();
 	}
 
 	@NonNull
@@ -74,44 +81,12 @@ public class MapSelectionResult {
 	}
 
 	public void groupByOsmIdAndWikidataId() {
-		List<PlaceDetailsObject> detailsObjects = new ArrayList<>();
-		for (SelectedMapObject selectedObject : allObjects) {
-			Object object = selectedObject.object();
-			if (PlaceDetailsObject.shouldSkip(object)) {
-				processedObjects.add(selectedObject);
-				continue;
-			}
-			List<PlaceDetailsObject> overlapped = new ArrayList<>();
-			for (PlaceDetailsObject detailsObject : detailsObjects) {
-				if (detailsObject.overlapsWith(object)) {
-					overlapped.add(detailsObject);
-				}
-			}
-			PlaceDetailsObject detailsObject;
-			if (Algorithms.isEmpty(overlapped)) {
-				detailsObject = new PlaceDetailsObject();
-			} else {
-				detailsObject = overlapped.get(0);
-				for (int i = 1; i < overlapped.size(); i++) {
-					detailsObject.merge(overlapped.get(i));
-				}
-				detailsObjects.removeAll(overlapped);
-			}
-			detailsObject.addObject(object, selectedObject.provider());
-			detailsObjects.add(detailsObject);
-		}
-		for (PlaceDetailsObject object : detailsObjects) {
-			object.combineData();
-			processedObjects.add(new SelectedMapObject(object, poiProvider));
-		}
+		SelectedMapObjectsMerger merger = new SelectedMapObjectsMerger(
+				searcher, searchSettings, poiProvider, lang, pointLatLon);
+		processedObjects.addAll(merger.merge(allObjects));
 	}
 
 	public boolean isEmpty() {
 		return allObjects.isEmpty();
-	}
-
-	public record SelectedMapObject(@NonNull Object object,
-	                                @Nullable IContextMenuProvider provider) {
-
 	}
 }

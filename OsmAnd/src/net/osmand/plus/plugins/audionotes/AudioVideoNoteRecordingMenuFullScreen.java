@@ -1,6 +1,6 @@
 package net.osmand.plus.plugins.audionotes;
 
-import static net.osmand.plus.plugins.audionotes.AudioVideoNotesPlugin.AVActionType.REC_AUDIO;
+import static net.osmand.plus.plugins.audionotes.AVActionType.REC_AUDIO;
 
 import android.animation.ValueAnimator;
 import android.graphics.Bitmap;
@@ -14,6 +14,7 @@ import android.view.animation.LinearInterpolator;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 
+import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
 
 import net.osmand.plus.R;
@@ -33,7 +34,8 @@ public class AudioVideoNoteRecordingMenuFullScreen extends AudioVideoNoteRecordi
 		progressBar = view.findViewById(R.id.progressBar);
 	}
 
-	protected void initView(MapActivity mapActivity) {
+	@Override
+	protected void initView(@NonNull MapActivity mapActivity) {
 		mapActivity.getContextMenu().hide();
 		AudioVideoNoteRecordingMenuFullScreenFragment.showInstance(this);
 		WeakReference<AudioVideoNoteRecordingMenuFullScreenFragment> fragmentRef = findMenuFragment();

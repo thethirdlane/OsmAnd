@@ -9,7 +9,6 @@ import net.osmand.IndexConstants;
 import net.osmand.OperationLog;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.api.SQLiteAPI.SQLiteConnection;
-import net.osmand.plus.backup.BackupDbHelper.UploadedFileInfo;
 import net.osmand.plus.backup.BackupListeners.OnCollectLocalFilesListener;
 import net.osmand.plus.resources.SQLiteTileSource;
 import net.osmand.plus.settings.backend.backup.exporttype.ExportType;
@@ -39,16 +38,18 @@ class CollectLocalFilesTask extends AsyncTask<Void, LocalFile, List<LocalFile>> 
 	private final BackupHelper backupHelper;
 
 	private final OnCollectLocalFilesListener listener;
+	private final boolean autoSync;
 
 	private SQLiteConnection connection;
 	private Map<String, UploadedFileInfo> infos;
 
-	protected CollectLocalFilesTask(@NonNull OsmandApplication app,
+	protected CollectLocalFilesTask(@NonNull OsmandApplication app, boolean autoSync,
 			@Nullable OnCollectLocalFilesListener listener) {
 		this.app = app;
 		this.backupHelper = app.getBackupHelper();
 		this.dbHelper = backupHelper.getDbHelper();
 		this.listener = listener;
+		this.autoSync = autoSync;
 		operationLog.startOperation();
 	}
 
@@ -125,11 +126,18 @@ class CollectLocalFilesTask extends AsyncTask<Void, LocalFile, List<LocalFile>> 
 		localFile.item = item;
 		localFile.fileName = fileName;
 		localFile.localModifiedTime = lastModifiedTime;
+
+		long infoModifiedTime = item.getInfoModifiedTime();
+		if (infoModifiedTime > 0) {
+			localFile.localModifiedTime = Math.max(lastModifiedTime, infoModifiedTime);
+		} else {
+			localFile.localModifiedTime = lastModifiedTime;
+		}
 		if (infos != null) {
 			UploadedFileInfo fileInfo = infos.get(item.getType().name() + "___" + fileName);
 			if (fileInfo != null) {
 				localFile.uploadTime = fileInfo.getUploadTime();
-				checkM5Digest(localFile, fileInfo, lastModifiedTime);
+				checkM5Digest(localFile, fileInfo, lastModifiedTime, infoModifiedTime);
 			}
 		}
 		result.add(localFile);
@@ -137,13 +145,15 @@ class CollectLocalFilesTask extends AsyncTask<Void, LocalFile, List<LocalFile>> 
 	}
 
 	private void checkM5Digest(@NonNull LocalFile localFile, @NonNull UploadedFileInfo fileInfo,
-			long lastModifiedTime) {
+			long lastModifiedTime, long infoModifiedTime) {
 		SettingsItem item = localFile.item;
 		String lastMd5 = fileInfo.getMd5Digest();
+
 		boolean needM5Digest = item instanceof StreamSettingsItem
 				&& ((StreamSettingsItem) item).needMd5Digest()
 				&& localFile.uploadTime < lastModifiedTime
-				&& !Algorithms.isEmpty(lastMd5);
+				&& !Algorithms.isEmpty(lastMd5)
+				&& infoModifiedTime <= lastModifiedTime;
 
 		if (needM5Digest && localFile.file != null && localFile.file.exists()) {
 			FileInputStream is = null;
@@ -171,8 +181,8 @@ class CollectLocalFilesTask extends AsyncTask<Void, LocalFile, List<LocalFile>> 
 	@NonNull
 	private List<ExportType> getEnabledExportTypes() {
 		List<ExportType> result = new ArrayList<>();
-		for (ExportType exportType : ExportType.enabledValues()) {
-			if (backupHelper.getBackupTypePref(exportType).get()) {
+		for (ExportType exportType : ExportType.availableValues()) {
+			if (backupHelper.getBackupTypePref(exportType, autoSync).get()) {
 				result.add(exportType);
 			}
 		}

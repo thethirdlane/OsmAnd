@@ -1,37 +1,33 @@
 package net.osmand.plus.settings.backend.backup.items;
 
 import static net.osmand.IndexConstants.GPX_INDEX_DIR;
-import static net.osmand.shared.gpx.GpxParameter.COLOR;
-import static net.osmand.shared.gpx.GpxParameter.COLORING_TYPE;
-import static net.osmand.shared.gpx.GpxParameter.COLOR_PALETTE;
-import static net.osmand.shared.gpx.GpxParameter.SHOW_ARROWS;
-import static net.osmand.shared.gpx.GpxParameter.SHOW_START_FINISH;
+import static net.osmand.shared.gpx.GpxParameter.APPEARANCE_LAST_MODIFIED_TIME;
 import static net.osmand.shared.gpx.GpxParameter.SPLIT_INTERVAL;
 import static net.osmand.shared.gpx.GpxParameter.SPLIT_TYPE;
-import static net.osmand.shared.gpx.GpxParameter.WIDTH;
 
 import android.content.Context;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import net.osmand.IndexConstants;
-import net.osmand.plus.shared.SharedUtil;
-import net.osmand.shared.gpx.GpxFile;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.settings.backend.backup.FileSettingsItemReader;
 import net.osmand.plus.settings.backend.backup.GpxAppearanceInfo;
 import net.osmand.plus.settings.backend.backup.SettingsItemReader;
 import net.osmand.plus.settings.backend.backup.SettingsItemType;
+import net.osmand.plus.shared.SharedUtil;
 import net.osmand.plus.track.GpxSelectionParams;
 import net.osmand.plus.track.GpxSplitType;
-import net.osmand.shared.gpx.GpxDataItem;
-import net.osmand.shared.gpx.GpxDbHelper;
 import net.osmand.plus.track.helpers.GpxSelectionHelper;
 import net.osmand.plus.track.helpers.SelectedGpxFile;
 import net.osmand.plus.utils.FileUtils;
+import net.osmand.shared.gpx.DataItem;
+import net.osmand.shared.gpx.GpxDataItem;
+import net.osmand.shared.gpx.GpxDbHelper;
+import net.osmand.shared.gpx.GpxFile;
 import net.osmand.shared.gpx.GpxHelper;
 import net.osmand.shared.io.KFile;
+import net.osmand.util.Algorithms;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -75,7 +71,7 @@ public class GpxSettingsItem extends FileSettingsItem {
 	void readFromJson(@NonNull JSONObject json) throws JSONException {
 		subtype = FileSubtype.GPX;
 		super.readFromJson(json);
-		appearanceInfo = GpxAppearanceInfo.fromJson(json);
+		appearanceInfo = new GpxAppearanceInfo(json);
 	}
 
 	@Override
@@ -125,15 +121,23 @@ public class GpxSettingsItem extends FileSettingsItem {
 	}
 
 	private void updateGpxParams(@NonNull GpxDataItem dataItem) {
-		dataItem.setParameter(COLOR, appearanceInfo.color);
-		dataItem.setParameter(WIDTH, appearanceInfo.width);
-		dataItem.setParameter(SHOW_ARROWS, appearanceInfo.showArrows);
-		dataItem.setParameter(SHOW_START_FINISH, appearanceInfo.showStartFinish);
-		dataItem.setParameter(SPLIT_TYPE, GpxSplitType.getSplitTypeByTypeId(appearanceInfo.splitType).getType());
-		dataItem.setParameter(SPLIT_INTERVAL, appearanceInfo.splitInterval);
-		dataItem.setParameter(COLORING_TYPE, appearanceInfo.coloringType);
-		dataItem.setParameter(COLOR_PALETTE, appearanceInfo.gradientPaletteName);
+		Integer splitType = appearanceInfo.splitType != null
+				? GpxSplitType.getSplitTypeByTypeId(appearanceInfo.splitType).getType() : null;
+		boolean splitChanged = Algorithms.objectEquals(dataItem.getParameter(SPLIT_TYPE), splitType)
+				|| Algorithms.objectEquals(dataItem.getParameter(SPLIT_INTERVAL), appearanceInfo.splitInterval);
+
+		appearanceInfo.setParameters(dataItem);
+
 		app.getGpxDbHelper().updateDataItem(dataItem);
+		app.getGpxDbHelper().updateDataItemParameter(dataItem, APPEARANCE_LAST_MODIFIED_TIME, file.lastModified());
+
+		if (splitChanged) {
+			GpxSelectionHelper gpxHelper = app.getSelectedGpxHelper();
+			SelectedGpxFile selectedGpxFile = gpxHelper.getSelectedFileByPath(file.getAbsolutePath());
+			if (selectedGpxFile != null) {
+				selectedGpxFile.resetSplitProcessed();
+			}
+		}
 	}
 
 	private void createGpxAppearanceInfo() {
@@ -151,12 +155,18 @@ public class GpxSettingsItem extends FileSettingsItem {
 		}
 	}
 
+	@Override
+	public long getInfoModifiedTime() {
+		GpxDataItem dataItem = app.getGpxDbHelper().getItem(SharedUtil.kFile(file));
+		return dataItem != null ? dataItem.getParameter(APPEARANCE_LAST_MODIFIED_TIME) : 0;
+	}
+
 	@Nullable
 	@Override
 	public SettingsItemReader<? extends SettingsItem> getReader() {
 		return new FileSettingsItemReader(this) {
 			@Override
-			public void readFromStream(@NonNull InputStream inputStream, @Nullable File inputFile, @Nullable String entryName) throws IOException, IllegalArgumentException {
+			public File readFromStream(@NonNull InputStream inputStream, @Nullable File inputFile, @Nullable String entryName) throws IOException, IllegalArgumentException {
 				super.readFromStream(inputStream, inputFile, entryName);
 
 				GpxSelectionHelper gpxHelper = app.getSelectedGpxHelper();
@@ -172,6 +182,7 @@ public class GpxSettingsItem extends FileSettingsItem {
 				if (!gpxDbHelper.hasGpxDataItem(kFile)) {
 					gpxDbHelper.add(new GpxDataItem(kFile));
 				}
+				return file;
 			}
 		};
 	}

@@ -35,7 +35,7 @@ final class MapLayerMenuListener extends OnRowItemClick {
 
 	MapLayerMenuListener(@NonNull MapActivity mapActivity) {
 		this.mapActivity = mapActivity;
-		OsmandApplication app = mapActivity.getMyApplication();
+		OsmandApplication app = mapActivity.getApp();
 		this.transportLinesMenu = new TransportLinesMenu(app);
 		this.gridSettings = new CoordinatesGridSettings(app);
 	}
@@ -47,7 +47,7 @@ final class MapLayerMenuListener extends OnRowItemClick {
 			showPoiFilterDialog(uiAdapter, item);
 			return false;
 		} else if (itemId == R.string.layer_gpx_layer) {
-			TracksTabsFragment.showInstance(mapActivity.getSupportFragmentManager());
+			TracksTabsFragment.showInstance(mapActivity);
 			return false;
 		} else if (itemId == R.string.rendering_category_transport) {
 			TransportLinesMenu.showTransportsDialog(mapActivity);
@@ -72,7 +72,7 @@ final class MapLayerMenuListener extends OnRowItemClick {
 	@Override
 	public boolean onContextMenuClick(@Nullable OnDataChangeUiAdapter uiAdapter, @Nullable View view,
 	                                  @NotNull ContextMenuItem item, boolean isChecked) {
-		OsmandApplication app = mapActivity.getMyApplication();
+		OsmandApplication app = mapActivity.getApp();
 		OsmandSettings settings = app.getSettings();
 		PoiFiltersHelper poiFiltersHelper = app.getPoiFilters();
 		if (item.getSelected() != null) {
@@ -96,7 +96,7 @@ final class MapLayerMenuListener extends OnRowItemClick {
 				selectedGpxHelper.clearAllGpxFilesToShow(true);
 				item.setDescription(selectedGpxHelper.getGpxDescription());
 			} else {
-				TracksTabsFragment.showInstance(mapActivity.getSupportFragmentManager());
+				TracksTabsFragment.showInstance(mapActivity);
 			}
 		} else if (itemId == R.string.rendering_category_transport) {
 			boolean selected = transportLinesMenu.isShowAnyTransport();
@@ -127,9 +127,9 @@ final class MapLayerMenuListener extends OnRowItemClick {
 	}
 
 	private void showPoiFilterDialog(@Nullable OnDataChangeUiAdapter uiAdapter, @NonNull ContextMenuItem item) {
-		PoiFiltersHelper poiFiltersHelper = mapActivity.getMyApplication().getPoiFilters();
+		PoiFiltersHelper poiFiltersHelper = mapActivity.getApp().getPoiFilters();
 		MapLayers.DismissListener dismissListener = () -> {
-			PoiFiltersHelper pf = mapActivity.getMyApplication().getPoiFilters();
+			PoiFiltersHelper pf = mapActivity.getApp().getPoiFilters();
 			boolean selected = pf.isShowingAnyGeneralPoi();
 			item.setSelected(selected);
 			item.setDescription(pf.getGeneralSelectedPoiFiltersName());

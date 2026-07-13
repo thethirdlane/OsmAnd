@@ -84,16 +84,29 @@ public class JsTtsCommandPlayer extends CommandPlayer {
 			ttsVoiceUsed = "-";
 			ttsRequests = 0;
 
-			mTts = new TextToSpeech(app, status -> {
+			final TextToSpeech[] textToSpeech = new TextToSpeech[1];
+			textToSpeech[0] = new TextToSpeech(app, status -> {
+				if (mTts != textToSpeech[0]) {
+					log.info("Obsolete TTS instance finished initializing. Shutting it down.");
+					if (textToSpeech[0] != null) {
+						textToSpeech[0].shutdown();
+					}
+					return;
+				}
 				if (status != TextToSpeech.SUCCESS) {
 					ttsVoiceStatus = "NO INIT SUCCESS";
 					internalClear();
-					app.showToastMessage(app.getString(R.string.tts_initialization_error));
-				} else if (mTts != null) {
-					Locale locale = new LocaleBuilder(app, mTts, language).buildLocale();
-					onSuccessfulTtsInit(locale, cSpeechRate);
+					app.showToastMessage(R.string.tts_initialization_error);
+				} else {
+					TextToSpeech tts = mTts;
+					if (tts != null) {
+						Locale locale = new LocaleBuilder(app, tts, language).buildLocale();
+						onSuccessfulTtsInit(locale, cSpeechRate);
+					}
 				}
 			});
+			mTts = textToSpeech[0];
+
 			mTts.setOnUtteranceCompletedListener(new OnUtteranceCompletedListener() {
 				// The call back is on a binder thread.
 				@Override
@@ -112,40 +125,43 @@ public class JsTtsCommandPlayer extends CommandPlayer {
 
 	private void onSuccessfulTtsInit(@NonNull Locale locale, float speechRate) {
 		speechAllowed = true;
-		switch (mTts.isLanguageAvailable(locale)) {
-			case TextToSpeech.LANG_NOT_SUPPORTED:
-				ttsVoiceStatus = locale.getDisplayName() + ": LANG_NOT_SUPPORTED";
-				ttsVoiceUsed = getVoiceUsed();
-				break;
-			case TextToSpeech.LANG_MISSING_DATA:
-				ttsVoiceStatus = locale.getDisplayName() + ": LANG_MISSING_DATA";
-				ttsVoiceUsed = getVoiceUsed();
-				break;
-			case TextToSpeech.LANG_AVAILABLE:
-				ttsVoiceStatus = locale.getDisplayName() + ": LANG_AVAILABLE";
-			case TextToSpeech.LANG_COUNTRY_AVAILABLE:
-				ttsVoiceStatus = "-".equals(ttsVoiceStatus)
-						? locale.getDisplayName() + ": LANG_COUNTRY_AVAILABLE"
-						: ttsVoiceStatus;
-			case TextToSpeech.LANG_COUNTRY_VAR_AVAILABLE:
-				try {
-					mTts.setLanguage(locale);
-				} catch (Exception e) {
-					log.error(e);
-					if (mTts.isLanguageAvailable(Locale.getDefault()) > 0) {
-						mTts.setLanguage(Locale.getDefault());
-					} else {
-						app.showToastMessage("TTS language not available");
+		TextToSpeech mTts = JsTtsCommandPlayer.mTts;
+		if(mTts != null) {
+			switch (mTts.isLanguageAvailable(locale)) {
+				case TextToSpeech.LANG_NOT_SUPPORTED:
+					ttsVoiceStatus = locale.getDisplayName() + ": LANG_NOT_SUPPORTED";
+					ttsVoiceUsed = getVoiceUsed();
+					break;
+				case TextToSpeech.LANG_MISSING_DATA:
+					ttsVoiceStatus = locale.getDisplayName() + ": LANG_MISSING_DATA";
+					ttsVoiceUsed = getVoiceUsed();
+					break;
+				case TextToSpeech.LANG_AVAILABLE:
+					ttsVoiceStatus = locale.getDisplayName() + ": LANG_AVAILABLE";
+				case TextToSpeech.LANG_COUNTRY_AVAILABLE:
+					ttsVoiceStatus = "-".equals(ttsVoiceStatus)
+							? locale.getDisplayName() + ": LANG_COUNTRY_AVAILABLE"
+							: ttsVoiceStatus;
+				case TextToSpeech.LANG_COUNTRY_VAR_AVAILABLE:
+					try {
+						mTts.setLanguage(locale);
+					} catch (Exception e) {
+						log.error(e);
+						if (mTts.isLanguageAvailable(Locale.getDefault()) > 0) {
+							mTts.setLanguage(Locale.getDefault());
+						} else {
+							app.showToastMessage("TTS language not available");
+						}
 					}
-				}
-				if (speechRate != 1) {
-					mTts.setSpeechRate(speechRate);
-				}
-				ttsVoiceStatus = "-".equals(ttsVoiceStatus)
-						? locale.getDisplayName() + ": LANG_COUNTRY_VAR_AVAILABLE"
-						: ttsVoiceStatus;
-				ttsVoiceUsed = getVoiceUsed();
-				break;
+					if (speechRate != 1) {
+						mTts.setSpeechRate(speechRate);
+					}
+					ttsVoiceStatus = "-".equals(ttsVoiceStatus)
+							? locale.getDisplayName() + ": LANG_COUNTRY_VAR_AVAILABLE"
+							: ttsVoiceStatus;
+					ttsVoiceUsed = getVoiceUsed();
+					break;
+			}
 		}
 	}
 

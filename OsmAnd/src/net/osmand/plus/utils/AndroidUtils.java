@@ -6,6 +6,8 @@ import static android.Manifest.permission.BLUETOOTH;
 import static android.Manifest.permission.BLUETOOTH_ADMIN;
 import static android.Manifest.permission.BLUETOOTH_CONNECT;
 import static android.Manifest.permission.BLUETOOTH_SCAN;
+import static android.content.Context.RECEIVER_EXPORTED;
+import static android.content.Context.RECEIVER_NOT_EXPORTED;
 import static android.graphics.Paint.ANTI_ALIAS_FLAG;
 import static android.graphics.Paint.FILTER_BITMAP_FLAG;
 import static android.util.TypedValue.COMPLEX_UNIT_DIP;
@@ -18,33 +20,30 @@ import android.app.KeyguardManager;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.content.res.Resources;
-import android.graphics.Bitmap;
-import android.graphics.Canvas;
-import android.graphics.Matrix;
-import android.graphics.Paint;
-import android.graphics.PointF;
-import android.graphics.Rect;
-import android.graphics.Typeface;
+import android.graphics.*;
 import android.graphics.drawable.*;
 import android.hardware.display.DisplayManager;
 import android.net.Uri;
+import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.os.Parcelable;
 import android.os.StatFs;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
-import android.text.TextPaint;
 import android.text.TextUtils;
 import android.text.format.DateFormat;
 import android.text.style.CharacterStyle;
@@ -53,10 +52,10 @@ import android.text.style.URLSpan;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.*;
+import android.view.ViewGroup.MarginLayoutParams;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.FrameLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.annotation.*;
 import androidx.appcompat.content.res.AppCompatResources;
@@ -76,9 +75,12 @@ import net.osmand.osm.OsmRouteType;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
+import net.osmand.plus.help.HelpArticleUtils;
 import net.osmand.plus.render.RenderingIcons;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.views.OsmandMap;
+import net.osmand.plus.views.mapwidgets.OutlinedTextContainer;
+import net.osmand.plus.widgets.style.CustomURLSpan;
 import net.osmand.render.RenderingRuleProperty;
 import net.osmand.shared.gpx.primitives.RouteActivity;
 import net.osmand.util.Algorithms;
@@ -96,6 +98,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class AndroidUtils {
+
 	private static final Log LOG = PlatformUtil.getLog(AndroidUtils.class);
 
 	public static final String STRING_PLACEHOLDER = "%s";
@@ -250,6 +253,43 @@ public class AndroidUtils {
 		return FileProvider.getUriForFile(context, context.getPackageName() + ".fileprovider", file);
 	}
 
+	private static final int PERSISTABLE_URI_MODE_FLAGS = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+
+	/** Persists the required permission only when {@code grantedFlags} actually covers it. */
+	public static boolean takePersistableUriPermission(@NonNull Context context, @NonNull Uri uri, int grantedFlags, int requiredFlags) {
+		int requiredModeFlags = requiredFlags & PERSISTABLE_URI_MODE_FLAGS;
+		if ((grantedFlags & requiredModeFlags) != requiredModeFlags) {
+			return false;
+		}
+		return takePersistableUriPermission(context, uri, requiredFlags);
+	}
+
+	public static boolean takePersistableUriPermission(@NonNull Context context, @NonNull Uri uri, int requiredFlags) {
+		return updatePersistableUriPermission(context, uri, requiredFlags, true);
+	}
+
+	public static boolean releasePersistableUriPermission(@NonNull Context context, @NonNull Uri uri, int requiredFlags) {
+		return updatePersistableUriPermission(context, uri, requiredFlags, false);
+	}
+
+	private static boolean updatePersistableUriPermission(@NonNull Context context, @NonNull Uri uri, int requiredFlags, boolean take) {
+		int modeFlags = requiredFlags & PERSISTABLE_URI_MODE_FLAGS;
+		if (modeFlags == 0) {
+			return false;
+		}
+		try {
+			if (take) {
+				context.getContentResolver().takePersistableUriPermission(uri, modeFlags);
+			} else {
+				context.getContentResolver().releasePersistableUriPermission(uri, modeFlags);
+			}
+			return true;
+		} catch (RuntimeException e) {
+			LOG.warn("Failed to " + (take ? "persist" : "release") + " URI permission: " + uri, e);
+			return false;
+		}
+	}
+
 	public static boolean startActivityIfSafe(@NonNull Context context, @NonNull Intent intent) {
 		return startActivityIfSafe(context, intent, null);
 	}
@@ -330,22 +370,17 @@ public class AndroidUtils {
 		return spannable;
 	}
 
-	public static void removeLinkUnderline(TextView textView) {
-		Spannable s = new SpannableString(textView.getText());
-		for (URLSpan span : s.getSpans(0, s.length(), URLSpan.class)) {
-			int start = s.getSpanStart(span);
-			int end = s.getSpanEnd(span);
-			s.removeSpan(span);
-			span = new URLSpan(span.getURL()) {
-				@Override
-				public void updateDrawState(@NonNull TextPaint ds) {
-					super.updateDrawState(ds);
-					ds.setUnderlineText(false);
-				}
-			};
-			s.setSpan(span, start, end, 0);
+	public static void removeLinkUnderline(@NonNull TextView textView) {
+		Spannable spannable = new SpannableString(textView.getText());
+
+		for (URLSpan span : spannable.getSpans(0, spannable.length(), URLSpan.class)) {
+			int start = spannable.getSpanStart(span);
+			int end = spannable.getSpanEnd(span);
+			spannable.removeSpan(span);
+			span = new CustomURLSpan(span.getURL());
+			spannable.setSpan(span, start, end, 0);
 		}
-		textView.setText(s);
+		textView.setText(spannable);
 	}
 
 	public static String formatDate(Context ctx, long time) {
@@ -378,7 +413,7 @@ public class AndroidUtils {
 	}
 
 	@Nullable
-	private static FormattedSize formatSize(long sizeBytes, boolean round) {
+	public static FormattedSize formatSize(long sizeBytes, boolean round) {
 		if (sizeBytes <= 0) {
 			return null;
 		}
@@ -397,9 +432,9 @@ public class AndroidUtils {
 		return result;
 	}
 
-	final static class FormattedSize {
-		String num;
-		String numSuffix;
+	public final static class FormattedSize {
+		public String num;
+		public String numSuffix;
 	}
 
 	private static float roundIfNeeded(float value, boolean round) {
@@ -618,7 +653,7 @@ public class AndroidUtils {
 		return width;
 	}
 
-	public static void setTruncatedText(TextView textView, String text) {
+	public static void setTruncatedText(OutlinedTextContainer textView, String text) {
 		Paint paint = new Paint();
 		paint.setTextSize(textView.getTextSize());
 		float textWidth = paint.measureText(text);
@@ -706,11 +741,12 @@ public class AndroidUtils {
 
 	public static int spToPx(@NonNull Context ctx, float sp) {
 		Resources r = ctx.getResources();
-		return (int) TypedValue.applyDimension(
-				COMPLEX_UNIT_SP,
-				sp,
-				r.getDisplayMetrics()
-		);
+		return (int) TypedValue.applyDimension(COMPLEX_UNIT_SP, sp, r.getDisplayMetrics());
+	}
+
+	public static float spToPxF(@NonNull Context ctx, float sp) {
+		Resources r = ctx.getResources();
+		return TypedValue.applyDimension(COMPLEX_UNIT_SP, sp, r.getDisplayMetrics());
 	}
 
 	@ColorInt
@@ -783,7 +819,7 @@ public class AndroidUtils {
 	}
 
 	public static void addStatusBarPadding21v(@NonNull Activity activity, @NonNull View view) {
-		if (isInFullScreenMode(activity)) {
+		if (!InsetsUtils.isEdgeToEdgeSupported() && isInFullScreenMode(activity)) {
 			int paddingLeft = view.getPaddingLeft();
 			int paddingTop = view.getPaddingTop();
 			int paddingRight = view.getPaddingRight();
@@ -888,26 +924,34 @@ public class AndroidUtils {
 
 	@NonNull
 	public static Rect getViewBoundOnScreen(@NonNull View view) {
-		int[] pixel = getLocationOnScreen(view);
-		int left = pixel[0];
-		int top = pixel[1];
-		return new Rect(left, top, left + view.getWidth(), top + view.getHeight());
+		if (view.getVisibility() != View.GONE) {
+			int[] pixel = getLocationOnScreen(view);
+			int left = pixel[0];
+			int top = pixel[1];
+			return new Rect(left, top, left + view.getWidth(), top + view.getHeight());
+		}
+		return new Rect();
 	}
 
 	@NonNull
 	public static Rect getViewBoundOnWindow(@NonNull View view) {
-		int[] pixel = new int[2];
-		view.getLocationInWindow(pixel);
-		int left = pixel[0];
-		int top = pixel[1];
-		return new Rect(left, top, left + view.getWidth(), top + view.getHeight());
+		if (view.getVisibility() != View.GONE) {
+			int[] pixel = new int[2];
+			view.getLocationInWindow(pixel);
+			int left = pixel[0];
+			int top = pixel[1];
+			return new Rect(left, top, left + view.getWidth(), top + view.getHeight());
+		}
+		return new Rect();
 	}
 
 	public static int[] getCenterViewCoordinates(@NonNull View view) {
 		int[] coordinates = new int[2];
-		view.getLocationOnScreen(coordinates);
-		coordinates[0] += view.getWidth() / 2;
-		coordinates[1] += view.getHeight() / 2;
+		if (view.getVisibility() != View.GONE) {
+			view.getLocationOnScreen(coordinates);
+			coordinates[0] += view.getWidth() / 2;
+			coordinates[1] += view.getHeight() / 2;
+		}
 		return coordinates;
 	}
 
@@ -975,18 +1019,18 @@ public class AndroidUtils {
 			return tv.getCompoundDrawablesRelative();
 	}
 
-	public static void setPadding(View view, int start, int top, int end, int bottom) {
+	public static void setPadding(@NonNull View view, int start, int top, int end, int bottom) {
 		view.setPaddingRelative(start, top, end, bottom);
 	}
 
-	public static void setMargins(ViewGroup.MarginLayoutParams layoutParams, int vertical, int horizontal) {
-		setMargins(layoutParams, horizontal, vertical, horizontal, vertical);
+	public static void setMargins(@NonNull MarginLayoutParams params, int vertical, int horizontal) {
+		setMargins(params, horizontal, vertical, horizontal, vertical);
 	}
 
-	public static void setMargins(ViewGroup.MarginLayoutParams layoutParams, int start, int top, int end, int bottom) {
-		layoutParams.setMargins(start, top, end, bottom);
-			layoutParams.setMarginStart(start);
-			layoutParams.setMarginEnd(end);
+	public static void setMargins(@NonNull MarginLayoutParams params, int start, int top, int end, int bottom) {
+		params.setMargins(start, top, end, bottom);
+		params.setMarginStart(start);
+		params.setMarginEnd(end);
 	}
 
 	public static int getLayoutDirection(@NonNull Context ctx) {
@@ -1010,7 +1054,7 @@ public class AndroidUtils {
 	}
 
 	@NonNull
-	public static Bitmap drawableToBitmap(Drawable drawable) {
+	public static Bitmap drawableToBitmap(@NonNull Drawable drawable) {
 		return drawableToBitmap(drawable, false);
 	}
 
@@ -1322,6 +1366,7 @@ public class AndroidUtils {
 	}
 
 	public static void openUrl(@NonNull Context context, @NonNull String url, boolean nightMode) {
+		url = HelpArticleUtils.getLocalizedUrl(getApp(context), url);
 		openUrl(context, Uri.parse(url), nightMode);
 	}
 
@@ -1415,11 +1460,22 @@ public class AndroidUtils {
 	}
 
 	@Nullable
+	@SuppressWarnings({"deprecation", "unchecked"})
 	public static <T extends Serializable> T getSerializable(@NonNull Bundle bundle, @NonNull String key, @NonNull Class<T> clazz) {
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 			return bundle.getSerializable(key, clazz);
 		} else {
 			return (T) bundle.getSerializable(key);
+		}
+	}
+
+	@Nullable
+	@SuppressWarnings({"deprecation", "unchecked"})
+	public static <T extends Parcelable> T getParcelable(@NonNull Bundle bundle, @NonNull String key, @NonNull Class<T> clazz) {
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+			return bundle.getParcelable(key, clazz);
+		} else {
+			return (T) bundle.getParcelable(key);
 		}
 	}
 
@@ -1494,5 +1550,61 @@ public class AndroidUtils {
 	@NonNull
 	public static OsmandApplication getApp(@NonNull Context context) {
 		return ((OsmandApplication) context.getApplicationContext());
+	}
+
+	public static Intent registerBroadcastReceiver(@NonNull Context context, @NonNull String action, @Nullable BroadcastReceiver receiver) {
+		return registerBroadcastReceiver(context, action, receiver, false);
+	}
+
+	public static Intent registerBroadcastReceiver(@NonNull Context context, @NonNull String action, @Nullable BroadcastReceiver receiver, boolean export) {
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+			return context.registerReceiver(receiver, new IntentFilter(action), export ? RECEIVER_EXPORTED : RECEIVER_NOT_EXPORTED);
+		}
+		return context.registerReceiver(receiver, new IntentFilter(action));
+	}
+
+	public static int getBatteryLevel(@NonNull Context context) {
+		try {
+			BatteryManager manager = context.getSystemService(BatteryManager.class);
+			int percent = manager != null ? manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) : -1;
+			if (percent >= 0 && percent <= 100) {
+				return percent;
+			}
+			Intent intent = registerBroadcastReceiver(context, Intent.ACTION_BATTERY_CHANGED, null, false);
+			if (intent != null) {
+				int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+				int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+
+				return level >= 0 && scale > 0 ? (level * 100) / scale : 0;
+			}
+		} catch (Exception e) {
+			LOG.info(e);
+		}
+		return 0;
+	}
+
+	public static String truncateWithEllipsis(@Nullable String text, int maxSymbolNumber) {
+		if (Algorithms.isEmpty(text)) return "";
+
+		if (text.codePointCount(0, text.length()) <= maxSymbolNumber) {
+			return text;
+		}
+
+		int endIndex = text.offsetByCodePoints(0, maxSymbolNumber - 1);
+		return text.substring(0, endIndex) + "…";
+	}
+
+	@NonNull
+	public static String getViewName(@NonNull View view) {
+		return getResName(view.getResources(), view.getId());
+	}
+
+	@NonNull
+	public static String getResName(@NonNull Resources res, @AnyRes int resid) {
+		try {
+			return res.getResourceEntryName(resid);
+		} catch (Resources.NotFoundException e) {
+			return String.valueOf(resid);
+		}
 	}
 }

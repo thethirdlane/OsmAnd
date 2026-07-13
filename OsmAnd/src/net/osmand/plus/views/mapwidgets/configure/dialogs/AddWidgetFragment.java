@@ -1,5 +1,7 @@
 package net.osmand.plus.views.mapwidgets.configure.dialogs;
 
+import static net.osmand.plus.views.mapwidgets.configure.dialogs.WidgetDataHolder.KEY_EXTERNAL_GROUP_ID;
+import static net.osmand.plus.views.mapwidgets.configure.dialogs.WidgetDataHolder.KEY_EXTERNAL_GROUP_WIDGET_IDS;
 import static net.osmand.plus.views.mapwidgets.configure.dialogs.WidgetDataHolder.KEY_EXTERNAL_PROVIDER_PACKAGE;
 import static net.osmand.plus.views.mapwidgets.configure.dialogs.WidgetDataHolder.KEY_EXTERNAL_WIDGET_ID;
 import static net.osmand.plus.views.mapwidgets.configure.dialogs.WidgetDataHolder.KEY_GROUP_NAME;
@@ -11,6 +13,7 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewGroup.LayoutParams;
 import android.widget.ImageView;
 import android.widget.TextView;
 
@@ -22,16 +25,20 @@ import androidx.fragment.app.FragmentManager;
 
 import net.osmand.Collator;
 import net.osmand.OsmAndCollator;
+import net.osmand.aidl.AidlExternalIconHelper;
 import net.osmand.aidl.AidlMapWidgetWrapper;
 import net.osmand.aidl.OsmandAidlApi;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
+import net.osmand.plus.base.BaseFullScreenFragment;
 import net.osmand.plus.chooseplan.ChoosePlanFragment;
 import net.osmand.plus.chooseplan.OsmAndFeature;
 import net.osmand.plus.helpers.AndroidUiHelper;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTargetsCollection;
 import net.osmand.plus.utils.UiUtilities;
 import net.osmand.plus.views.mapwidgets.WidgetGroup;
 import net.osmand.plus.views.mapwidgets.WidgetType;
@@ -45,11 +52,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-public class AddWidgetFragment extends BaseWidgetFragment {
+public class AddWidgetFragment extends BaseFullScreenFragment {
 
 	public static final String TAG = AddWidgetFragment.class.getSimpleName();
 
-	private static final String KEY_APP_MODE = "app_mode";
 	private static final String KEY_SELECTED_WIDGETS_IDS = "selected_widgets_ids";
 	private static final String KEY_ALREADY_SELECTED_WIDGETS_IDS = "already_selected_widgets_ids";
 
@@ -59,10 +65,14 @@ public class AddWidgetFragment extends BaseWidgetFragment {
 
 	private View view;
 
-	@Nullable
+	public boolean getContentStatusBarNightMode() {
+		return nightMode;
+	}
+
 	@Override
-	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-		updateNightMode();
+	public void onCreate(@Nullable Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+
 		Bundle args = getArguments();
 		if (savedInstanceState != null) {
 			initFromBundle(savedInstanceState);
@@ -70,17 +80,32 @@ public class AddWidgetFragment extends BaseWidgetFragment {
 			initFromBundle(args);
 			selectWidgetByDefault();
 		}
+	}
 
-		view = themedInflater.inflate(R.layout.base_widget_fragment_layout, container, false);
+	@Nullable
+	@Override
+	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+		updateNightMode();
+
+		view = inflate(R.layout.base_widget_fragment_layout, container, false);
 		AndroidUtils.addStatusBarPadding21v(requireMyActivity(), view);
 
 		ViewGroup mainContent = view.findViewById(R.id.main_content);
-		themedInflater.inflate(R.layout.add_widget_fragment_content, mainContent);
+		inflate(R.layout.add_widget_fragment_content, mainContent);
 
 		setupToolbar();
 		setupContent();
 
 		return view;
+	}
+
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.replace(InsetTarget.createCollapsingAppBar(R.id.appbar));
+		collection.replace(InsetTarget.createScrollable(R.id.scroll_view));
+		collection.replace(InsetTarget.createHorizontalLandscape(R.id.toolbar_layout));
+		return collection;
 	}
 
 	@Override
@@ -90,15 +115,11 @@ public class AddWidgetFragment extends BaseWidgetFragment {
 	}
 
 	private void initFromBundle(@NonNull Bundle bundle) {
-		String appModeKey = bundle.getString(KEY_APP_MODE);
-		appMode = ApplicationMode.valueOfStringKey(appModeKey, app.getSettings().getApplicationMode());
-
 		widgetsDataHolder = new WidgetDataHolder(app, bundle);
 
 		if (bundle.containsKey(KEY_ALREADY_SELECTED_WIDGETS_IDS)) {
 			alreadySelectedWidgetsIds = (List<String>) AndroidUtils.getSerializable(bundle, KEY_ALREADY_SELECTED_WIDGETS_IDS, ArrayList.class);
 		}
-
 		if (bundle.containsKey(KEY_SELECTED_WIDGETS_IDS)) {
 			selectedWidgetsIds = (Map<Integer, String>) AndroidUtils.getSerializable(bundle, KEY_SELECTED_WIDGETS_IDS, TreeMap.class);
 		}
@@ -126,10 +147,13 @@ public class AddWidgetFragment extends BaseWidgetFragment {
 
 		List<WidgetType> widgets = widgetsDataHolder.getWidgetsList(appMode);
 		AidlMapWidgetWrapper aidlWidgetData = widgetsDataHolder.getAidlWidgetData();
+		List<AidlMapWidgetWrapper> aidlGroupWidgets = widgetsDataHolder.getAidlGroupWidgets();
 		if (widgets != null) {
 			Collator collator = OsmAndCollator.primaryCollator();
 			widgets.sort((indexItem, indexItem2) -> collator.compare(app.getString(indexItem.titleId), app.getString(indexItem2.titleId)));
 			inflateWidgetsList(widgets);
+		} else if (!Algorithms.isEmpty(aidlGroupWidgets)) {
+			inflateAidlWidgets(aidlGroupWidgets);
 		} else if (aidlWidgetData != null) {
 			inflateAidlWidget(aidlWidgetData);
 		}
@@ -174,6 +198,12 @@ public class AddWidgetFragment extends BaseWidgetFragment {
 		}
 	}
 
+	private void addVerticalSpace(@NonNull ViewGroup container, int space) {
+		View spaceView = new View(getContext());
+		spaceView.setLayoutParams(new LayoutParams(LayoutParams.MATCH_PARENT, space));
+		container.addView(spaceView);
+	}
+
 	private void inflateAidlWidget(@NonNull AidlMapWidgetWrapper aidlWidgetData) {
 		ViewGroup container = view.findViewById(R.id.widgets_container);
 		LayoutInflater inflater = UiUtilities.getInflater(requireContext(), nightMode);
@@ -181,12 +211,34 @@ public class AddWidgetFragment extends BaseWidgetFragment {
 		View view = inflater.inflate(R.layout.add_widget_item, container, false);
 		String widgetId = getAidlWidgetId(aidlWidgetData);
 		String title = aidlWidgetData.getMenuTitle();
-		String iconName = aidlWidgetData.getMenuIconName();
-		int iconId = AndroidUtils.getDrawableId(app, iconName);
-		Drawable icon = iconId != 0 ? getPaintedContentIcon(iconId, appMode.getProfileColor(nightMode)) : null;
-		setupWidgetItemView(view, widgetId, title, null, icon, false);
+		setupWidgetItemView(view, widgetId, title, null, getAidlWidgetIcon(aidlWidgetData), false);
 
 		container.addView(view);
+	}
+
+	private void inflateAidlWidgets(@NonNull List<AidlMapWidgetWrapper> aidlWidgets) {
+		ViewGroup container = view.findViewById(R.id.widgets_container);
+		LayoutInflater inflater = UiUtilities.getInflater(requireContext(), nightMode);
+
+		for (int i = 0; i < aidlWidgets.size(); i++) {
+			AidlMapWidgetWrapper aidlWidgetData = aidlWidgets.get(i);
+			View itemView = inflater.inflate(R.layout.add_widget_item, container, false);
+			String widgetId = getAidlWidgetId(aidlWidgetData);
+			String title = aidlWidgetData.getMenuTitle();
+			boolean showDivider = i + 1 < aidlWidgets.size();
+			setupWidgetItemView(itemView, widgetId, title, null, getAidlWidgetIcon(aidlWidgetData), showDivider);
+			container.addView(itemView);
+		}
+	}
+
+	@Nullable
+	private Drawable getAidlWidgetIcon(@NonNull AidlMapWidgetWrapper aidlWidgetData) {
+		Drawable customIcon = AidlExternalIconHelper.getIconDrawable(app, aidlWidgetData.getMenuIconUri());
+		if (customIcon != null) {
+			return customIcon;
+		}
+		int iconId = AndroidUtils.getDrawableId(app, aidlWidgetData.getMenuIconName());
+		return iconId != 0 ? getPaintedIcon(iconId, appMode.getProfileColor(nightMode)) : null;
 	}
 
 	private void setupWidgetItemView(@NonNull View view,
@@ -243,20 +295,12 @@ public class AddWidgetFragment extends BaseWidgetFragment {
 	@Override
 	public void onSaveInstanceState(@NonNull Bundle outState) {
 		super.onSaveInstanceState(outState);
-		outState.putString(KEY_APP_MODE, appMode.getStringKey());
 		outState.putSerializable(KEY_SELECTED_WIDGETS_IDS, (Serializable) selectedWidgetsIds);
 		outState.putSerializable(KEY_ALREADY_SELECTED_WIDGETS_IDS, (Serializable) alreadySelectedWidgetsIds);
-		widgetsDataHolder.saveState(outState);
-	}
 
-	@Override
-	public void onItemPurchased(String sku, boolean active) {
-		recreateFragment();
-	}
-
-	@Override
-	protected String getFragmentTag() {
-		return TAG;
+		if (widgetsDataHolder != null) {
+			widgetsDataHolder.saveState(outState);
+		}
 	}
 
 	public static void showGroupDialog(@NonNull FragmentManager manager,
@@ -266,19 +310,16 @@ public class AddWidgetFragment extends BaseWidgetFragment {
 	                                   @NonNull WidgetGroup widgetGroup,
 	                                   @Nullable List<String> alreadySelectedWidgetsIds) {
 		Bundle args = new Bundle();
-		args.putString(KEY_APP_MODE, appMode.getStringKey());
+		args.putString(APP_MODE_KEY, appMode.getStringKey());
 		args.putString(KEY_WIDGETS_PANEL_ID, widgetsPanel.name());
 		args.putString(KEY_GROUP_NAME, widgetGroup.name());
 		args.putSerializable(KEY_ALREADY_SELECTED_WIDGETS_IDS, (Serializable) alreadySelectedWidgetsIds);
 		AddWidgetFragment fragment = new AddWidgetFragment();
 		fragment.setArguments(args);
 		fragment.setTargetFragment(target, 0);
-		showFragment(manager, fragment);
+		showInstance(manager, fragment);
 	}
 
-	/**
-	 * @see AddWidgetListener#showGroupDialog
-	 */
 	public static void showWidgetDialog(@NonNull FragmentManager manager,
 	                                    @Nullable Fragment target,
 	                                    @NonNull ApplicationMode appMode,
@@ -286,19 +327,16 @@ public class AddWidgetFragment extends BaseWidgetFragment {
 	                                    @NonNull WidgetType widgetType,
 	                                    @Nullable List<String> alreadySelectedWidgetsIds) {
 		Bundle args = new Bundle();
-		args.putString(KEY_APP_MODE, appMode.getStringKey());
+		args.putString(APP_MODE_KEY, appMode.getStringKey());
 		args.putString(KEY_WIDGETS_PANEL_ID, widgetsPanel.name());
 		args.putString(KEY_WIDGET_TYPE, widgetType.name());
 		args.putSerializable(KEY_ALREADY_SELECTED_WIDGETS_IDS, (Serializable) alreadySelectedWidgetsIds);
 		AddWidgetFragment fragment = new AddWidgetFragment();
 		fragment.setArguments(args);
 		fragment.setTargetFragment(target, 0);
-		showFragment(manager, fragment);
+		showInstance(manager, fragment);
 	}
 
-	/**
-	 * @see AddWidgetListener#showGroupDialog
-	 */
 	public static void showExternalWidgetDialog(@NonNull FragmentManager manager,
 	                                            @Nullable Fragment target,
 	                                            @NonNull ApplicationMode appMode,
@@ -307,7 +345,7 @@ public class AddWidgetFragment extends BaseWidgetFragment {
 	                                            @NonNull String externalProviderPackage,
 	                                            @Nullable List<String> alreadySelectedWidgetsIds) {
 		Bundle args = new Bundle();
-		args.putString(KEY_APP_MODE, appMode.getStringKey());
+		args.putString(APP_MODE_KEY, appMode.getStringKey());
 		args.putString(KEY_WIDGETS_PANEL_ID, widgetsPanel.name());
 		args.putString(KEY_EXTERNAL_WIDGET_ID, widgetId);
 		args.putString(KEY_EXTERNAL_PROVIDER_PACKAGE, externalProviderPackage);
@@ -315,10 +353,32 @@ public class AddWidgetFragment extends BaseWidgetFragment {
 		AddWidgetFragment fragment = new AddWidgetFragment();
 		fragment.setArguments(args);
 		fragment.setTargetFragment(target, 0);
-		showFragment(manager, fragment);
+		showInstance(manager, fragment);
 	}
 
-	private static void showFragment(@NonNull FragmentManager manager, @NonNull AddWidgetFragment fragment) {
+	public static void showExternalGroupDialog(@NonNull FragmentManager manager,
+	                                           @Nullable Fragment target,
+	                                           @NonNull ApplicationMode appMode,
+	                                           @NonNull WidgetsPanel widgetsPanel,
+	                                           @NonNull String externalProviderPackage,
+	                                           @NonNull String externalGroupId,
+	                                           @Nullable ArrayList<String> groupWidgetIds,
+	                                           @Nullable List<String> alreadySelectedWidgetsIds) {
+		Bundle args = new Bundle();
+		args.putString(APP_MODE_KEY, appMode.getStringKey());
+		args.putString(KEY_WIDGETS_PANEL_ID, widgetsPanel.name());
+		args.putString(KEY_EXTERNAL_PROVIDER_PACKAGE, externalProviderPackage);
+		args.putString(KEY_EXTERNAL_GROUP_ID, externalGroupId);
+		args.putStringArrayList(KEY_EXTERNAL_GROUP_WIDGET_IDS, groupWidgetIds);
+		args.putSerializable(KEY_ALREADY_SELECTED_WIDGETS_IDS, (Serializable) alreadySelectedWidgetsIds);
+		AddWidgetFragment fragment = new AddWidgetFragment();
+		fragment.setArguments(args);
+		fragment.setTargetFragment(target, 0);
+		showInstance(manager, fragment);
+	}
+
+	private static void showInstance(@NonNull FragmentManager manager,
+	                                 @NonNull AddWidgetFragment fragment) {
 		if (AndroidUtils.isFragmentCanBeAdded(manager, TAG)) {
 			manager.beginTransaction()
 					.add(R.id.fragmentContainer, fragment, TAG)

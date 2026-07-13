@@ -273,10 +273,11 @@ public class SavingTrackHelper extends SQLiteOpenHelper implements IRouteInforma
 				}
 
 				GpxDataItem item = new GpxDataItem(fKout);
+				setTrackAppearance(item);
 				item.setAnalysis(gpx.getAnalysis(fout.lastModified()));
+
 				app.getGpxDbHelper().add(item);
 				lastTimeFileSaved = fout.lastModified();
-				saveTrackAppearance(item);
 			}
 			clearRecordedData(warnings.isEmpty());
 		}
@@ -294,7 +295,7 @@ public class SavingTrackHelper extends SQLiteOpenHelper implements IRouteInforma
 		}
 	}
 
-	private void saveTrackAppearance(@NonNull GpxDataItem item) {
+	private void setTrackAppearance(@NonNull GpxDataItem item) {
 		ColoringType coloringType = settings.CURRENT_TRACK_COLORING_TYPE.get();
 		String routeInfoAttribute = settings.CURRENT_TRACK_ROUTE_INFO_ATTRIBUTE.get();
 		ColoringStyle coloringStyle = new ColoringStyle(coloringType, routeInfoAttribute);
@@ -306,8 +307,6 @@ public class SavingTrackHelper extends SQLiteOpenHelper implements IRouteInforma
 		item.setParameter(SHOW_START_FINISH, settings.CURRENT_TRACK_SHOW_START_FINISH.get());
 		item.setParameter(COLORING_TYPE, coloringStyle.getId());
 		item.setParameter(COLOR_PALETTE, settings.CURRENT_GRADIENT_PALETTE);
-
-		app.getGpxDbHelper().updateDataItem(item);
 	}
 
 	public void clearRecordedData(boolean clearDb) {
@@ -330,8 +329,11 @@ public class SavingTrackHelper extends SQLiteOpenHelper implements IRouteInforma
 		duration = 0;
 		trkPoints = 0;
 		currentTrackIndex++;
-		app.getSelectedGpxHelper().clearPoints(currentTrack.getModifiableGpxFile());
-		currentTrack.getModifiableGpxFile().getTracks().clear();
+
+		GpxFile gpxFile = currentTrack.getModifiableGpxFile();
+		gpxFile.clearData();
+		app.getSelectedGpxHelper().syncGpxWithMarkers(gpxFile);
+
 		currentTrack.clearSegmentsToDisplay();
 		currentTrack.getModifiableGpxFile().setModifiedTime(time);
 		currentTrack.getModifiableGpxFile().setPointsModifiedTime(time);
@@ -339,12 +341,14 @@ public class SavingTrackHelper extends SQLiteOpenHelper implements IRouteInforma
 	}
 
 	public Map<String, GpxFile> collectRecordedData() {
-		Map<String, GpxFile> data = new LinkedHashMap<String, GpxFile>();
+		Map<String, GpxFile> data = new LinkedHashMap<>();
 		SQLiteDatabase db = getReadableDatabase();
 		if (db != null && db.isOpen()) {
 			try {
 				collectDBPoints(db, data);
 				collectDBTracks(db, data);
+			} catch (Exception e) {
+				log.error(e.getMessage(), e);
 			} finally {
 				db.close();
 			}
@@ -353,9 +357,9 @@ public class SavingTrackHelper extends SQLiteOpenHelper implements IRouteInforma
 	}
 
 	private void collectDBPoints(@NonNull SQLiteDatabase db, @NonNull Map<String, GpxFile> dataTracks) {
-		Cursor query = db.rawQuery("SELECT " + POINT_COL_LAT + "," + POINT_COL_LON + "," + POINT_COL_DATE + "," //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+		Cursor query = db.rawQuery("SELECT " + POINT_COL_LAT + "," + POINT_COL_LON + "," + POINT_COL_DATE + ","
 				+ POINT_COL_DESCRIPTION + "," + POINT_COL_NAME + "," + POINT_COL_CATEGORY + "," + POINT_COL_COLOR + ","
-				+ POINT_COL_ICON + "," + POINT_COL_BACKGROUND + " FROM " + POINT_NAME + " ORDER BY " + POINT_COL_DATE + " ASC", null); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				+ POINT_COL_ICON + "," + POINT_COL_BACKGROUND + " FROM " + POINT_NAME + " ORDER BY " + POINT_COL_DATE + " ASC", null);
 		if (query.moveToFirst()) {
 			do {
 				WptPt pt = new WptPt();
@@ -406,8 +410,8 @@ public class SavingTrackHelper extends SQLiteOpenHelper implements IRouteInforma
 				pt.setLat(query.getDouble(0));
 				pt.setLon(query.getDouble(1));
 				pt.setEle(query.getDouble(2));
-				pt.setSpeed(query.getDouble(3));
-				pt.setHdop(query.getDouble(4));
+				pt.setSpeed(query.getFloat(3));
+				pt.setHdop(query.getFloat(4));
 				pt.setTime(query.getLong(5));
 				pt.setHeading(query.isNull(6) ? Float.NaN : query.getFloat(6));
 
@@ -416,14 +420,14 @@ public class SavingTrackHelper extends SQLiteOpenHelper implements IRouteInforma
 					GpxUtilities.INSTANCE.assignExtensionWriter(pt, extensions, "plugins");
 				}
 
+				boolean autoSplit = settings.AUTO_SPLIT_RECORDING.get();
 				boolean newInterval = pt.getLat() == 0 && pt.getLon() == 0;
 				long currentInterval = Math.abs(pt.getTime() - previousTime);
-				if (track != null && !newInterval && (!settings.AUTO_SPLIT_RECORDING.get()
-						|| currentInterval < 6 * 60 * 1000 || currentInterval < 10 * previousInterval)) {
+				if (track != null && !newInterval && (!autoSplit || currentInterval < 6 * 60 * 1000
+						|| currentInterval < 10 * previousInterval)) {
 					// 6 minute - same segment
 					segment.getPoints().add(pt);
-				} else if (track != null && (settings.AUTO_SPLIT_RECORDING.get()
-						&& currentInterval < 2 * 60 * 60 * 1000)) {
+				} else if (track != null && (autoSplit || newInterval) && currentInterval < 2 * 60 * 60 * 1000) {
 					// 2 hour - same track
 					segment = new TrkSegment();
 					if (!newInterval) {
@@ -541,7 +545,7 @@ public class SavingTrackHelper extends SQLiteOpenHelper implements IRouteInforma
 
 	private boolean shouldRecordLocation(@Nullable Location location, long locationTime) {
 		boolean record = false;
-		if (location != null && SimulationProvider.isNotSimulatedLocation(location)
+		if (location != null && SimulationProvider.isLocationForRecording(location)
 				&& PluginsHelper.isActive(OsmandMonitoringPlugin.class)) {
 			if (isRecordingAutomatically() && locationTime - lastTimeUpdated > settings.SAVE_TRACK_INTERVAL.get()) {
 				record = true;
@@ -578,7 +582,7 @@ public class SavingTrackHelper extends SQLiteOpenHelper implements IRouteInforma
 		PluginsHelper.attachAdditionalInfoToRecordedTrack(location, json);
 		try {
 			OsmandDevelopmentPlugin plugin = PluginsHelper.getEnabledPlugin(OsmandDevelopmentPlugin.class);
-			if (settings.SAVE_TRACK_PRECISION.get() == 0) {
+			if (plugin != null && plugin.SAVE_LOCATION_PROVIDER_TO_GPX.get()) {
 				json.put("provider", location.getProvider());
 			}
 			boolean writeBearing = plugin != null && plugin.SAVE_BEARING_TO_GPX.get();
@@ -616,15 +620,23 @@ public class SavingTrackHelper extends SQLiteOpenHelper implements IRouteInforma
 		if (newSegment) {
 			currentTrack.addEmptySegmentToDisplay();
 		}
+
+		// Check and add new track segment if needed
 		boolean segmentAdded = false;
-		if (track.getSegments().size() == 0 || newSegment) {
-			track.getSegments().add(new TrkSegment());
-			segmentAdded = true;
+		List<TrkSegment> segments = track.getSegments();
+		if (segments.isEmpty() || newSegment) {
+			TrkSegment lastSegment = !segments.isEmpty() ? segments.get(segments.size() - 1) : null;
+			// Don't duplicate empty segments, skip if we already have one
+			if (lastSegment == null || !lastSegment.getPoints().isEmpty()) {
+				segments.add(new TrkSegment());
+				segmentAdded = true;
+			}
 		}
+
 		if (pt != null) {
-			currentTrack.appendTrackPointToDisplay(pt, app);
-			TrkSegment lt = track.getSegments().get(track.getSegments().size() - 1);
-			lt.getPoints().add(pt);
+			TrkSegment currentSegment = segments.get(segments.size() - 1);
+			currentTrack.appendTrackPointToDisplay(app, pt, currentSegment.getPoints().isEmpty());
+			currentSegment.getPoints().add(pt);
 		}
 		if (segmentAdded) {
 			currentTrack.processPoints(app);
@@ -639,7 +651,7 @@ public class SavingTrackHelper extends SQLiteOpenHelper implements IRouteInforma
 	public WptPt insertPointData(double lat, double lon, String description, String name,
 	                             String category, int color, @Nullable String iconName, @Nullable String backgroundName) {
 		long time = System.currentTimeMillis();
-		WptPt pt = new WptPt(lat, lon, time, Double.NaN, 0, Double.NaN);
+		WptPt pt = new WptPt(lat, lon, time, Double.NaN, 0, Float.NaN);
 		pt.setName(name);
 		pt.setCategory(category);
 		pt.setDesc(description);
@@ -913,4 +925,5 @@ public class SavingTrackHelper extends SQLiteOpenHelper implements IRouteInforma
 	public void routeWasFinished() {
 		shouldAutomaticallyRecord = true;
 	}
+
 }

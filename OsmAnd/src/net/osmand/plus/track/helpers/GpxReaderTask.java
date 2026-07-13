@@ -14,6 +14,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import net.osmand.PlatformUtil;
+import net.osmand.ResultMatcher;
 import net.osmand.plus.shared.SharedUtil;
 import net.osmand.binary.BinaryMapIndexReader.SearchPoiTypeFilter;
 import net.osmand.data.Amenity;
@@ -24,6 +25,7 @@ import net.osmand.osm.PoiCategory;
 import net.osmand.plus.AppInitializeListener;
 import net.osmand.plus.AppInitializer;
 import net.osmand.plus.OsmandApplication;
+import net.osmand.search.AmenitySearcher;
 import net.osmand.shared.gpx.GpxDbHelper;
 import net.osmand.shared.gpx.RouteActivityHelper;
 import net.osmand.plus.plugins.PluginsHelper;
@@ -190,7 +192,8 @@ class GpxReaderTask extends AsyncTask<Void, GpxDataItem, Void> {
 		for (City.CityType t : City.CityType.values()) {
 			cityTypes.put(t.name().toLowerCase(Locale.ROOT), t);
 		}
-		List<Amenity> cities = app.getResourceManager().searchAmenities(new SearchPoiTypeFilter() {
+		AmenitySearcher searcher = app.getResourceManager().getAmenitySearcher();
+		List<Amenity> cities = searcher.searchAmenities(new SearchPoiTypeFilter() {
 			@Override
 			public boolean accept(PoiCategory type, String subcategory) {
 				return cityTypes.containsKey(subcategory);
@@ -200,7 +203,17 @@ class GpxReaderTask extends AsyncTask<Void, GpxDataItem, Void> {
 			public boolean isEmpty() {
 				return false;
 			}
-		}, rect, false);
+		}, rect, false, null, new ResultMatcher<>() {
+			@Override
+			public boolean publish(Amenity amenity) {
+				return true;
+			}
+
+			@Override
+			public boolean isCancelled() {
+				return GpxReaderTask.this.isCancelled();
+			}
+		});
 
 		if (!Algorithms.isEmpty(cities)) {
 			sortAmenities(cities, cityTypes, latLon);

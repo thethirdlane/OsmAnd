@@ -6,12 +6,14 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import net.osmand.IndexConstants;
+import net.osmand.IProgress;
 import net.osmand.PlatformUtil;
+import net.osmand.ProgressOutputStream;
 import net.osmand.map.ITileSource;
 import net.osmand.map.TileSourceManager.TileSourceTemplate;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.avoidroads.AvoidRoadInfo;
-import net.osmand.plus.helpers.SearchHistoryHelper.HistoryEntry;
+import net.osmand.plus.search.history.HistoryEntry;
 import net.osmand.plus.mapmarkers.MapMarker;
 import net.osmand.plus.mapmarkers.MapMarkersGroup;
 import net.osmand.plus.myplaces.favorites.FavoriteGroup;
@@ -28,12 +30,20 @@ import net.osmand.plus.settings.backend.backup.items.*;
 import net.osmand.plus.settings.enums.HistorySource;
 import net.osmand.plus.settings.fragments.SettingsCategoryItems;
 import net.osmand.plus.views.mapwidgets.configure.buttons.ButtonStateBean;
-import net.osmand.plus.views.mapwidgets.configure.buttons.QuickActionButtonState;
+import net.osmand.shared.gpx.GpxDirItem;
 import net.osmand.util.Algorithms;
 
 import org.apache.commons.logging.Log;
+import org.json.JSONException;
+import org.json.JSONObject;
 
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
@@ -41,6 +51,8 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
+import okio.Utf8;
 
 public abstract class SettingsHelper {
 
@@ -53,6 +65,7 @@ public abstract class SettingsHelper {
 	public static final String SETTINGS_VERSION_KEY = "settings_version";
 
 	public static final int BUFFER = 1024;
+	private static final int JSON_BUFFER_SIZE = 32 * 1024;
 
 	public static final Log LOG = PlatformUtil.getLog(SettingsHelper.class);
 
@@ -109,6 +122,26 @@ public abstract class SettingsHelper {
 		return app;
 	}
 
+	public static void writeJson(@NonNull JSONObject json, @NonNull OutputStream outputStream,
+	                             @Nullable IProgress progress) throws IOException, JSONException {
+		String jsonString = json.toString(2);
+		OutputStream targetStream = outputStream;
+		if (progress != null) {
+			long work = Utf8.size(jsonString) / BUFFER;
+			progress.startWork((int) Math.min(work, Integer.MAX_VALUE));
+			targetStream = new ProgressOutputStream(outputStream, progress, BUFFER);
+		}
+		try {
+			Writer writer = new BufferedWriter(new OutputStreamWriter(targetStream, StandardCharsets.UTF_8), JSON_BUFFER_SIZE);
+			writer.write(jsonString);
+			writer.flush();
+		} finally {
+			if (progress != null) {
+				progress.finishTask();
+			}
+		}
+	}
+
 	public List<SettingsItem> getFilteredSettingsItems(List<ExportType> acceptedTypes,
 	                                                   boolean export, boolean addEmptyItems, boolean offlineBackup) {
 		Map<ExportType, List<?>> categorizedExportData = new HashMap<>();
@@ -149,7 +182,7 @@ public abstract class SettingsHelper {
 	                                                   @Nullable List<ExportType> acceptedTypes,
 	                                                   boolean allowEmptyTypes, boolean offlineBackup) {
 		Map<ExportType, List<?>> exportDataMap = new LinkedHashMap<>();
-		for (ExportType exportType : ExportType.enabledValuesOf(exportCategory)) {
+		for (ExportType exportType : ExportType.availableValuesOf(exportCategory)) {
 			if (acceptedTypes == null || acceptedTypes.contains(exportType)) {
 				List<?> exportData = exportType.fetchExportData(app, offlineBackup);
 				if (!exportData.isEmpty() || allowEmptyTypes) {
@@ -176,6 +209,7 @@ public abstract class SettingsHelper {
 		List<HistoryEntry> historyNavigationEntries = new ArrayList<>();
 		List<OnlineRoutingEngine> onlineRoutingEngines = new ArrayList<>();
 		List<MapMarkersGroup> itineraryGroups = new ArrayList<>();
+		List<GpxDirItem> gpxDirItems = new ArrayList<>();
 
 		for (Object object : data) {
 			if (object instanceof ButtonStateBean) {
@@ -227,6 +261,8 @@ public abstract class SettingsHelper {
 				result.add((GlobalSettingsItem) object);
 			} else if (object instanceof OnlineRoutingEngine) {
 				onlineRoutingEngines.add((OnlineRoutingEngine) object);
+			} else if (object instanceof GpxDirItem dirItem) {
+				gpxDirItems.add(dirItem);
 			}
 		}
 		if (!buttonStateBeans.isEmpty()) {
@@ -326,6 +362,16 @@ public abstract class SettingsHelper {
 		if (!itineraryGroups.isEmpty()) {
 			ItinerarySettingsItem baseItem = getBaseItem(SettingsItemType.ITINERARY_GROUPS, ItinerarySettingsItem.class, settingsItems);
 			result.add(new ItinerarySettingsItem(app, baseItem, itineraryGroups));
+		}
+		if (!gpxDirItems.isEmpty()) {
+			GpxDirSettingsItem baseItem = getBaseItem(SettingsItemType.GPX_DIR, GpxDirSettingsItem.class, settingsItems);
+			for (GpxDirItem dirItem : gpxDirItems) {
+				if (export) {
+					result.add(new GpxDirSettingsItem(app, dirItem));
+				} else {
+					result.add(new GpxDirSettingsItem(app, baseItem, dirItem));
+				}
+			}
 		}
 		return result;
 	}

@@ -27,12 +27,15 @@ import com.google.android.material.appbar.AppBarLayout;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
-import net.osmand.plus.base.BaseOsmAndFragment;
+import net.osmand.plus.base.BaseFullScreenFragment;
 import net.osmand.plus.profiles.data.ProfileDataObject;
 import net.osmand.plus.profiles.data.ProfileDataUtils;
 import net.osmand.plus.settings.backend.ApplicationMode;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTargetsCollection;
 import net.osmand.plus.utils.UiUtilities;
 import net.osmand.plus.views.controls.ReorderItemTouchHelperCallback;
 import net.osmand.plus.widgets.dialogbutton.DialogButton;
@@ -40,11 +43,10 @@ import net.osmand.plus.widgets.dialogbutton.DialogButtonType;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 
-public class EditProfilesFragment extends BaseOsmAndFragment {
+public class EditProfilesFragment extends BaseFullScreenFragment {
 
 	private static final String DELETED_APP_MODES_KEY = "deleted_app_modes_key";
 	private static final String APP_MODES_ORDER_KEY = "app_modes_order_key";
@@ -69,10 +71,10 @@ public class EditProfilesFragment extends BaseOsmAndFragment {
 				appModesOrders.put(mode.getStringKey(), mode.getOrder());
 			}
 		}
-		View mainView = themedInflater.inflate(R.layout.edit_arrangement_list_fragment, container, false);
+		View mainView = inflate(R.layout.edit_arrangement_list_fragment, container, false);
 
 		AppBarLayout appbar = mainView.findViewById(R.id.appbar);
-		View toolbar = themedInflater.inflate(R.layout.global_preference_toolbar, container, false);
+		View toolbar = inflate(R.layout.global_preference_toolbar, container, false);
 		appbar.addView(toolbar);
 
 		ImageButton closeButton = mainView.findViewById(R.id.close_button);
@@ -152,7 +154,7 @@ public class EditProfilesFragment extends BaseOsmAndFragment {
 		applyButton.setOnClickListener(v -> {
 			MapActivity mapActivity = (MapActivity) getActivity();
 			if (mapActivity != null) {
-				OsmandApplication app = mapActivity.getMyApplication();
+				OsmandApplication app = mapActivity.getApp();
 
 				if (!deletedModesKeys.isEmpty()) {
 					List<ApplicationMode> deletedModes = new ArrayList<>();
@@ -180,6 +182,13 @@ public class EditProfilesFragment extends BaseOsmAndFragment {
 		AndroidUtils.addStatusBarPadding21v(requireMyActivity(), mainView);
 
 		return mainView;
+	}
+
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.add(InsetTarget.createScrollable(R.id.profiles_list).build());
+		return collection;
 	}
 
 	@Override
@@ -214,16 +223,6 @@ public class EditProfilesFragment extends BaseOsmAndFragment {
 		return ColorUtilities.getStatusBarColorId(nightMode);
 	}
 
-	@Nullable
-	public MapActivity getMapActivity() {
-		FragmentActivity activity = getActivity();
-		if (activity instanceof MapActivity) {
-			return (MapActivity) activity;
-		} else {
-			return null;
-		}
-	}
-
 	public List<EditProfileDataObject> getProfiles(boolean deleted) {
 		List<EditProfileDataObject> profiles = new ArrayList<>();
 		for (ApplicationMode mode : ApplicationMode.allPossibleValues()) {
@@ -237,12 +236,7 @@ public class EditProfilesFragment extends BaseOsmAndFragment {
 						mode.getIconRes(), false, mode.isCustomProfile(), deleted, mode.getProfileColor(false), mode.getProfileColor(true), order));
 			}
 		}
-		Collections.sort(profiles, new Comparator<EditProfileDataObject>() {
-			@Override
-			public int compare(EditProfileDataObject o1, EditProfileDataObject o2) {
-				return (o1.order < o2.order) ? -1 : ((o1.order == o2.order) ? 0 : 1);
-			}
-		});
+		Collections.sort(profiles, (o1, o2) -> (o1.order < o2.order) ? -1 : ((o1.order == o2.order) ? 0 : 1));
 
 		return profiles;
 	}
@@ -315,7 +309,7 @@ public class EditProfilesFragment extends BaseOsmAndFragment {
 			setHasStableIds(true);
 			this.app = app;
 			uiUtilities = app.getUIUtilities();
-			nightMode = !app.getSettings().isLightContent();
+			nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.APP);
 		}
 
 		public void setItems(List<Object> items) {

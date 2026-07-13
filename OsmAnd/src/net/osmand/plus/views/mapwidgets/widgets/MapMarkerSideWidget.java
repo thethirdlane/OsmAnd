@@ -57,9 +57,12 @@ public class MapMarkerSideWidget extends SimpleWidget implements CustomLatLonLis
 		this.markerClickBehaviourPref = widgetState.getMarkerClickBehaviourPref();
 
 		cachedNightMode = isNightMode();
+	}
 
+	@Override
+	protected void setupView(@NonNull View view) {
+		super.setupView(view);
 		setText(null, null);
-		setOnClickListener(getOnClickListener());
 		updateWidgetName();
 	}
 

@@ -11,14 +11,12 @@ import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.PorterDuff;
-import android.graphics.drawable.Drawable;
-import android.os.Build;
 import android.view.View;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.car.app.notification.CarAppExtender;
 import androidx.car.app.notification.CarPendingIntent;
@@ -38,6 +36,7 @@ import net.osmand.plus.routing.RouteCalculationResult;
 import net.osmand.plus.routing.NextDirectionInfo;
 import net.osmand.plus.routing.RouteDirectionInfo;
 import net.osmand.plus.routing.RoutingHelper;
+import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.OsmAndFormatter;
 import net.osmand.plus.utils.OsmAndFormatterParams;
 import net.osmand.plus.views.mapwidgets.TurnDrawable;
@@ -57,6 +56,8 @@ public class NavigationNotification extends OsmandNotification {
 	public static final String GROUP_NAME = "NAVIGATION";
 
 	private boolean leftSide;
+	private Bitmap turnBitmap;
+	private TurnDrawable turnDrawable;
 
 	public NavigationNotification(OsmandApplication app) {
 		super(app, GROUP_NAME);
@@ -72,11 +73,7 @@ public class NavigationNotification extends OsmandNotification {
 				app.getRoutingHelper().pauseNavigation();
 			}
 		};
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-			app.registerReceiver(pauseReceiver, new IntentFilter(OSMAND_PAUSE_NAVIGATION_SERVICE_ACTION), Context.RECEIVER_EXPORTED);
-		} else {
-			app.registerReceiver(pauseReceiver, new IntentFilter(OSMAND_PAUSE_NAVIGATION_SERVICE_ACTION));
-		}
+		AndroidUtils.registerBroadcastReceiver(app, OSMAND_PAUSE_NAVIGATION_SERVICE_ACTION, pauseReceiver, true);
 
 		BroadcastReceiver resumeReceiver = new BroadcastReceiver() {
 			@Override
@@ -84,11 +81,7 @@ public class NavigationNotification extends OsmandNotification {
 				app.getRoutingHelper().resumeNavigation();
 			}
 		};
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-			app.registerReceiver(resumeReceiver, new IntentFilter(OSMAND_RESUME_NAVIGATION_SERVICE_ACTION), Context.RECEIVER_EXPORTED);
-		} else {
-			app.registerReceiver(resumeReceiver, new IntentFilter(OSMAND_RESUME_NAVIGATION_SERVICE_ACTION));
-		}
+		AndroidUtils.registerBroadcastReceiver(app, OSMAND_RESUME_NAVIGATION_SERVICE_ACTION, resumeReceiver, true);
 
 		BroadcastReceiver stopReceiver = new BroadcastReceiver() {
 			@Override
@@ -96,11 +89,7 @@ public class NavigationNotification extends OsmandNotification {
 				app.stopNavigation();
 			}
 		};
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-			app.registerReceiver(stopReceiver, new IntentFilter(OSMAND_STOP_NAVIGATION_SERVICE_ACTION), Context.RECEIVER_EXPORTED);
-		} else {
-			app.registerReceiver(stopReceiver, new IntentFilter(OSMAND_STOP_NAVIGATION_SERVICE_ACTION));
-		}
+		AndroidUtils.registerBroadcastReceiver(app, OSMAND_STOP_NAVIGATION_SERVICE_ACTION, stopReceiver, true);
 	}
 
 	@Override
@@ -184,20 +173,13 @@ public class NavigationNotification extends OsmandNotification {
 				}
 
 				if (turnType != null) {
-					TurnDrawable drawable = new TurnDrawable(app, false);
-					int height = (int) app.getResources().getDimension(android.R.dimen.notification_large_icon_height);
-					int width = (int) app.getResources().getDimension(android.R.dimen.notification_large_icon_width);
-					drawable.setBounds(0, 0, width, height);
-					drawable.setTurnType(turnType);
-					drawable.setTurnImminent(turnImminent, deviatedFromRoute);
-					drawable.updateColors(!app.getSettings().isLightSystemTheme());
-					turnBitmap = drawableToBitmap(drawable);
+					turnBitmap = getTurnBitmap(turnType, turnImminent, deviatedFromRoute);
 				}
 
 				notificationTitle = OsmAndFormatter.getFormattedDistance(nextTurnDistance, app, OsmAndFormatterParams.USE_LOWER_BOUNDS)
 						+ (turnType != null ? " • " + RouteCalculationResult.toString(turnType, app, true) : "");
-				if (ri != null && !Algorithms.isEmpty(ri.getDescriptionRoutePart())) {
-					notificationText.append(ri.getDescriptionRoutePart());
+				if (ri != null && !Algorithms.isEmpty(ri.getDescriptionRoutePart(app))) {
+					notificationText.append(ri.getDescriptionRoutePart(app));
 					if (nextNextTurnDistance > 0) {
 						notificationText.append(" ").append(OsmAndFormatter.getFormattedDistance(nextNextTurnDistance, app,
 								OsmAndFormatterParams.USE_LOWER_BOUNDS));
@@ -255,7 +237,7 @@ public class NavigationNotification extends OsmandNotification {
 			notificationBuilder.extend(
 					new CarAppExtender.Builder()
 							//.setImportance(NotificationManagerCompat.IMPORTANCE_HIGH)
-							.setContentIntent(CarPendingIntent.getCarApp(app, intent.hashCode(), intent, 0))
+							.setContentIntent(CarPendingIntent.getCarApp(app, intent.filterHashCode(), intent, 0))
 							.build());
 		}
 
@@ -301,17 +283,27 @@ public class NavigationNotification extends OsmandNotification {
 		return app.getLocationProvider().getLastKnownLocation();
 	}
 
-	public Bitmap drawableToBitmap(Drawable drawable) {
-		int height = (int) app.getResources().getDimension(android.R.dimen.notification_large_icon_height);
+	@NonNull
+	private Bitmap getTurnBitmap(@NonNull TurnType turnType, int turnImminent, boolean deviatedFromRoute) {
 		int width = (int) app.getResources().getDimension(android.R.dimen.notification_large_icon_width);
+		int height = (int) app.getResources().getDimension(android.R.dimen.notification_large_icon_height);
 
-		Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-		Canvas canvas = new Canvas(bitmap);
+		if (turnDrawable == null) {
+			turnDrawable = new TurnDrawable(app, false);
+		}
+		if (turnBitmap == null || turnBitmap.isRecycled() || turnBitmap.getWidth() != width || turnBitmap.getHeight() != height) {
+			turnBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+		}
+		turnDrawable.setBounds(0, 0, width, height);
+		turnDrawable.setTurnType(turnType);
+		turnDrawable.setTurnImminent(turnImminent, deviatedFromRoute);
+		turnDrawable.updateColors(!app.getSettings().isLightSystemTheme());
+
+		Canvas canvas = new Canvas(turnBitmap);
 		canvas.drawColor(0, PorterDuff.Mode.CLEAR);
-		drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
-		drawable.draw(canvas);
+		turnDrawable.draw(canvas);
 
-		return bitmap;
+		return turnBitmap;
 	}
 
 	@Override

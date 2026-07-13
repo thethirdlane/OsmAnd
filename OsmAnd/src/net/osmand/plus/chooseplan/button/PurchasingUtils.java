@@ -8,6 +8,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
 
+import net.osmand.plus.inapp.InAppPurchases;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.plus.utils.ColorUtilities;
 import net.osmand.plus.widgets.ctxmenu.ContextMenuAdapter;
 import net.osmand.plus.widgets.ctxmenu.callback.ItemClickListener;
@@ -30,6 +32,7 @@ import java.util.List;
 public class PurchasingUtils {
 
 	public static final String PROMO_PREFIX = "promo_";
+	private static final int MIN_SHOWN_DISCOUNT_PERCENT = 10;
 
 	public static List<SubscriptionButton> collectSubscriptionButtons(@NonNull OsmandApplication app,
 	                                                                  @NonNull InAppPurchaseHelper purchaseHelper,
@@ -48,11 +51,18 @@ public class PurchasingUtils {
 
 			InAppSubscriptionIntroductoryInfo info = subscription.getIntroductoryInfo();
 			if (info != null) {
-				Pair<Spannable, Spannable> pair = info.getFormattedDescription(app, primaryTextColor);
-				subscriptionButton.setDiscount(discount);
-				subscriptionButton.setDiscountApplied(!Algorithms.isEmpty(discount));
-				subscriptionButton.setPrice(pair.first.toString());
-				subscriptionButton.setDescription(pair.second.toString());
+				if (info.isFreeTrial()) {
+					subscriptionButton.setDiscount("");
+					subscriptionButton.setDiscountApplied(false);
+					subscriptionButton.setPrice(info.getFreeTrialDescription(app));
+					subscriptionButton.setDescription("");
+				} else {
+					Pair<Spannable, Spannable> pair = info.getFormattedDescription(app, primaryTextColor);
+					subscriptionButton.setDiscount(discount);
+					subscriptionButton.setDiscountApplied(!Algorithms.isEmpty(discount));
+					subscriptionButton.setPrice(pair.first.toString());
+					subscriptionButton.setDescription(pair.second.toString());
+				}
 			} else {
 				subscriptionButton.setPrice(subscription.getPriceWithPeriod(app));
 
@@ -79,7 +89,24 @@ public class PurchasingUtils {
 		OneTimePaymentButton btn = new OneTimePaymentButton(purchase.getSku(), purchase);
 		btn.setTitle(app.getString(R.string.in_app_purchase_desc));
 		btn.setPrice(purchase.getPrice(app));
+		int discountPercent = getOneTimePurchaseDiscountPercent(purchase);
+		boolean discountApplied = discountPercent > MIN_SHOWN_DISCOUNT_PERCENT;
+		btn.setDiscountApplied(discountApplied);
+		if (discountApplied) {
+			btn.setDiscount("-" + discountPercent + "%");
+			String pattern = app.getString(R.string.ltr_or_rtl_combine_via_colon);
+			btn.setDescription(String.format(pattern, app.getString(R.string.regular_price), purchase.getOriginalPrice(app)));
+		}
 		return btn;
+	}
+
+	private static int getOneTimePurchaseDiscountPercent(@NonNull InAppPurchase purchase) {
+		double regularPrice = purchase.getOriginalPriceValue();
+		double discountedPrice = purchase.getPriceValue();
+		if (discountedPrice > 0 && discountedPrice < regularPrice) {
+			return (int) ((1 - discountedPrice / regularPrice) * 100d);
+		}
+		return 0;
 	}
 
 	@Nullable
@@ -97,8 +124,8 @@ public class PurchasingUtils {
 	                                   @NonNull String id,
 	                                   @StringRes int titleId,
 	                                   @StringRes int descriptionId) {
-		OsmandApplication app = mapActivity.getMyApplication();
-		boolean nightMode = app.getDaynightHelper().isNightModeForMapControls();
+		OsmandApplication app = mapActivity.getApp();
+		boolean nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.OVER_MAP);
 
 		ItemClickListener listener = (uiAdapter, view, item, isChecked) -> {
 			ChoosePlanFragment.showInstance(mapActivity, feature);
@@ -127,5 +154,29 @@ public class PurchasingUtils {
 	@DrawableRes
 	public static int getProFeatureIconId(boolean nightMode) {
 		return nightMode ? R.drawable.img_button_pro_night : R.drawable.img_button_pro_day;
+	}
+
+	public static List<InAppSubscription> getVisibleProSubscriptions(OsmandApplication app, InAppPurchaseHelper purchaseHelper) {
+		InAppPurchases purchases = app.getInAppPurchaseHelper().getInAppPurchases();
+		List<InAppSubscription> subscriptions = new ArrayList<>();
+		List<InAppSubscription> visibleSubscriptions = purchaseHelper.getSubscriptions().getVisibleSubscriptions();
+		for (InAppSubscription subscription : visibleSubscriptions) {
+			if (purchases.isOsmAndPro(subscription)) {
+				subscriptions.add(subscription);
+			}
+		}
+		return subscriptions;
+	}
+
+	public static List<InAppSubscription> getVisibleMapsSubscriptions(OsmandApplication app, InAppPurchaseHelper purchaseHelper) {
+		InAppPurchases purchases = app.getInAppPurchaseHelper().getInAppPurchases();
+		List<InAppSubscription> subscriptions = new ArrayList<>();
+		List<InAppSubscription> visibleSubscriptions = purchaseHelper.getSubscriptions().getVisibleSubscriptions();
+		for (InAppSubscription subscription : visibleSubscriptions) {
+			if (purchases.isMaps(subscription)) {
+				subscriptions.add(subscription);
+			}
+		}
+		return subscriptions;
 	}
 }

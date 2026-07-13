@@ -19,7 +19,7 @@ import androidx.core.widget.CompoundButtonCompat;
 import net.osmand.PlatformUtil;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
-import net.osmand.plus.backup.RemoteFile;
+import net.osmand.plus.backup.BackupUtils;
 import net.osmand.plus.base.OsmandBaseExpandableListAdapter;
 import net.osmand.plus.helpers.AndroidUiHelper;
 import net.osmand.plus.mapmarkers.MapMarkersGroup;
@@ -93,7 +93,7 @@ public class ExportSettingsAdapter extends OsmandBaseExpandableListAdapter {
 		subTextTv.setText(getCategoryDescr(category, exportMode));
 
 		int selectedTypes = 0;
-		for (ExportType exportType : items.getTypes()) {
+		for (ExportType exportType : items.getVisibleTypes()) {
 			if (!Algorithms.isEmpty(selectedItemsMap.get(exportType))) {
 				selectedTypes++;
 			}
@@ -138,9 +138,11 @@ public class ExportSettingsAdapter extends OsmandBaseExpandableListAdapter {
 		}
 		ExportCategory category = itemsTypes.get(groupPosition);
 		SettingsCategoryItems categoryItems = itemsMap.get(category);
-		ExportType exportType = categoryItems.getTypes().get(childPosition);
+		ExportType exportType = categoryItems.getVisibleTypes().get(childPosition);
 		List<?> items = categoryItems.getItemsForType(exportType);
 		List<?> selectedItems = selectedItemsMap.get(exportType);
+		boolean selectionEnabled = isTypeSelectionEnabled(exportType);
+		child.setEnabled(selectionEnabled);
 
 		TextView titleTv = child.findViewById(R.id.title_tv);
 		titleTv.setText(exportType.getTitleId());
@@ -150,8 +152,13 @@ public class ExportSettingsAdapter extends OsmandBaseExpandableListAdapter {
 
 		ImageView icon = child.findViewById(R.id.explicit_indicator);
 		setupIcon(icon, exportType.getIconId(), !Algorithms.isEmpty(selectedItems));
+		View itemContainer = child.findViewById(R.id.item_container);
+		itemContainer.setEnabled(selectionEnabled);
+		itemContainer.setAlpha(selectionEnabled ? 1f : 0.5f);
 
 		ThreeStateCheckbox checkBox = child.findViewById(R.id.check_box);
+		checkBox.setEnabled(selectionEnabled);
+
 		if (selectedItems == null) {
 			checkBox.setState(UNCHECKED);
 		} else if (selectedItems.containsAll(items)) {
@@ -167,6 +174,9 @@ public class ExportSettingsAdapter extends OsmandBaseExpandableListAdapter {
 			checkBox.setState(contains ? MISC : UNCHECKED);
 		}
 		child.setOnClickListener(v -> {
+			if (!selectionEnabled) {
+				return;
+			}
 			if (!Algorithms.isEmpty(items)) {
 				if (listener != null) {
 					listener.onTypeClicked(exportType);
@@ -177,7 +187,12 @@ public class ExportSettingsAdapter extends OsmandBaseExpandableListAdapter {
 		});
 		int checkBoxColor = checkBox.getState() == UNCHECKED ? secondaryColorRes : activeColorRes;
 		CompoundButtonCompat.setButtonTintList(checkBox, ColorStateList.valueOf(ContextCompat.getColor(app, checkBoxColor)));
-		child.findViewById(R.id.check_box_container).setOnClickListener(view -> {
+		View checkBoxContainer = child.findViewById(R.id.check_box_container);
+		checkBoxContainer.setEnabled(selectionEnabled);
+		checkBoxContainer.setOnClickListener(view -> {
+			if (!selectionEnabled) {
+				return;
+			}
 			if (!Algorithms.isEmpty(items)) {
 				checkBox.performClick();
 				boolean selected = checkBox.getState() == CHECKED;
@@ -194,6 +209,10 @@ public class ExportSettingsAdapter extends OsmandBaseExpandableListAdapter {
 		return child;
 	}
 
+	private boolean isTypeSelectionEnabled(@NonNull ExportType exportType) {
+		return !exportMode || exportType != ExportType.ATTACHED_MEDIA || !Algorithms.isEmpty(selectedItemsMap.get(ExportType.FAVORITES));
+	}
+
 	@Override
 	public int getGroupCount() {
 		return itemsTypes.size();
@@ -201,7 +220,7 @@ public class ExportSettingsAdapter extends OsmandBaseExpandableListAdapter {
 
 	@Override
 	public int getChildrenCount(int i) {
-		return itemsMap.get(itemsTypes.get(i)).getTypes().size();
+		return itemsMap.get(itemsTypes.get(i)).getVisibleTypes().size();
 	}
 
 	@Override
@@ -212,7 +231,7 @@ public class ExportSettingsAdapter extends OsmandBaseExpandableListAdapter {
 	@Override
 	public Object getChild(int groupPosition, int childPosition) {
 		SettingsCategoryItems categoryItems = itemsMap.get(itemsTypes.get(groupPosition));
-		ExportType exportType = categoryItems.getTypes().get(groupPosition);
+		ExportType exportType = categoryItems.getVisibleTypes().get(groupPosition);
 		return categoryItems.getItemsForType(exportType).get(childPosition);
 	}
 
@@ -265,48 +284,26 @@ public class ExportSettingsAdapter extends OsmandBaseExpandableListAdapter {
 		notifyDataSetChanged();
 	}
 
-	public List<? super Object> getData() {
-		List<Object> selectedItems = new ArrayList<>();
-		for (List<?> items : selectedItemsMap.values()) {
-			selectedItems.addAll(items);
-		}
-		return selectedItems;
-	}
-
 	private String getCategoryDescr(ExportCategory category, boolean exportMode) {
 		long itemsSize = 0;
 		int selectedTypes = 0;
 		SettingsCategoryItems items = itemsMap.get(category);
-		for (ExportType exportType : items.getTypes()) {
+		for (ExportType exportType : items.getVisibleTypes()) {
 			if (!Algorithms.isEmpty(selectedItemsMap.get(exportType))) {
 				selectedTypes++;
-				itemsSize += calculateItemsSize(items.getItemsForType(exportType));
+				itemsSize += BackupUtils.calculateItemsSize(items.getItemsForType(exportType));
 			}
 		}
 		String description;
 		if (selectedTypes == 0 && exportMode) {
 			description = app.getString(R.string.shared_string_none);
-		} else if (selectedTypes == items.getTypes().size()) {
+		} else if (selectedTypes == items.getVisibleTypes().size()) {
 			description = app.getString(R.string.shared_string_all);
 		} else {
-			description = app.getString(R.string.ltr_or_rtl_combine_via_slash, String.valueOf(selectedTypes), String.valueOf(items.getTypes().size()));
+			description = app.getString(R.string.ltr_or_rtl_combine_via_slash, String.valueOf(selectedTypes), String.valueOf(items.getVisibleTypes().size()));
 		}
 		String formattedSize = AndroidUtils.formatSize(app, itemsSize);
 		return itemsSize == 0 ? description : app.getString(R.string.ltr_or_rtl_combine_via_comma, description, formattedSize);
-	}
-
-	public static long calculateItemsSize(List<?> items) {
-		long itemsSize = 0;
-		for (Object item : items) {
-			if (item instanceof FileSettingsItem) {
-				itemsSize += ((FileSettingsItem) item).getSize();
-			} else if (item instanceof File) {
-				itemsSize += ((File) item).length();
-			} else if (item instanceof RemoteFile) {
-				itemsSize += ((RemoteFile) item).getZipSize();
-			}
-		}
-		return itemsSize;
 	}
 
 	private String getSelectedTypeDescr(@NonNull ExportType exportType, List<?> items) {
@@ -323,8 +320,7 @@ public class ExportSettingsAdapter extends OsmandBaseExpandableListAdapter {
 						itemsSize += ((FileSettingsItem) object).getSize();
 					} else if (object instanceof File) {
 						itemsSize += ((File) object).length();
-					} else if (object instanceof MapMarkersGroup) {
-						MapMarkersGroup markersGroup = (MapMarkersGroup) object;
+					} else if (object instanceof MapMarkersGroup markersGroup) {
 						if (Algorithms.stringsEqual(markersGroup.getId(), ExportType.ACTIVE_MARKERS.name())
 								|| Algorithms.stringsEqual(markersGroup.getId(), ExportType.HISTORY_MARKERS.name())) {
 							itemsSize += ((MapMarkersGroup) object).getMarkers().size();

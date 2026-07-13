@@ -1,145 +1,94 @@
 package net.osmand.plus.views.layers;
 
-import static net.osmand.data.Amenity.DEFAULT_ELO;
+import static net.osmand.data.Amenity.WIKIDATA;
 
-import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import net.osmand.binary.BinaryMapIndexReader.TagValuePair;
-import net.osmand.binary.ObfConstants;
 import net.osmand.data.Amenity;
-import net.osmand.data.LatLon;
+import net.osmand.data.BaseDetailsObject;
+import net.osmand.data.FavouritePoint;
 import net.osmand.data.MapObject;
-import net.osmand.osm.PoiCategory;
-import net.osmand.plus.views.layers.ContextMenuLayer.IContextMenuProvider;
-import net.osmand.plus.views.layers.MapSelectionResult.SelectedMapObject;
+import net.osmand.shared.gpx.primitives.WptPt;
 import net.osmand.util.Algorithms;
 
-import java.util.*;
+import java.util.List;
 
-import gnu.trove.list.array.TIntArrayList;
+public class PlaceDetailsObject extends BaseDetailsObject {
 
-public class PlaceDetailsObject {
-
-	private final Set<Long> osmIds = new HashSet<>();
-	private final Set<String> wikidataIds = new HashSet<>();
-	private final List<SelectedMapObject> selectedObjects = new ArrayList<>();
-
-	private final Amenity syntheticAmenity = new Amenity();
-
-	public PlaceDetailsObject() {
+	public PlaceDetailsObject(String lang) {
+		super(lang);
 	}
 
-	public PlaceDetailsObject(@NonNull Object object, @Nullable IContextMenuProvider provider) {
-		addObject(object, provider);
-		combineData();
+	public PlaceDetailsObject(Object object, String lang) {
+		super(object, lang);
 	}
 
-	@NonNull
-	public Amenity getSyntheticAmenity() {
-		return syntheticAmenity;
+	public PlaceDetailsObject(List<? extends MapObject> mapObjects, String lang) {
+		super(mapObjects, lang);
 	}
 
-	public LatLon getLocation() {
-		return syntheticAmenity.getLocation();
-	}
-
-	@NonNull
-	public List<SelectedMapObject> getSelectedObjects() {
-		return selectedObjects;
-	}
-
-	public void addObject(@NonNull Object object, @Nullable IContextMenuProvider provider) {
-		if (shouldSkip(object)) {
-			return;
-		}
-		selectedObjects.add(new SelectedMapObject(object, provider));
-		if (object instanceof MapObject mapObject) {
-			long osmId = ObfConstants.getOsmObjectId(mapObject);
-			osmIds.add(osmId);
-		}
-		if (object instanceof Amenity amenity) {
-			String wikidata = amenity.getWikidata();
-			if (!Algorithms.isEmpty(wikidata)) {
-				wikidataIds.add(wikidata);
+	@Nullable
+	public WptPt getWptPt() {
+		for (Object object : getObjects()) {
+			if (object instanceof WptPt wptPt) {
+				return wptPt;
 			}
 		}
+		return null;
 	}
 
-	public boolean overlapsWith(@NonNull Object object) {
-		Long osmId = (object instanceof MapObject) ? ObfConstants.getOsmObjectId((MapObject) object) : null;
-		String wikidata = (object instanceof Amenity) ? ((Amenity) object).getWikidata() : null;
-
-		return (osmId != null && osmIds.contains(osmId))
-				|| (!Algorithms.isEmpty(wikidata) && wikidataIds.contains(wikidata));
-	}
-
-	public void merge(@NonNull PlaceDetailsObject other) {
-		osmIds.addAll(other.osmIds);
-		wikidataIds.addAll(other.wikidataIds);
-		selectedObjects.addAll(other.getSelectedObjects());
-	}
-
-	public void combineData() {
-		Set<String> contentLocales = new TreeSet<>();
-		for (SelectedMapObject selectedObject : selectedObjects) {
-			Object object = selectedObject.object();
-			if (object instanceof Amenity amenity) {
-				processAmenity(amenity, contentLocales);
+	@Nullable
+	public FavouritePoint getFavouritePoint() {
+		for (Object object : getObjects()) {
+			if (object instanceof FavouritePoint point) {
+				return point;
 			}
 		}
-		if (!Algorithms.isEmpty(contentLocales)) {
-			syntheticAmenity.updateContentLocales(contentLocales);
-		}
+		return null;
 	}
 
-	private void processAmenity(@NonNull Amenity amenity, @NonNull Set<String> contentLocales) {
-		if (syntheticAmenity.getId() == null && ObfConstants.isOsmUrlAvailable(amenity)) {
-			syntheticAmenity.setId(amenity.getId());
+	@Override
+	protected String getWikidata(Object object) {
+		String wikidata = super.getWikidata(object);
+		if (Algorithms.isEmpty(wikidata)) {
+			if (object instanceof WptPt wptPt) {
+				return wptPt.getExtensionsToRead().get(WIKIDATA);
+			} else if (object instanceof FavouritePoint point) {
+				return point.getAmenityExtensions().get(WIKIDATA);
+			}
 		}
-		LatLon location = amenity.getLocation();
-		if (syntheticAmenity.getLocation() == null && location != null) {
-			syntheticAmenity.setLocation(location);
-		}
-		PoiCategory type = amenity.getType();
-		if (syntheticAmenity.getType() == null && type != null) {
-			syntheticAmenity.setType(type);
-		}
-		String subType = amenity.getSubType();
-		if (syntheticAmenity.getSubType() == null && subType != null) {
-			syntheticAmenity.setSubType(subType);
-		}
-		String mapIconName = amenity.getMapIconName();
-		if (syntheticAmenity.getMapIconName() == null && mapIconName != null) {
-			syntheticAmenity.setMapIconName(mapIconName);
-		}
-		String regionName = amenity.getRegionName();
-		if (syntheticAmenity.getRegionName() == null && regionName != null) {
-			syntheticAmenity.setRegionName(regionName);
-		}
-		Map<Integer, List<TagValuePair>> groups = amenity.getTagGroups();
-		if (syntheticAmenity.getTagGroups() == null && groups != null) {
-			syntheticAmenity.setTagGroups(new HashMap<>(groups));
-		}
-		int travelElo = amenity.getTravelEloNumber();
-		if (syntheticAmenity.getTravelEloNumber() == DEFAULT_ELO && travelElo != DEFAULT_ELO) {
-			syntheticAmenity.setTravelEloNumber(travelElo);
-		}
-		TIntArrayList x = amenity.getX();
-		if (syntheticAmenity.getX().isEmpty() && !x.isEmpty()) {
-			syntheticAmenity.getX().addAll(x);
-		}
-		TIntArrayList y = amenity.getY();
-		if (syntheticAmenity.getY().isEmpty() && !y.isEmpty()) {
-			syntheticAmenity.getY().addAll(y);
-		}
-		syntheticAmenity.copyNames(amenity);
-		syntheticAmenity.copyAdditionalInfo(amenity, false);
-
-		contentLocales.addAll(amenity.getSupportedContentLocales());
+		return wikidata;
 	}
 
-	public static boolean shouldSkip(@NonNull Object object) {
-		return !(object instanceof Amenity);
+	@Override
+	public boolean overlapsWith(Object object) {
+		boolean overlapped = super.overlapsWith(object);
+
+		if (!overlapped) {
+			if (object instanceof WptPt wptPt) {
+				return overlapOriginName(wptPt.getAmenityOriginName());
+			} else if (object instanceof FavouritePoint point) {
+				return overlapOriginName(point.getAmenityOriginName());
+			}
+		}
+		return overlapped;
+	}
+
+	private boolean overlapOriginName(@Nullable String originName) {
+		if (!Algorithms.isEmpty(originName)) {
+			for (Amenity amenity : getAmenities()) {
+				if (Algorithms.stringsEqual(amenity.toStringEn(), originName)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	@Override
+	protected boolean isSupportedObjectType(Object object) {
+		return super.isSupportedObjectType(object)
+				|| object instanceof WptPt wptPt && !Algorithms.isEmpty(wptPt.getAmenityOriginName())
+				|| object instanceof FavouritePoint point && !Algorithms.isEmpty(point.getAmenityOriginName());
 	}
 }

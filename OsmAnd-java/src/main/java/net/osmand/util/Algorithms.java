@@ -56,9 +56,6 @@ import java.util.zip.GZIPOutputStream;
 public class Algorithms {
 	private static final int BUFFER_SIZE = 1024;
 	private static final Log log = PlatformUtil.getLog(Algorithms.class);
-	
-	private static final char[] CHARS_TO_NORMALIZE_KEY = {'’'};
-	private static final char[] CHARS_TO_NORMALIZE_VALUE = {'\''};
 
 	public static final NumberFormat DECIMAL_FORMAT = new DecimalFormat("#.#", new DecimalFormatSymbols(Locale.US));
 
@@ -71,63 +68,44 @@ public class Algorithms {
 	public static final int BZIP_FILE_SIGNATURE = 0x425a;
 	public static final int GZIP_FILE_SIGNATURE = 0x1f8b;
 
-
-	public static String normalizeSearchText(String s) {
-		boolean norm = false;
-		for (int i = 0; i < s.length() && !norm; i++) {
+	
+	public static boolean containsChar(String s, char[] chars) {
+		if (s == null) {
+			return false;
+		}
+		for (int i = 0; i < s.length(); i++) {
 			char ch = s.charAt(i);
-			for (int j = 0; j < CHARS_TO_NORMALIZE_KEY.length; j++) {
-				if (ch == CHARS_TO_NORMALIZE_KEY[j]) {
-					norm = true;
-					break;
+			for (int j = 0; j < chars.length; j++) {
+				if (ch == chars[j]) {
+					return true;
 				}
 			}
 		}
-		if (!norm) {
-			return s;
-		}
-		for (int k = 0; k < CHARS_TO_NORMALIZE_KEY.length; k++) {
-			s = s.replace(CHARS_TO_NORMALIZE_KEY[k], CHARS_TO_NORMALIZE_VALUE[k]);
-		}
-		return s;
+		return false;
 	}
-
-	/**
-	 * Split string by words and convert to lowercase, use as delimiter all chars except letters and digits
-	 * @param str input string
-	 * @return result words list
-	 */
-
-	public static List<String> splitByWordsLowercase(String str) {
-		List<String> splitStr = new ArrayList<>();
-		int prev = -1;
-		for (int i = 0; i <= str.length(); i++) {
-			if (i == str.length() ||
-					(!Character.isLetter(str.charAt(i)) && !Character.isDigit(str.charAt(i)))) {
-				if (prev != -1) {
-					String subStr = str.substring(prev, i);
-					splitStr.add(subStr.toLowerCase());
-					prev = -1;
-				}
-			} else {
-				if (prev == -1) {
-					prev = i;
-				}
-			}
-		}
-		return splitStr;
-	}
-
+	
 	public static boolean isEmpty(Collection<?> c) {
 		return c == null || c.size() == 0;
+	}
+
+	public static boolean isNotEmpty(Collection<?> c) {
+		return !isEmpty(c);
 	}
 
 	public static boolean isEmpty(Map<?, ?> map) {
 		return map == null || map.size() == 0;
 	}
 
+	public static boolean isNotEmpty(Map<?, ?> map) {
+		return !isEmpty(map);
+	}
+
 	public static <T> boolean isEmpty(T[] array) {
 		return array == null || array.length == 0;
+	}
+
+	public static <T> boolean isNotEmpty(T[] array) {
+		return !isEmpty(array);
 	}
 
 	public static String emptyIfNull(String s) {
@@ -140,6 +118,10 @@ public class Algorithms {
 
 	public static boolean isEmpty(CharSequence s) {
 		return s == null || s.length() == 0;
+	}
+
+	public static boolean isNotEmpty(CharSequence s) {
+		return !isEmpty(s);
 	}
 
 	public static boolean isBlank(String s) {
@@ -216,26 +198,57 @@ public class Algorithms {
 		return true;
 	}
 
+	public static boolean isFirstPolygonInsideSecond(float[] firstPolygon, float[] secondPolygon) {
+		for (int i = 0; i < firstPolygon.length; i += 2) {
+			float lat = firstPolygon[i];
+			float lon = firstPolygon[i + 1];
+			if (!isPointInsidePolygon(lat, lon, secondPolygon)) {
+				// if at least one point is not inside the boundary, return false
+				return false;
+			}
+		}
+		return true;
+	}
+
 	/**
 	 * @see <a href="http://alienryderflex.com/polygon/">Determining Whether A Point Is Inside A Complex Polygon</a>
 	 * @param point
 	 * @param polygon
 	 * @return true if the point is in the area of the polygon
 	 */
-	public static boolean isPointInsidePolygon(LatLon point,
-	                                           List<LatLon> polygon) {
-		double px = point.getLongitude();
-		double py = point.getLatitude();
+	public static boolean isPointInsidePolygon(LatLon point, List<LatLon> polygon) {
 		boolean oddNodes = false;
+		double lat = point.getLatitude();
+		double lon = point.getLongitude();
+
 		for (int i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
 			double x1 = polygon.get(i).getLongitude();
 			double y1 = polygon.get(i).getLatitude();
 			double x2 = polygon.get(j).getLongitude();
 			double y2 = polygon.get(j).getLatitude();
-			if ((y1 < py && y2 >= py
-					|| y2 < py && y1 >= py)
-					&& (x1 <= px || x2 <= px)) {
-				if (x1 + (py - y1) / (y2 - y1) * (x2 - x1) < px) {
+			if ((y1 < lat && y2 >= lat
+					|| y2 < lat && y1 >= lat)
+					&& (x1 <= lon || x2 <= lon)) {
+				if (x1 + (lat - y1) / (y2 - y1) * (x2 - x1) < lon) {
+					oddNodes = !oddNodes;
+				}
+			}
+		}
+		return oddNodes;
+	}
+
+	public static boolean isPointInsidePolygon(float lat, float lon, float[] polygon) {
+		boolean oddNodes = false;
+		for (int i = 0, j = polygon.length - 2; i < polygon.length; j = i, i += 2) {
+			double x1 = polygon[i + 1];
+			double y1 = polygon[i];
+			double x2 = polygon[j + 1];
+			double y2 = polygon[j];
+
+			if ((y1 < lat && y2 >= lat
+					|| y2 < lat && y1 >= lat)
+					&& (x1 <= lon || x2 <= lon)) {
+				if (x1 + (lat - y1) / (y2 - y1) * (x2 - x1) < lon) {
 					oddNodes = !oddNodes;
 				}
 			}
@@ -585,7 +598,7 @@ public class Algorithms {
 	public static String capitalizeFirstLetterAndLowercase(String s) {
 		if (s != null && s.length() > 1) {
 			// not very efficient algorithm
-			return Character.toUpperCase(s.charAt(0)) + s.substring(1).toLowerCase();
+			return Character.toUpperCase(s.charAt(0)) + s.substring(1).toLowerCase(Locale.ROOT);
 		} else {
 			return s;
 		}
@@ -616,6 +629,9 @@ public class Algorithms {
 	 * #AARRGGBB
 	 */
 	public static int parseColor(String colorString) throws IllegalArgumentException {
+		if (isEmpty(colorString)) {
+			throw new IllegalArgumentException("Unknown color " + colorString); //$NON-NLS-1$
+		}
 		if (colorString.charAt(0) == '#') {
 			// Use a long to avoid rollovers on #ffXXXXXX
 			if (colorString.length() == 4) {
@@ -666,7 +682,8 @@ public class Algorithms {
 		for (int k = 0; k < s.length(); k++) {
 			if (isDigit(s.charAt(k))) {
 				i = i * 10 + (s.charAt(k) - '0');
-			} else {
+			} else if (Character.isLetter(s.charAt(k)) || i > 0) {
+				// allow '#3'- > 3 parsed
 				break;
 			}
 		}

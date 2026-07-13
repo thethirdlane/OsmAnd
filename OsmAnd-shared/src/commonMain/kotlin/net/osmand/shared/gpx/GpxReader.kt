@@ -2,7 +2,6 @@ package net.osmand.shared.gpx
 
 import kotlinx.coroutines.delay
 import net.osmand.shared.KAsyncTask
-import net.osmand.shared.api.SQLiteAPI.SQLiteConnection
 import net.osmand.shared.gpx.GpxTrackAnalysis.Companion.ANALYSIS_VERSION
 import net.osmand.shared.io.KFile
 import net.osmand.shared.util.LoggerFactory
@@ -37,35 +36,28 @@ class GpxReader(private val adapter: GpxReaderAdapter)
 
 	private fun doReading() {
 		var filesCount = 0
-		val conn = database.openConnection(false)
-		if (conn != null) {
-			try {
-				var file: KFile?
-				var item: GpxDataItem?
+		try {
+			var file: KFile?
+			var item: GpxDataItem?
+			pullNextFileItem()
+			file = currentFile
+			item = currentItem
+			while (file != null && !isCancelled()) {
+				if (GpxDbUtils.isAnalyseNeeded(item)) {
+					item = updateGpxDataItem(item, file)
+				}
+				if (item != null) {
+					adapter.onGpxDataItemRead(item)
+					publishProgress(item)
+				}
+
 				pullNextFileItem()
 				file = currentFile
 				item = currentItem
-				while (file != null && !isCancelled()) {
-					if (GpxDbUtils.isAnalyseNeeded(item)) {
-						item = updateGpxDataItem(conn, item, file)
-					}
-					if (item != null) {
-						adapter.onGpxDataItemRead(item)
-						publishProgress(item)
-					}
-
-					pullNextFileItem()
-					file = currentFile
-					item = currentItem
-					filesCount++
-				}
-			} catch (e: Exception) {
-				log.error(e.message)
-			} finally {
-				conn.close()
+				filesCount++
 			}
-		} else {
-			cancel()
+		} catch (e: Exception) {
+			log.error(e.message)
 		}
 	}
 
@@ -88,7 +80,7 @@ class GpxReader(private val adapter: GpxReaderAdapter)
 		adapter.onReadingFinished(this, isCancelled())
 	}
 
-	private fun updateGpxDataItem(conn: SQLiteConnection, item: GpxDataItem?, file: KFile): GpxDataItem {
+	private fun updateGpxDataItem(item: GpxDataItem?, file: KFile): GpxDataItem {
 		val gpxFile = GpxUtilities.loadGpxFile(file, null, false)
 		val updatedItem = item ?: GpxDataItem(file)
 		if (gpxFile.error == null) {
@@ -121,10 +113,19 @@ class GpxReader(private val adapter: GpxReaderAdapter)
 				GpxDbUtils.createDataVersion(ANALYSIS_VERSION)
 			)
 
-			if (database.isDataItemExists(file, conn)) {
-				GpxDbHelper.updateDataItem(updatedItem)
-			} else {
-				GpxDbHelper.insertDataItem(updatedItem, conn)
+			val conn = database.openConnection(false)
+			if (conn != null) {
+				try {
+					if (database.isDataItemExists(file, conn)) {
+						GpxDbHelper.updateDataItem(updatedItem)
+					} else {
+						GpxDbHelper.insertDataItem(updatedItem, conn)
+					}
+				} catch (e: Exception) {
+					log.error(e.message)
+				} finally {
+					conn.close()
+				}
 			}
 		}
 		return updatedItem
@@ -137,11 +138,7 @@ class GpxReader(private val adapter: GpxReaderAdapter)
 			item.setParameter(GpxParameter.NEAREST_CITY_NAME, "")
 		} else {
 			PlatformUtil.getOsmAndContext().searchNearestCityName(latLon) { cityName ->
-				if (cityName.isNotEmpty()) {
-					GpxDbHelper.updateDataItemParameter(item, GpxParameter.NEAREST_CITY_NAME, cityName)
-				} else {
-					item.setParameter(GpxParameter.NEAREST_CITY_NAME, "")
-				}
+				item.setParameter(GpxParameter.NEAREST_CITY_NAME, cityName)
 			}
 		}
 	}

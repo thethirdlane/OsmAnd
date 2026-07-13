@@ -28,10 +28,11 @@ import net.osmand.plus.dialogs.DirectionsDialogs;
 import net.osmand.plus.helpers.TargetPoint;
 import net.osmand.plus.helpers.TargetPointsHelper;
 import net.osmand.plus.mapcontextmenu.MapContextMenu;
+import net.osmand.plus.mapcontextmenu.other.DestinationReachedFragment;
 import net.osmand.plus.mapmarkers.MarkersPlanRouteContext;
 import net.osmand.plus.measurementtool.GpxApproximationParams;
 import net.osmand.plus.routepreparationmenu.MapRouteInfoMenu;
-import net.osmand.plus.routepreparationmenu.MapRouteInfoMenu.PointType;
+import net.osmand.plus.routepreparationmenu.data.PointType;
 import net.osmand.plus.routing.GPXRouteParams.GPXRouteParamsBuilder;
 import net.osmand.plus.routing.RoutingHelper;
 import net.osmand.plus.search.dialogs.QuickSearchDialogFragment.QuickSearchType;
@@ -97,6 +98,7 @@ public class MapActions {
 			builder.setSelectedSegment(settings.GPX_SEGMENT_INDEX.get());
 			builder.setSelectedRoute(settings.GPX_ROUTE_INDEX.get());
 			builder.setPassWholeRoute(settings.GPX_PASS_WHOLE_ROUTE.get());
+			builder.setReverseStrategy(settings.GPX_REVERSE_STRATEGY.get());
 
 			ApplicationMode appMode = routingHelper.getAppMode();
 			if (!gpxFile.isAttachedToRoads() && settings.DETAILED_TRACK_GUIDANCE.getModeValue(appMode) == AUTOMATIC) {
@@ -305,10 +307,7 @@ public class MapActions {
 	private void onNavigationClick() {
 		MapActivity activity = getMapActivity();
 		if (activity != null) {
-			MapRouteInfoMenu mapRouteInfoMenu = activity.getMapRouteInfoMenu();
-			mapRouteInfoMenu.cancelSelectionFromMap();
 			MapActivity.clearPrevActivityIntent();
-
 			if (!routingHelper.isFollowingMode() && !routingHelper.isRoutePlanningMode()) {
 				TargetPoint start = targetHelper.getPointToStart();
 				if (start != null) {
@@ -489,9 +488,13 @@ public class MapActions {
 	}
 
 	public void startNavigation() {
+		DestinationReachedFragment.resetShownState();
 		if (settings.getApplicationMode() != routingHelper.getAppMode()) {
 			settings.setApplicationMode(routingHelper.getAppMode(), false);
 		}
+		float elevationAngle = settings.getLastKnownMapElevation();
+		AnimateDraggingMapThread animateDraggingMapThread = app.getOsmandMap().getMapView().getAnimatedDraggingThread();
+		animateDraggingMapThread.startTilting(elevationAngle, 0);
 		if (routingHelper.isFollowingMode()) {
 			switchToRouteFollowingLayout();
 		} else {
@@ -590,7 +593,7 @@ public class MapActions {
 
 	public void startNavigationForGpx(@NonNull GpxFile gpxFile, @NonNull MapActivity mapActivity) {
 		MapActivityActions mapActions = mapActivity.getMapActions();
-		if (mapActivity.getMyApplication().getRoutingHelper().isFollowingMode()) {
+		if (mapActivity.getApp().getRoutingHelper().isFollowingMode()) {
 			WeakReference<MapActivity> activityRef = new WeakReference<>(mapActivity);
 			mapActions.stopNavigationActionConfirm(null, () -> {
 				MapActivity activity = activityRef.get();

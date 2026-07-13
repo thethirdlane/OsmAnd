@@ -10,6 +10,7 @@ import com.google.gson.reflect.TypeToken;
 import net.osmand.plus.plugins.externalsensors.devices.AbstractDevice;
 import net.osmand.plus.plugins.externalsensors.devices.sensors.DeviceChangeableProperty;
 import net.osmand.plus.settings.backend.preferences.CommonPreference;
+import net.osmand.plus.settings.backend.preferences.CommonPreferenceProvider;
 import net.osmand.util.Algorithms;
 
 import java.util.ArrayList;
@@ -22,7 +23,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class DevicesSettingsCollection {
 
-	private static final String DEVICES_SETTINGS_PREF_ID = "external_devices_settings";
 	public static final float DEFAULT_WHEEL_CIRCUMFERENCE = 2.086f;
 
 	private final CommonPreference<String> preference;
@@ -35,9 +35,15 @@ public class DevicesSettingsCollection {
 		final String deviceId;
 		final DeviceType deviceType;
 		boolean enabled;
+		String uuid;
 		Map<DeviceChangeableProperty, String> additionalParams = new LinkedHashMap<>();
 
 		public DeviceSettings(String deviceId, @NonNull AbstractDevice<?> device, boolean deviceEnabled) {
+			this( deviceId, device, deviceEnabled, null);
+		}
+
+		public DeviceSettings(String deviceId, @NonNull AbstractDevice<?> device, boolean deviceEnabled, @Nullable String uuid) {
+			this.uuid = uuid;
 			this.deviceId = deviceId;
 			this.deviceType = device.getDeviceType();
 			this.enabled = deviceEnabled;
@@ -74,6 +80,14 @@ public class DevicesSettingsCollection {
 				additionalParams = new LinkedHashMap<>();
 			}
 		}
+
+		public String getUuid() {
+			return uuid;
+		}
+
+		public void setUuid(String uuid) {
+			this.uuid = uuid;
+		}
 	}
 	public interface DevicePreferencesListener {
 		void onDeviceEnabled(@NonNull String deviceId);
@@ -81,9 +95,9 @@ public class DevicesSettingsCollection {
 		void onDeviceDisabled(@NonNull String deviceId);
 	}
 
-	public DevicesSettingsCollection(@NonNull ExternalSensorsPlugin plugin) {
+	public DevicesSettingsCollection(@NonNull CommonPreferenceProvider<String> preferenceProvider) {
 		gson = new GsonBuilder().create();
-		preference = plugin.registerStringPref(DEVICES_SETTINGS_PREF_ID, "");
+		preference = preferenceProvider.getPreference();
 		readSettings();
 	}
 
@@ -112,6 +126,12 @@ public class DevicesSettingsCollection {
 	public DeviceSettings getDeviceSettings(@NonNull String deviceId) {
 		return settings.get(deviceId);
 	}
+
+	public void removeDeviceSettings(@NonNull String deviceId) {
+		settings.remove(deviceId);
+	}
+
+	@NonNull
 	public static DeviceSettings createDeviceSettings(String deviceId, @NonNull AbstractDevice<?> device, boolean deviceEnabled) {
 		return new DeviceSettings(deviceId, device, deviceEnabled);
 	}

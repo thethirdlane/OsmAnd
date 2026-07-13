@@ -2,9 +2,11 @@ package net.osmand.osm.edit;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import net.osmand.binary.ObfConstants;
 import net.osmand.data.Amenity;
 import net.osmand.data.Building;
 import net.osmand.data.City;
@@ -15,7 +17,6 @@ import net.osmand.data.TransportRoute;
 import net.osmand.data.TransportStop;
 import net.osmand.osm.MapPoiTypes;
 import net.osmand.osm.MapRenderingTypes;
-import net.osmand.osm.edit.Entity.EntityType;
 import net.osmand.osm.edit.OSMSettings.OSMTagKey;
 import net.osmand.osm.edit.Relation.RelationMember;
 import net.osmand.util.Algorithms;
@@ -24,19 +25,29 @@ public class EntityParser {
 
 	public static void parseMapObject(MapObject mo, Entity e, Map<String, String> tags) {
 		mo.setId(e.getId());
-		if(mo instanceof Amenity) {
-			mo.setId((e.getId() << 1) + ((EntityType.valueOf(e) == EntityType.NODE) ? 0 : 1));
+		// use for all to make this type consistent everywhere (since 5.2)
+//		if (mo instanceof Amenity ) {
+		if (e.getId() > 0) {
+			mo.setId(ObfConstants.createMapObjectIdFromOsmAndEntity(e));
 		}
+//			mo.setId((e.getId() << 1) + ((EntityType.valueOf(e) == EntityType.NODE) ? 0 : 1));
+//		}
 		if (mo.getName().length() == 0) {
 			mo.setName(tags.get(OSMTagKey.NAME.getValue()));
 		}
 		if (mo.getEnName(false).length() == 0) {
 			mo.setEnName(tags.get(OSMTagKey.NAME_EN.getValue()));
 		}
+		if (tags.get(OSMTagKey.SHORT_NAME.getValue()) != null) {
+			mo.setName("short", tags.get(OSMTagKey.SHORT_NAME.getValue()));
+		}
 		for (Map.Entry<String, String> entry : tags.entrySet()) {
 			String ts = entry.getKey();
 			if (ts.startsWith("name:") && !ts.equals(OSMTagKey.NAME_EN.getValue())) {
-				mo.setName(ts.substring(("name:").length()), entry.getValue());
+				String lang = ts.substring(("name:").length());
+				if (MapRenderingTypes.langsSet.contains(lang)) {
+					mo.setName(lang, entry.getValue());
+				}
 			}
 		}
 		if (mo.getName().length() == 0) {
@@ -161,19 +172,23 @@ public class EntityParser {
 				String key = e.getKey();
 				if (value.indexOf(';') != -1) {
 					String[] vls = value.split(";");
-					Amenity multiAmenity = null;
+					Map<String, Amenity> multiAmenitiesByType = new LinkedHashMap<>();
 					for(String v : vls) {
 						v = v.trim();
 						Amenity am = poiTypes.parseAmenity(key, v, purerelation, ts);
 						if (am != null) {
+							String type = am.getType().getKeyName();
+							Amenity multiAmenity = multiAmenitiesByType.get(type);
 							if (multiAmenity != null) {
 								multiAmenity.setSubType(multiAmenity.getSubType() + ";" + am.getSubType());
 							} else {
-								multiAmenity = am;
+								multiAmenitiesByType.put(type, am);
 							}
 						}
 					}
-					addAmenity(entity, amenitiesList, ts, multiAmenity);
+					for (Amenity am : multiAmenitiesByType.values()) {
+						addAmenity(entity, amenitiesList, ts, am);
+					}
 				} else {
 					Amenity am = poiTypes.parseAmenity(key, value, purerelation, ts);
 					addAmenity(entity, amenitiesList, ts, am);
@@ -230,19 +245,23 @@ public class EntityParser {
 		return b;
 	}
 
-	public static City parseCity(Node el) {
-		return parseCity(el, CityType.valueFromString(el.getTag(OSMTagKey.PLACE.getValue())));
+	public static City parseCity(Entity el) {
+		return parseCity(el, null);
 	}
 
 	public static City parseCity(Entity el, CityType t) {
-		if(t == null) {
+		if (t == null) {
+			t = CityType.valueFromEntity(el);
+		}
+		if (t == null) {
 			return null;
 		}
 		City c = new City(t);
 		parseMapObject(c, el, el.getTags());
 		String isin = el.getTag(OSMTagKey.IS_IN.getValue());
-		isin = isin != null ? isin.toLowerCase() : null;
-		c.setIsin(isin);
+		if (isin != null) {
+			c.setIsin(isin);
+		}
 		return c;
 	}
 

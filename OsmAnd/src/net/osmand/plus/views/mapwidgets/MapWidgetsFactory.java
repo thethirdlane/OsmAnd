@@ -26,16 +26,11 @@ public class MapWidgetsFactory {
 
 	public MapWidgetsFactory(@NonNull MapActivity mapActivity) {
 		this.mapActivity = mapActivity;
-		app = mapActivity.getMyApplication();
+		app = mapActivity.getApp();
 	}
 
 	@Nullable
-	public MapWidget createMapWidget(@NonNull WidgetType widgetType) {
-		return createMapWidget(null, widgetType, null);
-	}
-
-	public MapWidget createMapWidget(@Nullable String customId, @NonNull WidgetType widgetType,
-			@Nullable WidgetsPanel panel) {
+	public MapWidget createMapWidget(@Nullable String customId, @NonNull WidgetType widgetType, @Nullable WidgetsPanel panel) {
 		switch (widgetType) {
 			case NEXT_TURN:
 				return new NextTurnWidget(mapActivity, customId, panel, false);

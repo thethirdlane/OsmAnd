@@ -10,12 +10,14 @@ import com.google.android.material.slider.Slider;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
+import net.osmand.plus.helpers.AndroidUiHelper;
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.plugins.rastermaps.LayerTransparencySeekbarMode;
 import net.osmand.plus.plugins.rastermaps.OsmandRasterMapsPlugin;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.backend.preferences.CommonPreference;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.plus.utils.UiUtilities;
 
 public class MapTransparencyHelper {
@@ -128,13 +130,13 @@ public class MapTransparencyHelper {
 
 	protected void updateTransparencySliderUi() {
 		ApplicationMode appMode = app.getSettings().getApplicationMode();
-		boolean nightMode = app.getDaynightHelper().isNightModeForMapControls();
+		boolean nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.OVER_MAP);
 		int selectedModeColor = appMode.getProfileColor(nightMode);
 		UiUtilities.setupSlider(transparencySlider, nightMode, selectedModeColor);
 	}
 
 	public void hideTransparencyBar() {
-		transparencyBarLayout.setVisibility(View.GONE);
+		AndroidUiHelper.updateVisibility(transparencyBarLayout, false);
 		transparencySetting = null;
 	}
 
@@ -169,7 +171,7 @@ public class MapTransparencyHelper {
 
 	private void updateParameterSliderUi() {
 		ApplicationMode appMode = app.getSettings().getApplicationMode();
-		boolean nightMode = app.getDaynightHelper().isNightModeForMapControls();
+		boolean nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.OVER_MAP);
 		int selectedModeColor = appMode.getProfileColor(nightMode);
 		UiUtilities.setupSlider(parameterSlider, nightMode, selectedModeColor);
 	}

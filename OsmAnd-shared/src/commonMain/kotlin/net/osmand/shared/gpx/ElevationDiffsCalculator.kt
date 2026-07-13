@@ -13,12 +13,23 @@ abstract class ElevationDiffsCalculator {
 	private var diffElevationDown = 0.0
 	private var extremums = mutableListOf<Extremum>()
 
-	data class Extremum(val dist: Double, val ele: Double)
+	data class Extremum(val dist: Double, val ele: Double, val index: Int)
+
+	data class SlopeInfo(
+		val startPointIndex: Int,
+		val endPointIndex: Int,
+		var elevDiff: Double,
+		var distance: Double = 0.0,
+		var maxSpeed: Float = 0.0f,
+        var movingTime: Long = 0L
+	)
+
+	private var lastUphill: SlopeInfo? = null
+	private var lastDownhill: SlopeInfo? = null
 
 	abstract fun getPointDistance(index: Int): Double
-
 	abstract fun getPointElevation(index: Int): Double
-
+	abstract fun getPointIndex(index: Int): Int
 	abstract fun getPointsCount(): Int
 
 	fun getDiffElevationUp(): Double {
@@ -31,6 +42,14 @@ abstract class ElevationDiffsCalculator {
 
 	fun getExtremums(): List<Extremum> {
 		return extremums.toList()
+	}
+
+	fun getLastUphill(): SlopeInfo? {
+		return lastUphill
+	}
+
+	fun getLastDownhill(): SlopeInfo? {
+		return lastDownhill
 	}
 
 	private fun getProjectionDist(x: Double, y: Double, fromx: Double, fromy: Double, tox: Double, toy: Double): Double {
@@ -71,6 +90,11 @@ abstract class ElevationDiffsCalculator {
 		if (pointsCount < 2) {
 			return
 		}
+		lastUphill = null
+		lastDownhill = null
+		diffElevationUp = 0.0
+		diffElevationDown = 0.0
+
 		val points = BooleanArray(pointsCount)
 		points[0] = true
 		points[pointsCount - 1] = true
@@ -79,20 +103,52 @@ abstract class ElevationDiffsCalculator {
 		extremums = mutableListOf()
 		for (i in points.indices) {
 			if (points[i]) {
-				extremums.add(Extremum(getPointDistance(i), getPointElevation(i)))
+				extremums.add(Extremum(getPointDistance(i), getPointElevation(i), getPointIndex(i)))
 			}
 		}
 
+		var currentUphill: SlopeInfo? = null
+		var currentDownhill: SlopeInfo? = null
+
 		for (i in 1 until extremums.size) {
-			val prevElevation = extremums[i - 1].ele
-			val elevation = extremums[i].ele
-			val eleDiffSumm = elevation - prevElevation
+			val start = extremums[i - 1]
+			val end = extremums[i]
+			val eleDiffSumm = end.ele - start.ele
+
 			if (eleDiffSumm > 0) {
 				diffElevationUp += eleDiffSumm
-			} else {
-				diffElevationDown -= eleDiffSumm
+				currentUphill = processLastSlope(currentUphill, start, end, eleDiffSumm) { lastUphill = it }
+				currentDownhill = null
+			} else if (eleDiffSumm < 0) {
+				val elevAbs = -eleDiffSumm
+				diffElevationDown += elevAbs
+				currentDownhill = processLastSlope(currentDownhill, start, end, elevAbs) { lastDownhill = it }
+				currentUphill = null
 			}
 		}
+	}
+
+	private fun processLastSlope(
+		current: SlopeInfo?,
+		start: Extremum,
+		end: Extremum,
+		eleDiffSumm: Double,
+		setter: (SlopeInfo) -> Unit
+	): SlopeInfo {
+		val updated = if (current != null && current.endPointIndex == start.index) {
+			current.copy(
+				endPointIndex = end.index,
+				elevDiff = current.elevDiff + eleDiffSumm
+			)
+		} else {
+			SlopeInfo(
+				startPointIndex = start.index,
+				endPointIndex = end.index,
+				elevDiff = eleDiffSumm
+			)
+		}
+		setter(updated)
+		return updated
 	}
 
 	companion object {
@@ -118,7 +174,8 @@ abstract class ElevationDiffsCalculator {
 			approximator.approximate()
 			val distances: DoubleArray? = approximator.getDistances()
 			val elevations: DoubleArray? = approximator.getElevations()
-			if (distances != null && elevations != null) {
+			val pointIndexes: IntArray? = approximator.getSurvivedIndexes()
+			if (distances != null && elevations != null && pointIndexes != null) {
 				var diffElevationUp = 0.0
 				var diffElevationDown = 0.0
 				val elevationDiffsCalc: ElevationDiffsCalculator =
@@ -129,6 +186,10 @@ abstract class ElevationDiffsCalculator {
 
 						override fun getPointElevation(index: Int): Double {
 							return elevations[index]
+						}
+
+						override fun getPointIndex(index: Int): Int {
+							return pointIndexes[index]
 						}
 
 						override fun getPointsCount(): Int {

@@ -1,6 +1,5 @@
 package net.osmand.router;
 
-import static net.osmand.util.RouterUtilTest.getExpectedIdSet;
 import static net.osmand.util.RouterUtilTest.getNativeLibPath;
 import static net.osmand.util.RouterUtilTest.getRoadId;
 import static net.osmand.util.RouterUtilTest.getRoadStartPoint;
@@ -33,6 +32,7 @@ import com.google.gson.GsonBuilder;
 import net.osmand.NativeLibrary;
 import net.osmand.PlatformUtil;
 import net.osmand.binary.BinaryMapIndexReader;
+import net.osmand.binary.ObfConstants;
 import net.osmand.router.RoutingConfiguration.RoutingMemoryLimits;
 import net.osmand.util.Algorithms;
 
@@ -119,6 +119,7 @@ public class RouteResultPreparationTest {
         if (useNative) {
             ctx = fe.buildRoutingContext(config, nativeLibrary, binaryMapIndexReaders,
                     RoutePlannerFrontEnd.RouteCalculationMode.NORMAL);
+            ctx.requestNativePrepareResult = true;
         } else {
             ctx = fe.buildRoutingContext(config, null, binaryMapIndexReaders,
                     RoutePlannerFrontEnd.RouteCalculationMode.NORMAL);
@@ -126,8 +127,9 @@ public class RouteResultPreparationTest {
         ctx.leftSideNavigation = false;
         
         List<RouteSegmentResult> routeSegments = fe.searchRoute(ctx, te.getStartPoint(), te.getEndPoint(), null).detailed;
-        Set<Long> reachedSegments = new TreeSet<Long>();
-        Set<Long> checkedSegments = new TreeSet<Long>();
+        Set<String> reachedSegmentsWithStartPoint = new TreeSet<>();
+        Map<Long, RouteSegmentResult> reachedSegments = new HashMap<>();
+        Set<Long> checkedSegments = new TreeSet<>();
         Assert.assertNotNull(routeSegments);
         int prevSegment = -1;
         for (int i = 0; i <= routeSegments.size(); i++) {
@@ -142,7 +144,7 @@ public class RouteResultPreparationTest {
                     if (skipToSpeak) {
                         turnLanes = "[MUTE] " + turnLanes;
                     }
-                    long segmentId = segment.getObject().getId() >> (RouteResultPreparation.SHIFT_ID);
+                    long segmentId = ObfConstants.getOsmObjectId(segment.getObject());
                     String expectedResult = null;
                     int startPoint = -1;
                     for (Entry<String, String> er : te.getExpectedResults().entrySet()) {
@@ -155,7 +157,7 @@ public class RouteResultPreparationTest {
                     }
                     
                     if (expectedResult != null) {
-                        if (startPoint < 0 || (startPoint > 0 && segment.getStartPointIndex() == startPoint)) {
+                        if (startPoint < 0 || (startPoint >= 0 && segment.getStartPointIndex() == startPoint)) {
                              if (!Algorithms.objectEquals(expectedResult, turnLanes)
                                     && !Algorithms.objectEquals(expectedResult, lanes)
                                     && !Algorithms.objectEquals(expectedResult, turn)) {
@@ -168,24 +170,45 @@ public class RouteResultPreparationTest {
                 }
                 prevSegment = i;
                 if (i < routeSegments.size()) {
-                    checkedSegments.add(routeSegments.get(i).getObject().getId() >> (RouteResultPreparation.SHIFT_ID ));
+                    checkedSegments.add(ObfConstants.getOsmObjectId(routeSegments.get(i).getObject()));
                 }
             }
             if (i < routeSegments.size()) {
-                reachedSegments.add(routeSegments.get(i).getObject().getId() >> (RouteResultPreparation.SHIFT_ID ));
+				Long id = ObfConstants.getOsmObjectId(routeSegments.get(i).getObject());
+                int startPoint = routeSegments.get(i).getStartPointIndex();
+                reachedSegmentsWithStartPoint.add(id + ":" + startPoint);
+                reachedSegments.put(id, routeSegments.get(i));
             }
-        }
-        for (Long expSegId : getExpectedIdSet(te.getExpectedResults())) {
-            Assert.assertTrue("Expected segment " + (expSegId) +
-                    " weren't reached in route segments " + reachedSegments, reachedSegments.contains(expSegId));
         }
         for (Entry<String, String> er : te.getExpectedResults().entrySet()) {
             String roadInfo = er.getKey();
             long id = getRoadId(roadInfo);
+            int startPoint = getRoadStartPoint(roadInfo);
+
+            Assert.assertTrue(
+                    "Segment " + roadInfo + " was not reached in " + reachedSegmentsWithStartPoint,
+                    startPoint == -1 ? reachedSegments.containsKey(id) : reachedSegmentsWithStartPoint.contains(roadInfo));
+
             if (!checkedSegments.contains(id)) {
                 String expectedResult = er.getValue();
                 if (!Algorithms.isEmpty(expectedResult)) {
                     Assert.assertEquals("Segment " + id, expectedResult, "NULL");
+                }
+            }
+        }
+        if (te.getExpectedExits() != null) {
+            for (Entry<String, String> exit : te.getExpectedExits().entrySet()) {
+                long id = getRoadId(exit.getKey());
+                Assert.assertTrue(reachedSegments.containsKey(id));
+
+                String expectedRef = exit.getValue();
+                boolean hasExitInfo = reachedSegments.get(id).hasExitInfo();
+
+                if (Algorithms.isEmpty(expectedRef)) {
+	                Assert.assertFalse(hasExitInfo);
+                } else {
+                    String actualRef = reachedSegments.get(id).getObject().getExitRef();
+                    Assert.assertTrue(hasExitInfo && expectedRef.equals(actualRef));
                 }
             }
         }

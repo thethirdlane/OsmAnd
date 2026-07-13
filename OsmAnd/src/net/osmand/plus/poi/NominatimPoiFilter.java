@@ -2,12 +2,15 @@ package net.osmand.plus.poi;
 
 import net.osmand.PlatformUtil;
 import net.osmand.ResultMatcher;
+import net.osmand.binary.ObfConstants;
 import net.osmand.data.Amenity;
 import net.osmand.osm.MapPoiTypes;
 import net.osmand.osm.PoiType;
+import net.osmand.osm.edit.Entity.EntityType;
 import net.osmand.osm.io.NetworkUtils;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
+import net.osmand.plus.Version;
 import net.osmand.plus.poi.PoiFilterUtils.AmenityNameFilter;
 import net.osmand.util.Algorithms;
 import net.osmand.util.MapUtils;
@@ -88,8 +91,9 @@ public class NominatimPoiFilter extends PoiUIFilter {
 		try {
 			lastError = "";
 			String urlq = NOMINATIM_API + "?format=xml" +
-					"&addressdetails=0&accept-language=" + Locale.getDefault().getLanguage() +
+					"&accept-language=" + Locale.getDefault().getLanguage() +
 					"&q=" + URLEncoder.encode(getFilterByName()) +
+					"&extratags=1" +
 					"&addressdetails=1" + // nclude a breakdown of the address into elements
 					"&limit=" + LIMIT;
 			if (bboxSearch) {
@@ -97,12 +101,15 @@ public class NominatimPoiFilter extends PoiUIFilter {
 			}
 			log.info("Online search: " + urlq);
 			URLConnection connection = NetworkUtils.getHttpURLConnection(urlq); //$NON-NLS-1$
+			connection.setRequestProperty("User-Agent", Version.getFullVersion(app));
+
 			InputStream stream = connection.getInputStream();
 			XmlPullParser parser = PlatformUtil.newXMLPullParser();
 			parser.setInput(stream, "UTF-8"); //$NON-NLS-1$
 			int eventType;
 			int namedDepth = 0;
 			Amenity a = null;
+			boolean extratags = false;
 			MapPoiTypes poiTypes = ((OsmandApplication) getApplication()).getPoiTypes();
 			while ((eventType = parser.next()) != XmlPullParser.END_DOCUMENT) {
 				if (eventType == XmlPullParser.START_TAG) {
@@ -121,10 +128,13 @@ public class NominatimPoiFilter extends PoiUIFilter {
 								a = new Amenity();
 								a.setLocation(Double.parseDouble(parser.getAttributeValue("", "lat")), //$NON-NLS-1$//$NON-NLS-2$
 										Double.parseDouble(parser.getAttributeValue("", "lon"))); //$NON-NLS-1$//$NON-NLS-2$
-								a.setId(Long.parseLong(parser.getAttributeValue("", "place_id"))); //$NON-NLS-1$ //$NON-NLS-2$
+								long osmId = Long.parseLong(parser.getAttributeValue("", "osm_id"));
+								EntityType osmType = EntityType.valueOf(parser.getAttributeValue("", "osm_type").toUpperCase());
+								long id = ObfConstants.createMapObjectIdFromCleanOsmId(osmId, osmType);
+								a.setId(id);
 								String name = parser.getAttributeValue("", "display_name"); //$NON-NLS-1$//$NON-NLS-2$
 								a.setName(name);
-								a.setEnName(TransliterationHelper.transliterate(getName()));
+								a.setEnName(TransliterationHelper.transliterate(name));
 								a.setSubType(parser.getAttributeValue("", "type")); //$NON-NLS-1$//$NON-NLS-2$
 								PoiType pt = poiTypes.getPoiTypeByKey(a.getSubType());
 								a.setType(pt != null ? pt.getCategory() : poiTypes.getOtherPoiCategory());
@@ -135,12 +145,21 @@ public class NominatimPoiFilter extends PoiUIFilter {
 								log.info("Invalid attributes", e); //$NON-NLS-1$
 							}
 						}
-					} else if (a != null && parser.getName().equals(a.getSubType())) {
+					}
+					if (extratags && a != null) {
+						String tag = parser.getAttributeValue("", "key");
+						String val = parser.getAttributeValue("", "value");
+						a.setAdditionalInfo(tag, val);
+					}
+					if (parser.getName().equals("extratags")) {
+						extratags = true;
+					}
+					if (a != null && parser.getName().equals(a.getSubType())) {
 						if (parser.next() == XmlPullParser.TEXT) {
 							String name = parser.getText();
 							if (name != null) {
 								a.setName(name);
-								a.setEnName(TransliterationHelper.transliterate(getName()));
+								a.setEnName(TransliterationHelper.transliterate(name));
 							}
 						}
 					}
@@ -150,6 +169,9 @@ public class NominatimPoiFilter extends PoiUIFilter {
 						if (namedDepth == 0) {
 							a = null;
 						}
+					}
+					if (parser.getName().equals("extratags")) {
+						extratags = false;
 					}
 				}
 			}

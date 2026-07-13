@@ -2,7 +2,6 @@ package net.osmand.plus.mapcontextmenu.editors.icon;
 
 import static net.osmand.plus.card.icon.IIconsPaletteController.ALL_ICONS_PROCESS_ID;
 
-import android.app.Activity;
 import android.app.Dialog;
 import android.os.Bundle;
 import android.text.Editable;
@@ -29,8 +28,7 @@ import androidx.recyclerview.widget.RecyclerView.ViewHolder;
 
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
-import net.osmand.plus.activities.MapActivity;
-import net.osmand.plus.base.BaseOsmAndDialogFragment;
+import net.osmand.plus.base.BaseFullScreenDialogFragment;
 import net.osmand.plus.base.dialog.DialogManager;
 import net.osmand.plus.helpers.AndroidUiHelper;
 import net.osmand.plus.mapcontextmenu.editors.icon.data.IconsCategory;
@@ -38,13 +36,16 @@ import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTargetsCollection;
+import net.osmand.plus.utils.InsetsUtils.InsetSide;
 import net.osmand.plus.widgets.chips.ChipItem;
 import net.osmand.plus.widgets.chips.HorizontalChipsView;
 import net.osmand.plus.widgets.tools.SimpleTextWatcher;
 
 import java.util.List;
 
-public class EditorIconPaletteFragment extends BaseOsmAndDialogFragment implements IEditorIconPaletteScreen {
+public class EditorIconPaletteFragment extends BaseFullScreenDialogFragment implements IEditorIconPaletteScreen {
 
 	public static final String TAG = EditorIconPaletteFragment.class.getSimpleName();
 
@@ -61,6 +62,11 @@ public class EditorIconPaletteFragment extends BaseOsmAndDialogFragment implemen
 	private EditorIconScreenAdapter adapter;
 
 	@Override
+	protected int getThemeId() {
+		return nightMode ? R.style.OsmandDarkTheme_DarkActionbar : R.style.OsmandLightTheme_DarkActionbar;
+	}
+
+	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		DialogManager dialogManager = app.getDialogManager();
@@ -74,18 +80,8 @@ public class EditorIconPaletteFragment extends BaseOsmAndDialogFragment implemen
 
 	@NonNull
 	@Override
-	public Dialog onCreateDialog(@Nullable Bundle savedInstanceState) {
-		updateNightMode();
-		Activity ctx = requireActivity();
-		int themeId = nightMode ? R.style.OsmandDarkTheme_DarkActionbar : R.style.OsmandLightTheme_DarkActionbar;
-		Dialog dialog = new Dialog(ctx, themeId);
-		Window window = dialog.getWindow();
-		if (window != null) {
-			if (!settings.DO_NOT_USE_ANIMATIONS.get()) {
-				window.getAttributes().windowAnimations = R.style.Animations_Alpha;
-			}
-			window.setStatusBarColor(getColor(getStatusBarColorId()));
-		}
+	public Dialog createDialog(@Nullable Bundle savedInstanceState) {
+		Dialog dialog = super.createDialog(savedInstanceState);
 		dialog.setOnKeyListener((d, keyCode, event) -> {
 			if (KeyEvent.KEYCODE_BACK == keyCode && KeyEvent.ACTION_UP == event.getAction()) {
 				onBackPressed();
@@ -100,7 +96,7 @@ public class EditorIconPaletteFragment extends BaseOsmAndDialogFragment implemen
 	@Override
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
 		updateNightMode();
-		View view = inflate(R.layout.fragment_icon_categories, container);
+		View view = inflate(R.layout.fragment_icon_categories, container, false);
 		progressBar = view.findViewById(R.id.progress_bar);
 		setupToolbar(view);
 		setupSearch(view);
@@ -109,6 +105,14 @@ public class EditorIconPaletteFragment extends BaseOsmAndDialogFragment implemen
 		onScreenModeChanged();
 		updateSelectedCategory();
 		return view;
+	}
+
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.replace(InsetTarget.createScrollable(R.id.icon_categories).build());
+		collection.add(InsetTarget.createCustomBuilder(R.id.icons_categories_selector).applyPadding(true).landscapeSides(InsetSide.RIGHT, InsetSide.LEFT).build());
+		return collection;
 	}
 
 	private void setupToolbar(@NonNull View view) {
@@ -135,7 +139,7 @@ public class EditorIconPaletteFragment extends BaseOsmAndDialogFragment implemen
 		Window window = requireDialog().getWindow();
 		if (window != null) {
 			AndroidUiHelper.setStatusBarContentColor(window.getDecorView(), true);
-			window.setStatusBarColor(color);
+			AndroidUiHelper.setStatusBarColor(window, color);
 		}
 	}
 

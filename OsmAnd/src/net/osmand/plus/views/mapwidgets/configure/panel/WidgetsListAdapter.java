@@ -1,11 +1,11 @@
 package net.osmand.plus.views.mapwidgets.configure.panel;
 
 import static net.osmand.plus.views.mapwidgets.WidgetType.isComplexWidget;
-import static net.osmand.plus.views.mapwidgets.configure.panel.WidgetsListFragment.WidgetsListDiffCallback.PAYLOAD_DIVIDER_STATE_CHANGED;
-import static net.osmand.plus.views.mapwidgets.configure.panel.WidgetsListFragment.WidgetsListDiffCallback.PAYLOAD_EDIT_MODE_CHANGED;
-import static net.osmand.plus.views.mapwidgets.configure.panel.WidgetsListFragment.WidgetsListDiffCallback.PAYLOAD_MOVE_STATE_CHANGED;
-import static net.osmand.plus.views.mapwidgets.configure.panel.WidgetsListFragment.WidgetsListDiffCallback.PAYLOAD_UPDATE_ALL;
-import static net.osmand.plus.views.mapwidgets.configure.panel.WidgetsListFragment.WidgetsListDiffCallback.PAYLOAD_UPDATE_POSITION;
+import static net.osmand.plus.views.mapwidgets.configure.panel.WidgetsListDiffCallback.PAYLOAD_DIVIDER_STATE_CHANGED;
+import static net.osmand.plus.views.mapwidgets.configure.panel.WidgetsListDiffCallback.PAYLOAD_EDIT_MODE_CHANGED;
+import static net.osmand.plus.views.mapwidgets.configure.panel.WidgetsListDiffCallback.PAYLOAD_MOVE_STATE_CHANGED;
+import static net.osmand.plus.views.mapwidgets.configure.panel.WidgetsListDiffCallback.PAYLOAD_UPDATE_ALL;
+import static net.osmand.plus.views.mapwidgets.configure.panel.WidgetsListDiffCallback.PAYLOAD_UPDATE_POSITION;
 import static net.osmand.plus.views.mapwidgets.configure.panel.WidgetsListFragment.getRowWidgetIds;
 import static net.osmand.plus.views.mapwidgets.configure.panel.WidgetsListFragment.isFirstPage;
 import static net.osmand.plus.views.mapwidgets.configure.panel.WidgetsListFragment.rowHasComplexWidget;
@@ -86,7 +86,7 @@ public class WidgetsListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
 	public WidgetsListAdapter(@NonNull MapActivity mapActivity, boolean nightMode,
 	                          @NonNull WidgetsAdapterListener listener, boolean isVerticalPanel, @NonNull ApplicationMode selectedAppMode) {
 		this.mapActivity = mapActivity;
-		this.app = mapActivity.getMyApplication();
+		this.app = mapActivity.getApp();
 		this.selectedAppMode = selectedAppMode;
 		this.nightMode = nightMode;
 		this.listener = listener;
@@ -202,7 +202,7 @@ public class WidgetsListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
 		if (isVerticalPanel) {
 			Integer multipleComplexIndex = multipleComplexWidgetsInRowIndex(items);
 			if (multipleComplexIndex != null) {
-				app.showToastMessage(app.getString(R.string.complex_widget_alert, getComplexWidgetName(multipleComplexIndex, items)));
+				app.showToastMessage(R.string.complex_widget_alert, getComplexWidgetName(multipleComplexIndex, items));
 				listener.restoreBackup();
 				return;
 			}
@@ -403,7 +403,7 @@ public class WidgetsListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
 				tempItems.remove(position);
 				Integer multipleComplexIndex = multipleComplexWidgetsInRowIndex(tempItems);
 				if (multipleComplexIndex != null) {
-					app.showToastMessage(app.getString(R.string.complex_widget_alert, getComplexWidgetName(multipleComplexIndex, tempItems)));
+					app.showToastMessage(R.string.complex_widget_alert, getComplexWidgetName(multipleComplexIndex, tempItems));
 					return;
 				}
 			}
@@ -414,19 +414,50 @@ public class WidgetsListAdapter extends RecyclerView.Adapter<RecyclerView.ViewHo
 	}
 
 	public void addPage() {
+		removeEmptyStateItem();
 		int page = getLastPage();
 		page++;
 		insertToEndOfAddedWidgets(new PageItem(page));
+		ensureEditModeFooter();
 	}
 
 	public void addWidget(@NonNull MapWidgetInfo widgetInfo) {
+		removeEmptyStateItem();
 		int page = getLastPage();
-		if (isVerticalPanel) {
+		if (isVerticalPanel || page == 0) {
 			page++;
 			insertToEndOfAddedWidgets(new PageItem(page));
 		}
 
 		insertToEndOfAddedWidgets(new WidgetItem(widgetInfo));
+		ensureEditModeFooter();
+	}
+
+	private void removeEmptyStateItem() {
+		for (int i = items.size() - 1; i >= 0; i--) {
+			Object item = items.get(i);
+			if (item instanceof Integer integer && integer == VIEW_TYPE_EMPTY_STATE) {
+				items.remove(i);
+				notifyItemRemoved(i);
+				return;
+			}
+		}
+	}
+
+	private void ensureEditModeFooter() {
+		if (!isEditMode) {
+			return;
+		}
+		ensureListItem(VIEW_TYPE_ADD_PAGE);
+		ensureListItem(VIEW_TYPE_SPACE);
+	}
+
+	private void ensureListItem(int viewType) {
+		if (!items.contains(viewType)) {
+			items.add(viewType);
+			notifyItemInserted(items.size() - 1);
+			listener.refreshAll();
+		}
 	}
 
 	@SuppressLint("NotifyDataSetChanged")

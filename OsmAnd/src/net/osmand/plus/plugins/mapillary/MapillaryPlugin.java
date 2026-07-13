@@ -10,7 +10,6 @@ import android.content.Intent;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.view.View;
-import android.widget.LinearLayout;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -24,23 +23,20 @@ import net.osmand.plus.R;
 import net.osmand.plus.Version;
 import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.dashboard.DashboardType;
-import net.osmand.plus.mapcontextmenu.CollapsableView;
+import net.osmand.plus.gallery.controller.GalleryRowController;
+import net.osmand.plus.gallery.data.GalleryKey;
 import net.osmand.plus.mapcontextmenu.MenuBuilder;
 import net.osmand.plus.mapcontextmenu.MenuController;
-import net.osmand.plus.mapcontextmenu.builders.cards.AbstractCard;
-import net.osmand.plus.mapcontextmenu.builders.cards.CardsRowBuilder;
-import net.osmand.plus.mapcontextmenu.builders.cards.ImageCard;
-import net.osmand.plus.mapcontextmenu.builders.cards.NoImagesCard;
-import net.osmand.plus.mapcontextmenu.gallery.GalleryController;
-import net.osmand.plus.mapcontextmenu.gallery.ImageCardType;
-import net.osmand.plus.mapcontextmenu.gallery.ImageCardsHolder;
-import net.osmand.plus.mapcontextmenu.gallery.tasks.GetImageCardsTask.GetImageCardsListener;
+import net.osmand.plus.gallery.online.OnlinePhotosGroup;
+import net.osmand.plus.gallery.online.OnlinePhotosHolder;
+import net.osmand.shared.media.RemoteMediaFactory;
 import net.osmand.plus.plugins.OsmandPlugin;
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.backend.preferences.CommonPreference;
 import net.osmand.plus.settings.backend.preferences.OsmandPreference;
+import net.osmand.plus.settings.enums.ScreenLayoutMode;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.views.OsmandMapTileView;
 import net.osmand.plus.views.layers.MapInfoLayer;
@@ -57,15 +53,15 @@ import net.osmand.plus.widgets.ctxmenu.callback.OnDataChangeUiAdapter;
 import net.osmand.plus.widgets.ctxmenu.callback.OnRowItemClick;
 import net.osmand.plus.widgets.ctxmenu.data.ContextMenuItem;
 import net.osmand.render.RenderingRuleProperty;
+import net.osmand.shared.media.domain.MediaItem;
+import net.osmand.shared.media.domain.MediaOrigin;
 import net.osmand.util.Algorithms;
 
 import org.apache.commons.logging.Log;
 import org.jetbrains.annotations.NotNull;
-import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.text.MessageFormat;
-import java.util.ArrayList;
 import java.util.List;
 
 public class MapillaryPlugin extends OsmandPlugin {
@@ -91,9 +87,7 @@ public class MapillaryPlugin extends OsmandPlugin {
 	private MapActivity mapActivity;
 
 	@Nullable
-	private CardsRowBuilder mapillaryCardsRow;
-	private List<AbstractCard> mapillaryCards;
-
+	private GalleryRowController mapillaryRowController;
 	private MapillaryVectorLayer vectorLayer;
 	private MapWidgetInfo mapillaryWidgetRegInfo;
 
@@ -246,80 +240,39 @@ public class MapillaryPlugin extends OsmandPlugin {
 	}
 
 	@Override
-	public void createWidgets(@NonNull MapActivity mapActivity, @NonNull List<MapWidgetInfo> widgetsInfos, @NonNull ApplicationMode appMode) {
-		WidgetInfoCreator creator = new WidgetInfoCreator(app, appMode);
+	public void createWidgets(@NonNull MapActivity mapActivity, @NonNull List<MapWidgetInfo> widgetsInfos,
+			@NonNull ApplicationMode appMode, @Nullable ScreenLayoutMode layoutMode) {
+		WidgetInfoCreator creator = new WidgetInfoCreator(app, appMode, layoutMode);
 		MapWidget widget = createMapWidgetForParams(mapActivity, WidgetType.MAPILLARY);
 		widgetsInfos.add(creator.createWidgetInfo(widget));
 	}
 
 	@Override
-	public void buildContextMenuGalleryRows(@NonNull MenuBuilder menuBuilder, @NonNull View view, @Nullable Object object) {
-		GalleryController controller = (GalleryController) app.getDialogManager().findController(GalleryController.PROCESS_ID);
-		if (controller == null) {
-			return;
+	public void buildContextMenuGalleryRows(@NonNull MenuBuilder menuBuilder, @NonNull View view,
+	                                        @NonNull GalleryKey.Location key) {
+		if (mapillaryRowController == null || !mapillaryRowController.matches(key)) {
+			clearRowController();
+			mapillaryRowController = new MapillaryRowController(app, key);
 		}
-		boolean nightMode = app.getDaynightHelper().isNightModeForMapControls();
-		boolean needUpdateOnly = mapillaryCardsRow != null && mapillaryCardsRow.getMenuBuilder() == menuBuilder;
-
-		mapillaryCardsRow = new CardsRowBuilder(menuBuilder);
-		mapillaryCardsRow.build(controller, false, nightMode);
-
-		LinearLayout parent = new LinearLayout(view.getContext());
-		parent.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-				LinearLayout.LayoutParams.WRAP_CONTENT));
-		parent.setOrientation(LinearLayout.VERTICAL);
-		parent.addView(mapillaryCardsRow.getGalleryView());
-
-		CollapsableView collapsableView = new CollapsableView(parent, menuBuilder, MAPILLARY_PHOTOS_ROW_COLLAPSED);
-		collapsableView.setCollapseExpandListener(collapsed -> {
-			if (!collapsed && mapillaryCards == null) {
-				menuBuilder.startLoadingImages();
-			}
-		});
-		menuBuilder.buildRow(view, R.drawable.ic_action_photo_street, null, app.getString(R.string.street_level_imagery), 0, true,
-				collapsableView, false, 1, false, null, false);
-
-		if (needUpdateOnly && mapillaryCards != null) {
-			mapillaryCardsRow.setCards(mapillaryCards);
-		} else if (!collapsableView.isCollapsed() && mapillaryCards == null) {
-			menuBuilder.startLoadingImages();
-		}
+		menuBuilder.buildGalleryRow(view, mapillaryRowController, R.drawable.ic_action_photo_street,
+				app.getString(R.string.street_level_imagery),
+				MAPILLARY_PHOTOS_ROW_COLLAPSED);
 	}
 
 	@Override
 	public void clearContextMenuRows() {
-		mapillaryCards = null;
-		mapillaryCardsRow = null;
+		clearRowController();
 	}
 
-	public GetImageCardsListener getImageCardsListener() {
-		return new GetImageCardsListener() {
-			@Override
-			public void onTaskStarted() {
-				if (mapillaryCardsRow != null) {
-					mapillaryCardsRow.onLoadingImage(true);
-				}
-			}
-
-			@Override
-			public void onFinish(ImageCardsHolder cardsHolder) {
-				if (mapillaryCardsRow != null) {
-					mapillaryCardsRow.onLoadingImage(false);
-				}
-				List<AbstractCard> cards = new ArrayList<>(cardsHolder.getMapillaryCards());
-				if (mapActivity != null && Algorithms.isEmpty(cards)) {
-					cards.add(new NoImagesCard(mapActivity));
-				}
-				if (mapillaryCardsRow != null) {
-					mapillaryCardsRow.setCards(cards);
-				}
-				mapillaryCards = cards;
-			}
-		};
+	private void clearRowController() {
+		if (mapillaryRowController != null) {
+			mapillaryRowController.detach();
+			mapillaryRowController = null;
+		}
 	}
 
 	@Override
-	public boolean isMenuControllerSupported(Class<? extends MenuController> menuControllerClass) {
+	public boolean isMenuControllerSupported(MenuController menuController) {
 		return true;
 	}
 
@@ -327,8 +280,9 @@ public class MapillaryPlugin extends OsmandPlugin {
 		if (mapillaryWidgetRegInfo != null) {
 			MapWidgetRegistry widgetRegistry = mapActivity.getMapLayers().getMapWidgetRegistry();
 			List<ApplicationMode> allModes = ApplicationMode.allPossibleValues();
+			ScreenLayoutMode layoutMode = ScreenLayoutMode.getDefault(mapActivity);
 			for (ApplicationMode mode : allModes) {
-				widgetRegistry.enableDisableWidgetForMode(mode, mapillaryWidgetRegInfo, visible, false);
+				widgetRegistry.enableDisableWidgetForMode(mode, mapillaryWidgetRegInfo, visible, layoutMode, false);
 			}
 			MapInfoLayer mil = mapActivity.getMapLayers().getMapInfoLayer();
 			if (mil != null) {
@@ -339,28 +293,27 @@ public class MapillaryPlugin extends OsmandPlugin {
 	}
 
 	@Override
-	protected boolean createContextMenuImageCard(@NonNull ImageCardsHolder holder,
-	                                             @NonNull JSONObject imageObject) {
-		ImageCard imageCard = null;
-		if (mapActivity != null) {
-			try {
-				if (imageObject.has("type")) {
-					String type = imageObject.getString("type");
-					if (TYPE_MAPILLARY_PHOTO.equals(type)) {
-						imageCard = new MapillaryImageCard(mapActivity, imageObject);
-					} else if (TYPE_MAPILLARY_CONTRIBUTE.equals(type)) {
-						imageCard = new MapillaryContributeCard(mapActivity, imageObject);
-					}
+	protected boolean addContextMenuGalleryItem(@NonNull OnlinePhotosHolder holder,
+	                                            @NonNull JSONObject imageObject) {
+		String type = imageObject.optString("type", null);
+		boolean mapillaryPhoto = TYPE_MAPILLARY_PHOTO.equals(type);
+		boolean mapillaryContribute = TYPE_MAPILLARY_CONTRIBUTE.equals(type);
+
+		if (!mapillaryPhoto && !mapillaryContribute) {
+			return false;
+		}
+
+		try {
+			if (mapillaryPhoto) {
+				MediaItem.Remote item = RemoteMediaFactory.fromJson(imageObject.toString(), MediaOrigin.MAPILLARY);
+				if (item != null) {
+					holder.addItem(OnlinePhotosGroup.MAPILLARY, item);
 				}
-			} catch (JSONException e) {
-				LOG.error(e);
 			}
+		} catch (Exception e) {
+			LOG.error(e);
 		}
-		if (imageCard != null) {
-			holder.addCard(ImageCardType.MAPILLARY, imageCard);
-			return true;
-		}
-		return false;
+		return true;
 	}
 
 	@Override
@@ -378,7 +331,11 @@ public class MapillaryPlugin extends OsmandPlugin {
 		this.mapActivity = null;
 	}
 
-	public static boolean openMapillary(FragmentActivity activity, String imageKey) {
+	public static boolean openMapillary(@NonNull FragmentActivity activity) {
+		return openMapillary(activity, null);
+	}
+
+	public static boolean openMapillary(@NonNull FragmentActivity activity, String imageKey) {
 		boolean success = false;
 		OsmandApplication app = (OsmandApplication) activity.getApplication();
 		if (PluginsHelper.isPackageInstalled(MAPILLARY_PACKAGE_ID, app)) {
@@ -388,12 +345,11 @@ public class MapillaryPlugin extends OsmandPlugin {
 			Intent intent = new Intent(ACTION_VIEW, uri)
 					.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 			if (!AndroidUtils.startActivityIfSafe(app, intent)) {
-				new MapillaryInstallDialogFragment()
-						.show(activity.getSupportFragmentManager(), MapillaryInstallDialogFragment.TAG);
+				MapillaryInstallDialogFragment.showInstance(activity);
 			}
 			success = true;
 		} else {
-			new MapillaryInstallDialogFragment().show(activity.getSupportFragmentManager(), MapillaryInstallDialogFragment.TAG);
+			MapillaryInstallDialogFragment.showInstance(activity);
 		}
 		return success;
 	}

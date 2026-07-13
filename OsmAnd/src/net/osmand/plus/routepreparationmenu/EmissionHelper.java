@@ -6,18 +6,17 @@ import static net.osmand.plus.routing.RoutingHelperUtils.getParameterForDerivedP
 import static net.osmand.plus.settings.fragments.RouteParametersFragment.populateListParameters;
 import static net.osmand.router.GeneralRouter.MOTOR_TYPE;
 
-import android.os.AsyncTask;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import net.osmand.CallbackWithObject;
 import net.osmand.data.LatLon;
 import net.osmand.map.WorldRegion;
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
-import net.osmand.plus.helpers.TargetPointsHelper;
 import net.osmand.plus.helpers.TargetPoint;
+import net.osmand.plus.helpers.TargetPointsHelper;
 import net.osmand.plus.resources.DetectRegionTask;
 import net.osmand.plus.routing.RouteService;
 import net.osmand.plus.settings.backend.ApplicationMode;
@@ -59,11 +58,12 @@ public class EmissionHelper {
 	}
 
 	public enum MotorType {
-		PETROL(7.85f, 2.80f), // L
-		DIESEL(6.59f, 3.17f), // L
-		LPG(10.60f, 1.86f), // L
-		GAS(4.90f, 2.28f), // kg
-		ELECTRIC(21.1f, 0.42f), // kWh fuelEmissionFactor "UE except France"
+		PETROL(7.48f, 2.80f), // L //Normal Gasoline
+		DIESEL(6.61f, 3.17f), // L
+		LPG(10.50f, 1.86f), // L
+		GAS(4.73f, 2.28f), // kg //CNG
+		ELECTRIC(19.02f, 0.42f), // kWh fuelEmissionFactor "UE except France"
+		ETHANOL(8.02f, 1.68f), // L, Biolcohol (E85)
 		HYBRID(5.61f, 2.80f); // L, hybrid petrol
 
 		public final float fuelConsumption; // unit (L/kwH/kg)/100km
@@ -116,7 +116,7 @@ public class EmissionHelper {
 					return true;
 				};
 				DetectRegionTask task = new DetectRegionTask(app, onRegionDetected);
-				task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, latLon);
+				OsmAndTaskManager.executeTask(task, latLon);
 			}
 		} else {
 			callback.processResult(getFormattedEmission(motorType, meters, motorType.fuelEmissionFactor));

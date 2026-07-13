@@ -2,8 +2,11 @@ package net.osmand.plus.myplaces.tracks.dialogs;
 
 import static net.osmand.plus.track.helpers.GpxDisplayGroup.getTrackDisplayGroup;
 import static net.osmand.plus.track.helpers.GpxSelectionHelper.GpxDisplayItemType.TRACK_SEGMENT;
+import static net.osmand.shared.gpx.GpxParameter.SPLIT_INTERVAL;
+import static net.osmand.shared.gpx.GpxParameter.SPLIT_TYPE;
 
 import android.app.Dialog;
+import android.content.DialogInterface;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -18,39 +21,58 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.StringRes;
 import androidx.appcompat.widget.ListPopupWindow;
 import androidx.appcompat.widget.Toolbar;
 import androidx.fragment.app.FragmentManager;
 
+import net.osmand.data.LatLon;
+import net.osmand.data.PointDescription;
 import net.osmand.plus.R;
-import net.osmand.plus.base.BaseOsmAndDialogFragment;
+import net.osmand.plus.base.BaseFullScreenDialogFragment;
 import net.osmand.plus.helpers.AndroidUiHelper;
-import net.osmand.plus.track.GpxSplitParams;
+import net.osmand.plus.mapcontextmenu.controllers.SelectedGpxMenuController.SelectedGpxPoint;
+import net.osmand.plus.myplaces.tracks.dialogs.SplitSegmentsAdapter.SplitAdapterListener;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
+import net.osmand.plus.track.helpers.GpxDisplayHelper.GpxSplitParams;
 import net.osmand.plus.track.GpxSplitType;
 import net.osmand.plus.track.SplitTrackAsyncTask.SplitTrackListener;
 import net.osmand.plus.track.helpers.GpxDisplayGroup;
+import net.osmand.plus.track.helpers.GpxDisplayHelper;
 import net.osmand.plus.track.helpers.GpxDisplayItem;
+import net.osmand.plus.track.helpers.GpxSelectionHelper;
 import net.osmand.plus.track.helpers.GpxSelectionHelper.GpxDisplayItemType;
 import net.osmand.plus.track.helpers.SelectedGpxFile;
 import net.osmand.plus.track.helpers.TrackDisplayGroup;
 import net.osmand.plus.track.helpers.TrackDisplayHelper;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTargetsCollection;
 import net.osmand.plus.utils.OsmAndFormatter;
+import net.osmand.plus.views.MapLayers;
+import net.osmand.shared.gpx.GpxDataItem;
+import net.osmand.shared.gpx.GpxDbHelper;
+import net.osmand.shared.gpx.GpxDbHelper.GpxDataItemCallback;
 import net.osmand.shared.gpx.GpxFile;
 import net.osmand.shared.gpx.primitives.TrkSegment;
+import net.osmand.shared.gpx.primitives.WptPt;
+import net.osmand.shared.io.KFile;
+import net.osmand.util.Algorithms;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import gnu.trove.list.array.TIntArrayList;
 
-public class SplitSegmentDialogFragment extends BaseOsmAndDialogFragment {
+public class SplitSegmentDialogFragment extends BaseFullScreenDialogFragment implements SplitAdapterListener {
 
 	public static final String TAG = "SPLIT_SEGMENT_DIALOG_FRAGMENT";
 
 	private TrackDisplayHelper displayHelper;
-
+	private GpxDbHelper gpxDbHelper;
+	@Nullable
+	private GpxDataItem gpxDataItem;
 	private TrkSegment segment;
 	private GpxDisplayItem displayItem;
 	private SelectedGpxFile selectedGpxFile;
@@ -59,6 +81,10 @@ public class SplitSegmentDialogFragment extends BaseOsmAndDialogFragment {
 	private final List<Double> distanceSplit = new ArrayList<>();
 	private final TIntArrayList timeSplit = new TIntArrayList();
 	private final GpxDisplayItemType[] filterTypes = {TRACK_SEGMENT};
+
+	private long modifiedTime = -1;
+	private List<GpxDisplayGroup> displayGroups;
+	private List<GpxDisplayGroup> oldSplitGroups;
 
 	private View headerView;
 	private ListView listView;
@@ -70,10 +96,31 @@ public class SplitSegmentDialogFragment extends BaseOsmAndDialogFragment {
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+		gpxDbHelper = app.getGpxDbHelper();
 		GpxFile gpxFile = getGpx();
 		if (gpxFile != null) {
-			selectedGpxFile = new SelectedGpxFile();
-			selectedGpxFile.setGpxFile(gpxFile, app);
+			GpxSelectionHelper gpxSelectionHelper = app.getSelectedGpxHelper();
+			selectedGpxFile = gpxSelectionHelper.getSelectedFileByPath(gpxFile.getPath());
+			if (selectedGpxFile == null) {
+				selectedGpxFile = new SelectedGpxFile();
+				selectedGpxFile.setGpxFile(gpxFile, app);
+			}
+			oldSplitGroups = selectedGpxFile.getSplitGroups(app);
+
+			GpxDataItemCallback callback = new GpxDataItemCallback() {
+				@Override
+				public boolean isCancelled() {
+					return !isAdded();
+				}
+
+				@Override
+				public void onGpxDataItemReady(@NonNull GpxDataItem item) {
+					gpxDataItem = item;
+				}
+			};
+			String filePath = selectedGpxFile.getGpxFile().getPath();
+			gpxDataItem = gpxDbHelper.getItem(new KFile(filePath), callback);
+			displayHelper.updateDisplayGroups();
 		}
 		if (shouldDismiss()) {
 			dismiss();
@@ -82,7 +129,7 @@ public class SplitSegmentDialogFragment extends BaseOsmAndDialogFragment {
 
 	@Override
 	public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
-		View view = themedInflater.inflate(R.layout.split_segments_layout, container, false);
+		View view = inflate(R.layout.split_segments_layout, container, false);
 
 		Toolbar toolbar = view.findViewById(R.id.split_interval_toolbar);
 		TextView title = toolbar.findViewById(R.id.title);
@@ -101,14 +148,14 @@ public class SplitSegmentDialogFragment extends BaseOsmAndDialogFragment {
 		listView.setDivider(null);
 		listView.setDividerHeight(0);
 
-		adapter = new SplitSegmentsAdapter(requireActivity(), new ArrayList<>(), displayItem);
+		adapter = new SplitSegmentsAdapter(requireActivity(), new ArrayList<>(), displayItem, this);
 		headerView = view.findViewById(R.id.header_layout);
 
 		ImageView splitImage = headerView.findViewById(R.id.header_split_image);
 		splitImage.setImageDrawable(getIcon(R.drawable.ic_action_split_interval, nightMode ? 0 : R.color.icon_color_default_light));
 
-		listView.addHeaderView(themedInflater.inflate(R.layout.gpx_split_segments_empty_header, listView, false));
-		listView.addFooterView(themedInflater.inflate(R.layout.list_shadow_footer, listView, false));
+		listView.addHeaderView(inflate(R.layout.gpx_split_segments_empty_header, listView, false));
+		listView.addFooterView(inflate(R.layout.list_shadow_footer, listView, false));
 
 		listView.setOnScrollListener(new AbsListView.OnScrollListener() {
 			int previousYPos = -1;
@@ -148,6 +195,13 @@ public class SplitSegmentDialogFragment extends BaseOsmAndDialogFragment {
 	}
 
 	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.replace(InsetTarget.createScrollable(R.id.list));
+		return collection;
+	}
+
+	@Override
 	public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
 		super.onViewCreated(view, savedInstanceState);
 		updateContent();
@@ -165,9 +219,9 @@ public class SplitSegmentDialogFragment extends BaseOsmAndDialogFragment {
 	private void updateHeader() {
 		View splitIntervalView = headerView.findViewById(R.id.split_interval_view);
 
-		if (getGpx() != null && !getGpx().isShowCurrentTrack() && adapter.getCount() > 0) {
+		if (getGpx() != null && adapter.getCount() > 0) {
 			setupSplitIntervalView(splitIntervalView);
-			if (options.size() == 0) {
+			if (options.isEmpty()) {
 				prepareSplitIntervalAdapterData();
 			}
 			updateSplitIntervalView(splitIntervalView);
@@ -184,7 +238,7 @@ public class SplitSegmentDialogFragment extends BaseOsmAndDialogFragment {
 				popup.setOnItemClickListener((parent, view, position, id) -> {
 					selectedSplitInterval = position;
 					List<GpxDisplayGroup> groups = getDisplayGroups();
-					if (groups.size() > 0) {
+					if (!groups.isEmpty()) {
 						updateSplit(groups, selectedGpxFile);
 					}
 					popup.dismiss();
@@ -215,13 +269,17 @@ public class SplitSegmentDialogFragment extends BaseOsmAndDialogFragment {
 	private void updateSplit(@NonNull List<GpxDisplayGroup> groups, @NonNull SelectedGpxFile selectedGpxFile) {
 		double splitInterval = 0;
 		GpxSplitType splitType = GpxSplitType.NO_SPLIT;
-		if (distanceSplit.get(selectedSplitInterval) > 0) {
+		if (selectedSplitInterval == 1) {
+			splitType = GpxSplitType.UPHILL_DOWNHILL;
+			splitInterval = 1;
+		} else if (distanceSplit.get(selectedSplitInterval) > 1) {
 			splitType = GpxSplitType.DISTANCE;
 			splitInterval = distanceSplit.get(selectedSplitInterval);
-		} else if (timeSplit.get(selectedSplitInterval) > 0) {
+		} else if (timeSplit.get(selectedSplitInterval) > 1) {
 			splitType = GpxSplitType.TIME;
 			splitInterval = timeSplit.get(selectedSplitInterval);
 		}
+
 		SplitTrackListener listener = getSplitTrackListener(selectedGpxFile);
 		GpxSplitParams params = new GpxSplitParams(splitType, splitInterval, false);
 
@@ -252,17 +310,17 @@ public class SplitSegmentDialogFragment extends BaseOsmAndDialogFragment {
 		TextView title = view.findViewById(R.id.split_interval_title);
 		TextView text = view.findViewById(R.id.split_interval_text);
 		ImageView img = view.findViewById(R.id.split_interval_arrow);
-		boolean nightMode = !app.getSettings().isLightContent();
+		boolean nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.APP);
 		int colorId;
 		List<GpxDisplayGroup> groups = getDisplayGroups();
-		if (groups.size() > 0) {
+		if (!groups.isEmpty()) {
 			colorId = ColorUtilities.getPrimaryTextColorId(nightMode);
 		} else {
 			colorId = ColorUtilities.getSecondaryTextColorId(nightMode);
 		}
 		int color = app.getColor(colorId);
 		title.setTextColor(color);
-		String titleText = getString(R.string.gpx_split_interval);
+		String titleText = getString(R.string.shared_string_split_by);
 		title.setText(getString(R.string.ltr_or_rtl_combine_via_colon, titleText, ""));
 		text.setTextColor(color);
 		img.setImageDrawable(getIcon(R.drawable.ic_action_arrow_drop_down, colorId));
@@ -272,6 +330,8 @@ public class SplitSegmentDialogFragment extends BaseOsmAndDialogFragment {
 		TextView text = view.findViewById(R.id.split_interval_text);
 		if (selectedSplitInterval == 0) {
 			text.setText(getString(R.string.shared_string_none));
+		} else if (selectedSplitInterval == 1) {
+			text.setText(getString(R.string.uphill_downhill_split));
 		} else {
 			text.setText(options.get(selectedSplitInterval));
 		}
@@ -279,15 +339,25 @@ public class SplitSegmentDialogFragment extends BaseOsmAndDialogFragment {
 
 	@Nullable
 	private GpxFile getGpx() {
-		return displayHelper.getGpx();
+		if (displayHelper != null) {
+			return displayHelper.getGpx();
+		} else {
+			return null;
+		}
+	}
+
+	private void addLabelOption(@StringRes int resId) {
+		options.add(app.getString(resId));
+		distanceSplit.add(-1d);
+		timeSplit.add(-1);
 	}
 
 	private void prepareSplitIntervalAdapterData() {
 		List<GpxDisplayGroup> groups = getDisplayGroups();
 
-		options.add(app.getString(R.string.shared_string_none));
-		distanceSplit.add(-1d);
-		timeSplit.add(-1);
+		addLabelOption(R.string.shared_string_none);
+		addLabelOption(R.string.uphill_downhill_split);
+
 		addOptionSplit(30, true, groups); // 50 feet, 20 yards, 20
 		// m
 		addOptionSplit(60, true, groups); // 100 feet, 50 yards,
@@ -313,11 +383,24 @@ public class SplitSegmentDialogFragment extends BaseOsmAndDialogFragment {
 		addOptionSplit(900, false, groups);
 		addOptionSplit(1800, false, groups);
 		addOptionSplit(3600, false, groups);
+
+		GpxDisplayGroup group = groups.get(0);
+		TrackDisplayGroup trackGroup = getTrackDisplayGroup(group);
+		if (trackGroup != null && trackGroup.isSplitUphillDownhill()) {
+			selectedSplitInterval = 1;
+		}
 	}
 
 	@NonNull
 	private List<GpxDisplayGroup> getDisplayGroups() {
-		return displayHelper.getDisplayGroups(filterTypes);
+		GpxFile gpxFile = selectedGpxFile.getGpxFile();
+		if (gpxFile.getModifiedTime() != modifiedTime) {
+			modifiedTime = gpxFile.getModifiedTime();
+			GpxDisplayHelper displayHelper = app.getGpxDisplayHelper();
+			List<GpxDisplayGroup> collectedGroup = displayHelper.collectDisplayGroups(selectedGpxFile, gpxFile, true, true);
+			displayGroups = TrackDisplayHelper.filterGroups(collectedGroup, filterTypes);
+		}
+		return displayGroups;
 	}
 
 	private void addOptionSplit(int value, boolean distance, List<GpxDisplayGroup> model) {
@@ -350,8 +433,14 @@ public class SplitSegmentDialogFragment extends BaseOsmAndDialogFragment {
 	@NonNull
 	private List<GpxDisplayItem> getSplitSegments() {
 		List<GpxDisplayItem> splitSegments = new ArrayList<>();
-		List<GpxDisplayGroup> result = displayHelper.getGpxFile(true);
-		if (result != null && result.size() > 0 && segment.getPoints().size() > 0) {
+		List<GpxDisplayGroup> result;
+		if (!Algorithms.isEmpty(selectedGpxFile.getSplitGroups(app))) {
+			result = selectedGpxFile.getSplitGroups(app);
+		} else {
+			result = displayHelper.getGpxFile(true);
+		}
+
+		if (result != null && !result.isEmpty() && !segment.getPoints().isEmpty()) {
 			for (GpxDisplayGroup group : result) {
 				TrackDisplayGroup trackGroup = getTrackDisplayGroup(group);
 				if (trackGroup != null) {
@@ -404,5 +493,28 @@ public class SplitSegmentDialogFragment extends BaseOsmAndDialogFragment {
 			fragment.setRetainInstance(true);
 			fragment.show(manager, TAG);
 		}
+	}
+
+	@Override
+	public void onOpenSegment(@NonNull GpxDisplayItem currentGpxDisplayItem) {
+		SelectedGpxFile selectedGpxFile;
+		selectedGpxFile = app.getSelectedGpxHelper().getSelectedFileByPath(currentGpxDisplayItem.group.getGpxFile().getPath());
+
+		if (selectedGpxFile != null) {
+			dismiss();
+			MapLayers mapLayers = app.getOsmandMap().getMapLayers();
+			WptPt wptPt = currentGpxDisplayItem.getLabelPoint();
+
+			SelectedGpxPoint gpxPoint = new SelectedGpxPoint(selectedGpxFile, wptPt);
+			LatLon latLon = new LatLon(wptPt.getLatitude(), wptPt.getLongitude());
+			PointDescription pointDescription = mapLayers.getGpxLayer().getObjectName(gpxPoint);
+			mapLayers.getContextMenuLayer().showContextMenu(latLon, pointDescription, gpxPoint, null);
+		}
+	}
+
+	@Override
+	public void onDismiss(@NonNull DialogInterface dialog) {
+		super.onDismiss(dialog);
+		selectedGpxFile.setSplitGroups(oldSplitGroups, app, true);
 	}
 }

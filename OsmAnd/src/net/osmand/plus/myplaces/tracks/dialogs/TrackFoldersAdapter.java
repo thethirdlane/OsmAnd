@@ -7,11 +7,13 @@ import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.fragment.app.FragmentActivity;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.RecyclerView.ViewHolder;
 
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
+import net.osmand.plus.myplaces.tracks.dialogs.viewholders.OrganizedTracksViewHolder;
 import net.osmand.shared.gpx.TrackItem;
 import net.osmand.plus.configmap.tracks.viewholders.EmptyFolderLoadingTracksViewHolder;
 import net.osmand.plus.configmap.tracks.viewholders.EmptySmartFolderLoadingTracksViewHolder;
@@ -29,10 +31,13 @@ import net.osmand.plus.myplaces.tracks.dialogs.viewholders.FolderStatsViewHolder
 import net.osmand.plus.myplaces.tracks.dialogs.viewholders.RecordingTrackViewHolder;
 import net.osmand.plus.myplaces.tracks.dialogs.viewholders.RecordingTrackViewHolder.RecordingTrackListener;
 import net.osmand.plus.myplaces.tracks.dialogs.viewholders.SmartFolderViewHolder;
+import net.osmand.plus.myplaces.tracks.dialogs.viewholders.TrackFreeBackupCardViewHolder;
 import net.osmand.plus.myplaces.tracks.dialogs.viewholders.TrackFolderViewHolder;
 import net.osmand.plus.myplaces.tracks.dialogs.viewholders.TracksGroupViewHolder.TrackGroupsListener;
 import net.osmand.plus.myplaces.tracks.dialogs.viewholders.VisibleTracksViewHolder;
+import net.osmand.plus.routepreparationmenu.cards.BaseCard.CardListener;
 import net.osmand.plus.settings.enums.TracksSortMode;
+import net.osmand.shared.gpx.data.OrganizedTracksGroup;
 import net.osmand.shared.gpx.data.SmartFolder;
 import net.osmand.shared.gpx.data.TrackFolder;
 import net.osmand.shared.gpx.filters.TrackFolderAnalysis;
@@ -61,8 +66,11 @@ public class TrackFoldersAdapter extends RecyclerView.Adapter<ViewHolder> {
 	public static final int TYPE_EMPTY_SMART_FOLDER = 9;
 	public static final int TYPE_EMPTY_SMART_FOLDER_LOADING = 10;
 	public static final int TYPE_EMPTY_FOLDER_LOADING = 11;
+	public static final int TYPE_ORGANIZED_TRACKS = 12;
+	public static final int TYPE_FREE_BACKUP_CARD = 13;
 
 	private final OsmandApplication app;
+	private final FragmentActivity activity;
 	private final UpdateLocationViewCache locationViewCache;
 	private final List<Object> items = new ArrayList<>();
 
@@ -78,18 +86,25 @@ public class TrackFoldersAdapter extends RecyclerView.Adapter<ViewHolder> {
 	private EmptyTracksListener emptyTracksListener;
 	@Nullable
 	private EmptySmartFolderListener emptySmartFolderListener;
+	@Nullable
+	private CardListener cardListener;
 
-	private TracksSortMode sortMode = TracksSortMode.getDefaultSortMode();
-	private boolean nightMode;
+	private final boolean nightMode;
+	private final TrackFolder selectedFolder;
+	private TracksSortMode sortMode;
 	private boolean selectionMode;
 	private boolean shouldShowFolder;
 
-	public TrackFoldersAdapter(@NonNull Context context, boolean nightMode) {
+	public TrackFoldersAdapter(@NonNull FragmentActivity activity, boolean nightMode, @Nullable TrackFolder selectedFolder) {
+		this.activity = activity;
+		Context context = activity;
 		this.app = (OsmandApplication) context.getApplicationContext();
 		this.nightMode = nightMode;
 		locationViewCache = UpdateLocationUtils.getUpdateLocationViewCache(context);
 		locationViewCache.arrowResId = R.drawable.ic_direction_arrow;
 		locationViewCache.arrowColor = ColorUtilities.getActiveIconColorId(nightMode);
+		this.selectedFolder = selectedFolder;
+		sortMode = TracksSortMode.getDefaultSortMode(selectedFolder == null ? null : selectedFolder.getId());
 	}
 
 	public void setItems(@NonNull List<Object> items) {
@@ -134,6 +149,10 @@ public class TrackFoldersAdapter extends RecyclerView.Adapter<ViewHolder> {
 		this.emptySmartFolderListener = emptySmartFolderListener;
 	}
 
+	public void setCardListener(@Nullable CardListener cardListener) {
+		this.cardListener = cardListener;
+	}
+
 	@NonNull
 	@Override
 	public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -148,6 +167,9 @@ public class TrackFoldersAdapter extends RecyclerView.Adapter<ViewHolder> {
 			case TYPE_SMART_FOLDER:
 				view = inflater.inflate(R.layout.track_list_item, parent, false);
 				return new SmartFolderViewHolder(view, trackGroupsListener, nightMode, selectionMode);
+			case TYPE_ORGANIZED_TRACKS:
+				view = inflater.inflate(R.layout.track_list_item, parent, false);
+				return new OrganizedTracksViewHolder(view, trackGroupsListener, nightMode, selectionMode);
 			case TYPE_VISIBLE_TRACKS:
 				view = inflater.inflate(R.layout.track_list_item, parent, false);
 				return new VisibleTracksViewHolder(view, trackGroupsListener, nightMode, selectionMode);
@@ -175,6 +197,9 @@ public class TrackFoldersAdapter extends RecyclerView.Adapter<ViewHolder> {
 			case TYPE_EMPTY_TRACKS:
 				view = inflater.inflate(R.layout.track_folder_empty_state, parent, false);
 				return new EmptyTracksViewHolder(view, emptyTracksListener);
+			case TYPE_FREE_BACKUP_CARD:
+				view = inflater.inflate(R.layout.favorite_free_backup_card_item, parent, false);
+				return new TrackFreeBackupCardViewHolder(view, activity, cardListener);
 			default:
 				throw new IllegalArgumentException("Unsupported view type " + viewType);
 		}
@@ -191,6 +216,8 @@ public class TrackFoldersAdapter extends RecyclerView.Adapter<ViewHolder> {
 			return TYPE_SMART_FOLDER;
 		} else if (object instanceof VisibleTracksGroup) {
 			return TYPE_VISIBLE_TRACKS;
+		} else if (object instanceof OrganizedTracksGroup) {
+			return TYPE_ORGANIZED_TRACKS;
 		} else if (object instanceof TrackFolderAnalysis) {
 			return TYPE_FOLDER_STATS;
 		} else if (object instanceof Integer) {
@@ -207,6 +234,8 @@ public class TrackFoldersAdapter extends RecyclerView.Adapter<ViewHolder> {
 				return TYPE_EMPTY_TRACKS;
 			} else if (TYPE_EMPTY_SMART_FOLDER == item) {
 				return TYPE_EMPTY_SMART_FOLDER;
+			} else if (TYPE_FREE_BACKUP_CARD == item) {
+				return TYPE_FREE_BACKUP_CARD;
 			}
 		}
 		throw new IllegalArgumentException("Unsupported view type");
@@ -223,51 +252,47 @@ public class TrackFoldersAdapter extends RecyclerView.Adapter<ViewHolder> {
 	public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
 		boolean lastItem = isLastItem(position);
 
-		if (holder instanceof SortTracksViewHolder) {
-			SortTracksViewHolder viewHolder = (SortTracksViewHolder) holder;
-			viewHolder.bindView(hasTrackItems(), null);
-		} else if (holder instanceof TrackViewHolder) {
-			TrackItem trackItem = (TrackItem) items.get(position);
+		if (holder instanceof SortTracksViewHolder viewHolder) {
+			viewHolder.bindView(hasTrackItems(), null, selectedFolder == null ? null : selectedFolder.getId());
 
-			TrackViewHolder viewHolder = (TrackViewHolder) holder;
+		} else if (holder instanceof TrackViewHolder viewHolder) {
+			TrackItem trackItem = (TrackItem) items.get(position);
 			viewHolder.bindView(sortMode, trackItem, lastItem, shouldShowFolder, selectionMode);
-		} else if (holder instanceof TrackFolderViewHolder) {
+
+		} else if (holder instanceof TrackFolderViewHolder viewHolder) {
 			TrackFolder trackFolder = (TrackFolder) items.get(position);
-
-			TrackFolderViewHolder viewHolder = (TrackFolderViewHolder) holder;
 			viewHolder.bindView(trackFolder, lastItem);
-		} else if (holder instanceof VisibleTracksViewHolder) {
+
+		} else if (holder instanceof VisibleTracksViewHolder viewHolder) {
 			VisibleTracksGroup tracksGroup = (VisibleTracksGroup) items.get(position);
-
-			VisibleTracksViewHolder viewHolder = (VisibleTracksViewHolder) holder;
 			viewHolder.bindView(tracksGroup, lastItem);
-		} else if (holder instanceof RecordingTrackViewHolder) {
-			TrackItem trackItem = (TrackItem) items.get(position);
 
-			RecordingTrackViewHolder viewHolder = (RecordingTrackViewHolder) holder;
+		} else if (holder instanceof RecordingTrackViewHolder viewHolder) {
+			TrackItem trackItem = (TrackItem) items.get(position);
 			viewHolder.bindView(trackItem);
-		} else if (holder instanceof EmptyFolderViewHolder) {
-			EmptyFolderViewHolder viewHolder = (EmptyFolderViewHolder) holder;
-			viewHolder.bindView();
-		} else if (holder instanceof EmptySmartFolderViewHolder) {
-			EmptySmartFolderViewHolder viewHolder = (EmptySmartFolderViewHolder) holder;
-			viewHolder.bindView();
-		} else if (holder instanceof FolderStatsViewHolder) {
+
+		} else if (holder instanceof OrganizedTracksViewHolder viewHolder) {
+			OrganizedTracksGroup organizedTracks = (OrganizedTracksGroup) items.get(position);
+			viewHolder.bindView(organizedTracks, lastItem);
+
+		} else if (holder instanceof FolderStatsViewHolder viewHolder) {
 			TrackFolderAnalysis folderAnalysis = (TrackFolderAnalysis) items.get(position);
-			FolderStatsViewHolder viewHolder = (FolderStatsViewHolder) holder;
 			viewHolder.bindView(folderAnalysis);
-		} else if (holder instanceof EmptyTracksViewHolder) {
-			EmptyTracksViewHolder viewHolder = (EmptyTracksViewHolder) holder;
+
+		} else if (holder instanceof EmptyFolderViewHolder viewHolder) {
 			viewHolder.bindView();
-		} else if (holder instanceof EmptySmartFolderLoadingTracksViewHolder) {
-			EmptySmartFolderLoadingTracksViewHolder viewHolder = (EmptySmartFolderLoadingTracksViewHolder) holder;
+		} else if (holder instanceof EmptySmartFolderViewHolder viewHolder) {
 			viewHolder.bindView();
-		} else if (holder instanceof EmptyFolderLoadingTracksViewHolder) {
-			EmptyFolderLoadingTracksViewHolder viewHolder = (EmptyFolderLoadingTracksViewHolder) holder;
+		} else if (holder instanceof EmptyTracksViewHolder viewHolder) {
 			viewHolder.bindView();
-		} else if (holder instanceof SmartFolderViewHolder) {
-			SmartFolderViewHolder viewHolder = (SmartFolderViewHolder) holder;
+		} else if (holder instanceof EmptySmartFolderLoadingTracksViewHolder viewHolder) {
+			viewHolder.bindView();
+		} else if (holder instanceof EmptyFolderLoadingTracksViewHolder viewHolder) {
+			viewHolder.bindView();
+		} else if (holder instanceof SmartFolderViewHolder viewHolder) {
 			viewHolder.bindView((SmartFolder) items.get(position), lastItem);
+		} else if (holder instanceof TrackFreeBackupCardViewHolder viewHolder) {
+			viewHolder.bindView();
 		}
 	}
 

@@ -9,6 +9,9 @@ import net.osmand.IndexConstants;
 import net.osmand.PlatformUtil;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
+import net.osmand.plus.download.local.LocalItem;
+import net.osmand.plus.download.local.LocalItemType;
+import net.osmand.plus.download.local.LocalItemUtils;
 import net.osmand.plus.helpers.FileNameTranslationHelper;
 import net.osmand.util.Algorithms;
 
@@ -40,6 +43,8 @@ public class IndexItem extends DownloadItem implements Comparable<IndexItem> {
 	long localTimestamp;
 	boolean free;
 	String freeMessage;
+
+	boolean isDeprecated;
 
 	public IndexItem(String fileName,
 	                 String description,
@@ -108,6 +113,11 @@ public class IndexItem extends DownloadItem implements Comparable<IndexItem> {
 		return description;
 	}
 
+	@Override
+	public long getTimestamp(boolean remote) {
+		return remote ? getTimestamp() : getLocalTimestamp();
+	}
+
 	public long getTimestamp() {
 		return timestamp;
 	}
@@ -171,6 +181,29 @@ public class IndexItem extends DownloadItem implements Comparable<IndexItem> {
 		return entry;
 	}
 
+	@Nullable
+	public LocalItem toLocalItem(@NonNull OsmandApplication app) {
+		File file = getExistedFile(app);
+		if (file != null) {
+			LocalItemType type = LocalItemUtils.getItemType(app, file);
+			if (type != null) {
+				LocalItem localItem = new LocalItem(file, type);
+				LocalItemUtils.updateItem(app, localItem);
+				return localItem;
+			}
+		}
+		return null;
+	}
+
+	@Nullable
+	public File getExistedFile(@NonNull OsmandApplication ctx) {
+		File file = getTargetFile(ctx);
+		if (!file.exists()) {
+			file = getBackupFile(ctx);
+		}
+		return file.exists() ? file : null;
+	}
+
 	public String getTargetFileName() {
 		return type.getTargetFileName(this);
 	}
@@ -227,10 +260,7 @@ public class IndexItem extends DownloadItem implements Comparable<IndexItem> {
 	}
 
 	public boolean isOutdated() {
-		return outdated
-				&& getType() != DownloadActivityType.HILLSHADE_FILE
-				&& getType() != DownloadActivityType.SLOPE_FILE
-				&& getType() != DownloadActivityType.GEOTIFF_FILE;
+		return outdated;
 	}
 
 	public void setOutdated(boolean outdated) {
@@ -318,5 +348,9 @@ public class IndexItem extends DownloadItem implements Comparable<IndexItem> {
 			this.assetName = assetName;
 			isAsset = true;
 		}
+	}
+
+	public boolean isDeprecated() {
+		return isDeprecated;
 	}
 }

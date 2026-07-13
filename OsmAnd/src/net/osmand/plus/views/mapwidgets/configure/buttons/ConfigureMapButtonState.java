@@ -1,20 +1,18 @@
 package net.osmand.plus.views.mapwidgets.configure.buttons;
 
 import static net.osmand.aidlapi.OsmAndCustomizationConstants.LAYERS_HUD_ID;
-import static net.osmand.plus.quickaction.ButtonAppearanceParams.ROUND_RADIUS_DP;
 import static net.osmand.plus.quickaction.ButtonAppearanceParams.SMALL_SIZE_DP;
-import static net.osmand.plus.quickaction.ButtonAppearanceParams.TRANSPARENT_ALPHA;
-import static net.osmand.plus.views.controls.maphudbuttons.ButtonPositionSize.POS_LEFT;
-import static net.osmand.plus.views.controls.maphudbuttons.ButtonPositionSize.POS_TOP;
+import static net.osmand.shared.grid.ButtonPositionSize.POS_LEFT;
+import static net.osmand.shared.grid.ButtonPositionSize.POS_TOP;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
-import net.osmand.plus.quickaction.ButtonAppearanceParams;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.preferences.CommonPreference;
-import net.osmand.plus.views.controls.maphudbuttons.ButtonPositionSize;
+import net.osmand.shared.grid.ButtonPositionSize;
 
 public class ConfigureMapButtonState extends MapButtonState {
 
@@ -60,9 +58,17 @@ public class ConfigureMapButtonState extends MapButtonState {
 
 	@NonNull
 	@Override
-	public String getDefaultIconName() {
+	public String getDefaultIconName(@Nullable Boolean nightMode) {
 		ApplicationMode appMode = settings.getApplicationMode();
 		return appMode.getIconName();
+	}
+
+	@Override
+	protected void updatePosition(@NonNull ButtonPositionSize position) {
+		super.updatePosition(position);
+		if (!portrait) {
+			position.setMoveHorizontal();
+		}
 	}
 
 	@NonNull

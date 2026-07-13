@@ -24,6 +24,7 @@ import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.api.SQLiteAPI.SQLiteConnection;
 import net.osmand.plus.api.SQLiteAPI.SQLiteCursor;
 import net.osmand.plus.wikivoyage.data.TravelArticle.TravelArticleIdentifier;
+import net.osmand.router.network.NetworkRouteSelector.NetworkRouteSelectorFilter;
 import net.osmand.shared.gpx.GpxFile;
 import net.osmand.util.Algorithms;
 import net.osmand.util.MapUtils;
@@ -679,6 +680,26 @@ public class TravelDbHelper implements TravelHelper {
 	}
 
 	@NonNull
+	@Override
+	public Map<String, TravelArticle> getArticleByLangs(@NonNull TravelArticleIdentifier articleId) {
+		Map<String, TravelArticle> res = new LinkedHashMap<>();
+		SQLiteConnection conn = openConnection();
+		if (conn != null) {
+			Map<String, TravelArticle> articles = readTravelArticles(conn, "", Collections.singletonList(articleId.routeId));
+			if (!Algorithms.isEmpty(articles)) {
+				res.putAll(articles);
+			}
+		}
+		if (Algorithms.isEmpty(res)) {
+			List<TravelArticle> articles = localDataHelper.getSavedArticles(articleId.file, articleId.routeId);
+			for (TravelArticle article : articles) {
+				res.put(article.getLang(), article);
+			}
+		}
+		return res;
+	}
+
+	@NonNull
 	private TravelArticle readArticle(SQLiteCursor cursor) {
 		TravelArticle res = new TravelArticle();
 		res.file = selectedTravelBook;
@@ -723,6 +744,12 @@ public class TravelDbHelper implements TravelHelper {
 	@Override
 	public TravelGpx searchTravelGpx(@NonNull LatLon location, @Nullable String routeId) {
 		return null;
+	}
+
+	@NonNull
+	@Override
+	public List<TravelGpx> searchTravelGpx(@NonNull LatLon location, @NonNull NetworkRouteSelectorFilter filter) {
+		return new ArrayList<>();
 	}
 
 	@Override

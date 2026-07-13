@@ -91,7 +91,9 @@ import net.osmand.util.Algorithms;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class RouteDetailsFragment extends ContextMenuFragment
 		implements PublicTransportCardListener, CardListener {
@@ -188,6 +190,20 @@ public class RouteDetailsFragment extends ContextMenuFragment
 		return view;
 	}
 
+	public int getHeaderOnlyTopY() {
+		MapActivity mapActivity = getMapActivity();
+		if (mapActivity != null) {
+			int shadowHeight = getShadowHeight();
+			if (getHeaderViewHeight() > 0) {
+				return viewHeight - getHeaderViewHeight() - shadowHeight - navBarHeight;
+			} else {
+				return viewHeight - AndroidUtils.dpToPx(mapActivity, 48f) - shadowHeight - navBarHeight;
+			}
+		} else {
+			return 0;
+		}
+	}
+
 	@Override
 	public void onResume() {
 		super.onResume();
@@ -269,7 +285,7 @@ public class RouteDetailsFragment extends ContextMenuFragment
 	private void updateCards() {
 		MapActivity mapActivity = getMapActivity();
 		if (mapActivity != null) {
-			OsmandApplication app = mapActivity.getMyApplication();
+			OsmandApplication app = mapActivity.getApp();
 			RoutingHelper routingHelper = app.getRoutingHelper();
 			LinearLayout cardsContainer = getCardsContainer();
 			cardsContainer.removeAllViews();
@@ -307,7 +323,7 @@ public class RouteDetailsFragment extends ContextMenuFragment
 		if (mapActivity == null) {
 			return;
 		}
-		OsmandApplication app = mapActivity.getMyApplication();
+		OsmandApplication app = mapActivity.getApp();
 		RouteStatisticCard statisticCard = new RouteStatisticCard(mapActivity, gpxFile, v -> openDetails());
 		statisticCard.setTransparentBackground(true);
 		statisticCard.setListener(this);
@@ -403,7 +419,7 @@ public class RouteDetailsFragment extends ContextMenuFragment
 	}
 
 	private void buildSegmentItem(View view, TransportRouteResultSegment segment,
-								  TransportRouteResultSegment nextSegment, int[] startTime, double walkSpeed, double boardingTime) {
+								  TransportRouteResultSegment nextSegment, int[] startTime, double walkSpeed, int changeTime) {
 		TransportRoute transportRoute = segment.route;
 		List<TransportStop> stops = segment.getTravelStops();
 		TransportStop startStop = stops.get(0);
@@ -428,7 +444,6 @@ public class RouteDetailsFragment extends ContextMenuFragment
 		Drawable icon = getContentIcon(drawableResId);
 
 		Typeface typeface = FontCache.getMediumFont();
-		startTime[0] += (int) boardingTime;
 		String timeText = OsmAndFormatter.getFormattedDurationShortMinutes(startTime[0]);
 
 		SpannableString secondaryText = new SpannableString(getString(R.string.sit_on_the_stop));
@@ -451,6 +466,17 @@ public class RouteDetailsFragment extends ContextMenuFragment
 				showRouteSegmentOnMap(segment);
 			}
 		});
+
+		for (TransportRouteResultSegment alt : segment.alternatives) {
+			TransportStopRoute altTransportStopRoute = TransportStopRoute.getTransportStopRoute(alt.route,
+					alt.getTravelStops().get(0));
+			buildTransportStopRouteRow(stopsContainer, altTransportStopRoute, new OnClickListener() {
+				@Override
+				public void onClick(View v) {
+					showRouteSegmentOnMap(alt);
+				}
+			});
+		}
 
 		CollapsableView collapsableView = null;
 		if (stops.size() > 2) {
@@ -496,7 +522,7 @@ public class RouteDetailsFragment extends ContextMenuFragment
 		if (depTime <= 0) {
 			depTime = startTime[0] + arrivalTime;
 		}
-		// TODO: fix later for schedule
+		// fix later for schedule
 		startTime[0] += (int) segment.getTravelTime();
 		String textTime = OsmAndFormatter.getFormattedDurationShortMinutes(startTime[0]);
 
@@ -521,6 +547,7 @@ public class RouteDetailsFragment extends ContextMenuFragment
 
 		if (nextSegment != null) {
 			double walkDist = (long) getWalkDistance(segment, nextSegment, segment.walkDist);
+
 			if (walkDist > 0) {
 				int walkTime = (int) getWalkTime(segment, nextSegment, walkDist, walkSpeed);
 				if (walkTime < 60) {
@@ -544,6 +571,7 @@ public class RouteDetailsFragment extends ContextMenuFragment
 					}
 				});
 				startTime[0] += walkTime;
+				startTime[0] += changeTime;
 			}
 		}
 	}
@@ -578,7 +606,10 @@ public class RouteDetailsFragment extends ContextMenuFragment
 			if (first) {
 				buildStartItem(parent, startPoint, startTime, segment, routeResult.getWalkSpeed());
 			}
-			buildSegmentItem(parent, segment, !last ? segments.get(i + 1) : null, startTime, routeResult.getWalkSpeed(), routeResult.getBoardingTime());
+			TransportRouteResultSegment next = !last ? segments.get(i + 1) : null;
+			buildSegmentItem(parent, segment, next, startTime, routeResult.getWalkSpeed(),
+					routeResult.getChangeTime(segment, next));
+
 			if (last) {
 				buildDestinationItem(parent, endPoint, startTime, segment, routeResult.getWalkSpeed());
 			}
@@ -905,7 +936,7 @@ public class RouteDetailsFragment extends ContextMenuFragment
 		if (mapActivity == null) {
 			return;
 		}
-		OsmandApplication app = mapActivity.getMyApplication();
+		OsmandApplication app = mapActivity.getApp();
 
 		String routeDescription = transportStopRoute.getDescription(app);
 		FrameLayout baseItemView = new FrameLayout(view.getContext());
@@ -1040,7 +1071,7 @@ public class RouteDetailsFragment extends ContextMenuFragment
 		});
 		baseView.addView(ll);
 
-		Drawable icon = getPaintedContentIcon(R.drawable.ic_action_pedestrian_dark, getActiveColor());
+		Drawable icon = getPaintedIcon(R.drawable.ic_action_pedestrian_dark, getActiveColor());
 		ImageView iconView = new ImageView(view.getContext());
 		iconView.setImageDrawable(AndroidUtils.getDrawableForDirection(view.getContext(), icon));
 		FrameLayout.LayoutParams imageViewLayoutParams = new FrameLayout.LayoutParams(dpToPx(24), dpToPx(24));
@@ -1309,7 +1340,7 @@ public class RouteDetailsFragment extends ContextMenuFragment
 	}
 
 	public View createRouteBadge(@NonNull MapActivity mapActivity, TransportStopRoute transportStopRoute) {
-		OsmandApplication app = mapActivity.getMyApplication();
+		OsmandApplication app = mapActivity.getApp();
 		LinearLayout convertView = (LinearLayout) mapActivity.getLayoutInflater().inflate(R.layout.transport_stop_route_item_with_icon, null, false);
 		if (transportStopRoute != null) {
 			String routeDescription = transportStopRoute.getDescription(app);
@@ -1428,11 +1459,11 @@ public class RouteDetailsFragment extends ContextMenuFragment
 			Location loc = helper.getLocationFromRouteDirection(routeDirectionInfo);
 			if (loc != null) {
 				MapRouteInfoMenu.directionInfo = directionInfoIndex;
-				OsmandSettings settings = mapActivity.getMyApplication().getSettings();
+				OsmandSettings settings = mapActivity.getSettings();
 				settings.setMapLocationToShow(loc.getLatitude(), loc.getLongitude(),
 						Math.max(13, settings.getLastKnownMapZoom()),
 						new PointDescription(PointDescription.POINT_TYPE_MARKER,
-								routeDirectionInfo.getDescriptionRoutePart() + " " + getTimeDescription(mapActivity.getMyApplication(), routeDirectionInfo)),
+								routeDirectionInfo.getDescriptionRoutePart(app) + " " + getTimeDescription(mapActivity.getApp(), routeDirectionInfo)),
 						false, null);
 				MapActivity.launchMapActivityMoveToTop(mapActivity);
 				dismiss();

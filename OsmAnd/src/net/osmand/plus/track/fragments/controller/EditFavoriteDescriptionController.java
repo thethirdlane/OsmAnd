@@ -17,7 +17,7 @@ public class EditFavoriteDescriptionController extends EditPointDescriptionContr
 	protected void saveEditedDescriptionImpl(@NonNull String editedText) {
 		FavouritePoint point = (FavouritePoint) getContextMenuObject();
 		if (point != null) {
-			FavouritesHelper helper = activity.getMyApplication().getFavoritesHelper();
+			FavouritesHelper helper = activity.getApp().getFavoritesHelper();
 			helper.editFavouriteName(point, point.getName(), point.getCategory(), editedText, point.getAddress());
 			LatLon latLon = new LatLon(point.getLatitude(), point.getLongitude());
 			updateContextMenu(latLon, point.getPointDescription(activity), point);
@@ -30,5 +30,4 @@ public class EditFavoriteDescriptionController extends EditPointDescriptionContr
 		FavouritePoint point = (FavouritePoint) getContextMenuObject();
 		return  point != null ? point.getName() : super.getTitle();
 	}
-
 }

@@ -7,15 +7,7 @@ import static net.osmand.aidl.ConnectedApp.AIDL_OBJECT_ID;
 import static net.osmand.aidl.ConnectedApp.AIDL_PACKAGE_NAME;
 import static net.osmand.aidl.ConnectedApp.AIDL_REMOVE_MAP_LAYER;
 import static net.osmand.aidl.ConnectedApp.AIDL_REMOVE_MAP_WIDGET;
-import static net.osmand.aidlapi.OsmandAidlConstants.CANNOT_ACCESS_API_ERROR;
-import static net.osmand.aidlapi.OsmandAidlConstants.COPY_FILE_IO_ERROR;
-import static net.osmand.aidlapi.OsmandAidlConstants.COPY_FILE_MAX_LOCK_TIME_MS;
-import static net.osmand.aidlapi.OsmandAidlConstants.COPY_FILE_PARAMS_ERROR;
-import static net.osmand.aidlapi.OsmandAidlConstants.COPY_FILE_PART_SIZE_LIMIT;
-import static net.osmand.aidlapi.OsmandAidlConstants.COPY_FILE_PART_SIZE_LIMIT_ERROR;
-import static net.osmand.aidlapi.OsmandAidlConstants.COPY_FILE_UNSUPPORTED_FILE_TYPE_ERROR;
-import static net.osmand.aidlapi.OsmandAidlConstants.COPY_FILE_WRITE_LOCK_ERROR;
-import static net.osmand.aidlapi.OsmandAidlConstants.OK_RESPONSE;
+import static net.osmand.aidlapi.OsmandAidlConstants.*;
 import static net.osmand.plus.myplaces.favorites.FavouritesFileHelper.LEGACY_FAV_FILE_PREFIX;
 import static net.osmand.plus.settings.backend.backup.SettingsHelper.REPLACE_KEY;
 import static net.osmand.plus.settings.backend.backup.SettingsHelper.SILENT_IMPORT_KEY;
@@ -25,16 +17,15 @@ import static net.osmand.shared.gpx.GpxParameter.FILE_LAST_MODIFIED_TIME;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.AsyncTask;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.view.KeyEvent;
@@ -50,7 +41,6 @@ import net.osmand.IProgress;
 import net.osmand.IndexConstants;
 import net.osmand.Location;
 import net.osmand.PlatformUtil;
-import net.osmand.plus.shared.SharedUtil;
 import net.osmand.aidl.gpx.AGpxFile;
 import net.osmand.aidl.gpx.AGpxFileDetails;
 import net.osmand.aidl.gpx.ASelectedGpxFile;
@@ -73,13 +63,14 @@ import net.osmand.data.LatLon;
 import net.osmand.data.PointDescription;
 import net.osmand.plus.AppInitializeListener;
 import net.osmand.plus.AppInitializer;
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.Version;
 import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.activities.RestartActivity;
 import net.osmand.plus.avoidroads.AvoidRoadInfo;
-import net.osmand.plus.card.color.palette.main.data.DefaultColors;
+import net.osmand.plus.card.color.palette.solid.data.DefaultColors;
 import net.osmand.plus.helpers.ExternalApiHelper;
 import net.osmand.plus.helpers.LockHelper;
 import net.osmand.plus.helpers.NavigateGpxHelper;
@@ -120,6 +111,8 @@ import net.osmand.plus.settings.backend.backup.items.ProfileSettingsItem;
 import net.osmand.plus.settings.backend.backup.items.SettingsItem;
 import net.osmand.plus.settings.backend.preferences.OsmandPreference;
 import net.osmand.plus.settings.backend.storages.ImpassableRoadsStorage;
+import net.osmand.plus.settings.enums.ScreenLayoutMode;
+import net.osmand.plus.shared.SharedUtil;
 import net.osmand.plus.track.GpxAppearanceAdapter;
 import net.osmand.plus.track.GpxSelectionParams;
 import net.osmand.plus.track.helpers.GpxSelectionHelper;
@@ -151,25 +144,10 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.FileDescriptor;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Type;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class OsmandAidlApi {
@@ -237,6 +215,7 @@ public class OsmandAidlApi {
 	private static final String AIDL_LOCK_STATE = "lock_state";
 	private static final String AIDL_EXIT_APP = "exit_app";
 	private static final String AIDL_EXIT_APP_RESTART = "exit_app_restart";
+	private static final String AIDL_AUTH_TOKEN = "aidl_auth_token";
 
 	private static final ApplicationMode DEFAULT_PROFILE = ApplicationMode.CAR;
 
@@ -408,8 +387,9 @@ public class OsmandAidlApi {
 							int menuIconId = iconId != 0 ? iconId : ContextMenuItem.INVALID_ID;
 							String widgetKey = WIDGET_ID_PREFIX + widgetId;
 							ApplicationMode appMode = app.getSettings().getApplicationMode();
+							ScreenLayoutMode layoutMode = ScreenLayoutMode.getDefault(mapActivity);
 
-							WidgetInfoCreator creator = new WidgetInfoCreator(app, appMode);
+							WidgetInfoCreator creator = new WidgetInfoCreator(app, appMode, layoutMode);
 							MapWidgetInfo widgetInfo = creator.createExternalWidget(widgetKey, widget, menuIconId,
 									widgetData.getMenuTitle(), defaultPanel, widgetData.getOrder());
 							MapWidgetRegistry registry = app.getOsmandMap().getMapLayers().getMapWidgetRegistry();
@@ -463,11 +443,7 @@ public class OsmandAidlApi {
 	private void registerReceiver(BroadcastReceiver rec, MapActivity ma, String filter) {
 		try {
 			receivers.put(filter, rec);
-			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-				ma.registerReceiver(rec, new IntentFilter(filter), Context.RECEIVER_EXPORTED);
-			} else {
-				ma.registerReceiver(rec, new IntentFilter(filter));
-			}
+			AndroidUtils.registerBroadcastReceiver(ma, filter, rec, true);
 		} catch (IllegalStateException e) {
 			LOG.error(e);
 		}
@@ -487,7 +463,7 @@ public class OsmandAidlApi {
 						MapInfoLayer layer = mapActivity.getMapLayers().getMapInfoLayer();
 						TextInfoWidget widgetControl = connectedApp.getWidgetControls().get(widgetId);
 						if (layer != null && widgetControl != null) {
-							layer.removeSideWidget(widgetControl);
+							layer.removeWidget(widgetControl);
 							connectedApp.getWidgetControls().remove(widgetId);
 							layer.recreateControls();
 						}
@@ -500,9 +476,10 @@ public class OsmandAidlApi {
 
 	public void createWidgetControls(@NonNull MapActivity mapActivity,
 	                                 @NonNull List<MapWidgetInfo> widgetsInfos,
-	                                 @NonNull ApplicationMode appMode) {
+	                                 @NonNull ApplicationMode appMode,
+	                                 @Nullable ScreenLayoutMode layoutMode) {
 		for (ConnectedApp connectedApp : connectedApps.values()) {
-			connectedApp.createWidgetControls(mapActivity, widgetsInfos, appMode);
+			connectedApp.createWidgetControls(mapActivity, widgetsInfos, appMode, layoutMode);
 		}
 	}
 
@@ -642,7 +619,7 @@ public class OsmandAidlApi {
 				MapActivity mapActivity = mapActivityRef.get();
 				AudioVideoNotesPlugin plugin = PluginsHelper.getActivePlugin(AudioVideoNotesPlugin.class);
 				if (mapActivity != null && plugin != null) {
-					plugin.stopRecording(mapActivity, false);
+					plugin.stopAndSaveRecording(mapActivity);
 				}
 			}
 		};
@@ -912,7 +889,7 @@ public class OsmandAidlApi {
 				if (actionNumber != -1 && mapActivity != null) {
 					List<QuickAction> actionsList = app.getMapButtonsHelper().getFlattenedQuickActions();
 					if (actionNumber < actionsList.size()) {
-						MapButtonsHelper.produceAction(actionsList.get(actionNumber)).execute(mapActivity);
+						MapButtonsHelper.produceAction(actionsList.get(actionNumber)).onActionSelected(mapActivity, null);
 					}
 				}
 			}
@@ -1194,6 +1171,26 @@ public class OsmandAidlApi {
 		return false;
 	}
 
+	boolean addWidgetGroup(String packName, AidlWidgetGroupWrapper group) {
+		if (group != null) {
+			ConnectedApp connectedApp = connectedApps.get(packName);
+			if (connectedApp != null) {
+				return connectedApp.addWidgetGroup(group);
+			}
+		}
+		return false;
+	}
+
+	boolean removeWidgetGroup(String packName, String groupId, boolean removeWidgets) {
+		if (!Algorithms.isEmpty(groupId)) {
+			ConnectedApp connectedApp = connectedApps.get(packName);
+			if (connectedApp != null) {
+				return connectedApp.removeWidgetGroup(groupId, removeWidgets);
+			}
+		}
+		return false;
+	}
+
 	boolean addMapLayer(String packName, AidlMapLayerWrapper layer) {
 		if (layer != null) {
 			ConnectedApp connectedApp = connectedApps.get(packName);
@@ -1302,7 +1299,7 @@ public class OsmandAidlApi {
 		SelectedGpxFile selectedGpx = helper.getSelectedFileByPath(destination.getAbsolutePath());
 		if (selectedGpx != null) {
 			if (show) {
-				new AsyncTask<File, Void, GpxFile>() {
+				OsmAndTaskManager.executeTask(new AsyncTask<File, Void, GpxFile>() {
 
 					@Override
 					protected GpxFile doInBackground(File... files) {
@@ -1320,7 +1317,7 @@ public class OsmandAidlApi {
 						}
 					}
 
-				}.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, destination);
+				}, destination);
 			} else {
 				GpxSelectionParams params = GpxSelectionParams.newInstance()
 						.hideFromMap().syncGroup().saveSelection();
@@ -1328,7 +1325,7 @@ public class OsmandAidlApi {
 				refreshMap();
 			}
 		} else if (show) {
-			new AsyncTask<File, Void, GpxFile>() {
+			OsmAndTaskManager.executeTask(new AsyncTask<File, Void, GpxFile>() {
 
 				@Override
 				protected GpxFile doInBackground(File... files) {
@@ -1344,7 +1341,7 @@ public class OsmandAidlApi {
 					}
 				}
 
-			}.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, destination);
+			}, destination);
 		}
 	}
 
@@ -1464,10 +1461,10 @@ public class OsmandAidlApi {
 			};
 
 			if (f.exists()) {
-				asyncTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, f);
+				OsmAndTaskManager.executeTask(asyncTask, f);
 				return true;
 			} else if (fi.exists()) {
-				asyncTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, fi);
+				OsmAndTaskManager.executeTask(asyncTask, fi);
 				return true;
 			}
 		}
@@ -1971,7 +1968,7 @@ public class OsmandAidlApi {
 	public boolean isAppEnabled(@NonNull String pack) {
 		ConnectedApp connectedApp = connectedApps.get(pack);
 		if (connectedApp == null) {
-			connectedApp = new ConnectedApp(app, pack, true);
+			connectedApp = new ConnectedApp(app, pack, false);
 			connectedApps.put(pack, connectedApp);
 			saveConnectedApps();
 		}
@@ -2178,7 +2175,7 @@ public class OsmandAidlApi {
 		};
 		stopLogcatTask(id);
 		LogcatAsyncTask task = new LogcatAsyncTask(listener, filterLevel);
-		task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+		OsmAndTaskManager.executeTask(task);
 		logcatAsyncTasks.put(id, task);
 	}
 
@@ -2312,16 +2309,29 @@ public class OsmandAidlApi {
 			trackBitmapDrawer.initAndDraw();
 			return false;
 		});
-		gpxAsyncLoaderTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+		OsmAndTaskManager.executeTask(gpxAsyncLoaderTask);
 	}
 
 	private final Map<String, FileCopyInfo> copyFilesCache = new ConcurrentHashMap<>();
+
+
+	public static void addAuthToken(@NonNull Context context, @NonNull Bundle bundle) {
+		PendingIntent token = PendingIntent.getActivity(context, 0, new Intent(),  PendingIntent.FLAG_IMMUTABLE);
+		bundle.putParcelable(AIDL_AUTH_TOKEN, token);
+	}
+
+	public static boolean hasAuthToken(@NonNull Context context, @NonNull Bundle bundle) {
+		PendingIntent token = AndroidUtils.getParcelable(bundle, AIDL_AUTH_TOKEN, PendingIntent.class);
+		return token != null && context.getPackageName().equals(token.getCreatorPackage());
+	}
 
 	public boolean importProfile(Uri profileUri, String latestChanges, int version) {
 		if (profileUri != null) {
 			Bundle bundle = new Bundle();
 			bundle.putString(SettingsHelper.SETTINGS_LATEST_CHANGES_KEY, latestChanges);
 			bundle.putInt(SettingsHelper.SETTINGS_VERSION_KEY, version);
+
+			addAuthToken(app, bundle);
 
 			MapActivity.launchMapActivityMoveToTop(app, null, profileUri, bundle);
 			return true;
@@ -2338,6 +2348,8 @@ public class OsmandAidlApi {
 			bundle.putBoolean(SILENT_IMPORT_KEY, silent);
 			bundle.putString(SettingsHelper.SETTINGS_LATEST_CHANGES_KEY, latestChanges);
 			bundle.putInt(SettingsHelper.SETTINGS_VERSION_KEY, version);
+
+			addAuthToken(app, bundle);
 
 			MapActivity.launchMapActivityMoveToTop(app, null, profileUri, bundle);
 			return true;
@@ -2556,7 +2568,7 @@ public class OsmandAidlApi {
 	}
 
 	int copyFile(String fileName, byte[] filePartData, long startTime, boolean done) {
-		if (Algorithms.isEmpty(fileName) || filePartData == null) {
+		if (filePartData == null || hasUnsafeCopyPath(null, fileName)) {
 			return COPY_FILE_PARAMS_ERROR;
 		}
 		if (filePartData.length > COPY_FILE_PART_SIZE_LIMIT) {
@@ -2570,7 +2582,7 @@ public class OsmandAidlApi {
 	}
 
 	int copyFileV2(String destinationDir, String fileName, byte[] filePartData, long startTime, boolean done) {
-		if (Algorithms.isEmpty(fileName) || filePartData == null) {
+		if (filePartData == null || hasUnsafeCopyPath(destinationDir, fileName)) {
 			return COPY_FILE_PARAMS_ERROR;
 		}
 		if (filePartData.length > COPY_FILE_PART_SIZE_LIMIT) {
@@ -2653,6 +2665,14 @@ public class OsmandAidlApi {
 		}
 		copyFilesCache.remove(fileName);
 		return res;
+	}
+
+	private static boolean hasUnsafeCopyPath(@Nullable String destinationDir, @Nullable String fileName) {
+		if (Algorithms.isEmpty(fileName) || fileName.contains("/") || fileName.equals("..")) {
+			return true;
+		}
+		return Algorithms.isNotEmpty(destinationDir) && (destinationDir.contains("/../")
+				|| destinationDir.startsWith("../") || destinationDir.endsWith("/..") || destinationDir.equals(".."));
 	}
 
 	private static class GpxAsyncLoaderTask extends AsyncTask<Void, Void, GpxFile> {

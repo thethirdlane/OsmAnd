@@ -21,6 +21,7 @@ import net.osmand.plus.download.IndexItem;
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.poi.PoiUIFilter;
 import net.osmand.plus.settings.backend.OsmandSettings;
+import net.osmand.plus.settings.enums.ThemeUsageContext;
 import net.osmand.plus.utils.ColorUtilities;
 import net.osmand.plus.widgets.ctxmenu.ContextMenuAdapter;
 import net.osmand.plus.widgets.ctxmenu.callback.OnDataChangeUiAdapter;
@@ -52,9 +53,9 @@ public class WikipediaPoiMenu {
 
 	public WikipediaPoiMenu(@NonNull MapActivity activity) {
 		this.activity = activity;
-		this.app = activity.getMyApplication();
+		this.app = activity.getApp();
 		this.settings = app.getSettings();
-		this.nightMode = app.getDaynightHelper().isNightModeForMapControls();
+		this.nightMode = app.getDaynightHelper().isNightMode(ThemeUsageContext.OVER_MAP);
 	}
 
 	@NonNull

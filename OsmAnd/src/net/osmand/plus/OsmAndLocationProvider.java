@@ -3,6 +3,7 @@ package net.osmand.plus;
 import static android.content.Context.LOCATION_SERVICE;
 import static android.location.LocationManager.GPS_PROVIDER;
 import static android.location.LocationManager.NETWORK_PROVIDER;
+import static net.osmand.plus.simulation.SimulationProvider.isTunnelLocationSimulated;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
@@ -22,6 +23,9 @@ import android.os.Build;
 import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.Log;
 
@@ -59,6 +63,8 @@ import net.osmand.util.MapUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class OsmAndLocationProvider implements SensorEventListener {
@@ -82,7 +88,7 @@ public class OsmAndLocationProvider implements SensorEventListener {
 	private static final long START_LOCATION_SIMULATION_DELAY = 2000;
 	private static final int UPCOMING_TUNNEL_DISTANCE = 250;
 
-	public  static final float ACCURACY_FOR_GPX_AND_ROUTING = 50;
+	public static final float ACCURACY_FOR_GPX_AND_ROUTING = 50;
 
 	public static final int NOT_SWITCH_TO_NETWORK_WHEN_GPS_LOST_MS = 12000;
 
@@ -124,6 +130,9 @@ public class OsmAndLocationProvider implements SensorEventListener {
 	private int previousCompassIndA;
 	private int previousCompassIndB;
 	private boolean inUpdateValue;
+	private final ExecutorService sensorExecutor = Executors.newSingleThreadExecutor();
+	private final Handler mainHandler = new Handler(Looper.getMainLooper());
+	private long lastSensorUpdateTime = 0;
 
 	private Float heading;
 
@@ -196,9 +205,9 @@ public class OsmAndLocationProvider implements SensorEventListener {
 					}
 				});
 			} catch (SecurityException e) {
-				// Location service permission not granted
+				LOG.error("Location service permission not granted", e);
 			} catch (IllegalArgumentException e) {
-				// GPS location provider not available
+				LOG.error("GPS location provider not available", e);
 			}
 			// try to always ask for network provide : it is faster way to find location
 			if (locationServiceHelper.isNetworkLocationUpdatesSupported()) {
@@ -206,7 +215,7 @@ public class OsmAndLocationProvider implements SensorEventListener {
 					@Override
 					public void onLocationResult(@NonNull List<net.osmand.Location> locations) {
 						if (!locations.isEmpty() && !useOnlyGPS() && !locationSimulation.isRouteAnimating()) {
- 							setLocation(locations.get(locations.size() - 1));
+							setLocation(locations.get(locations.size() - 1));
 						}
 					}
 				});
@@ -215,6 +224,7 @@ public class OsmAndLocationProvider implements SensorEventListener {
 	}
 
 	public void redownloadAGPS() {
+		LOG.info(">>>> redownloadAGPS");
 		try {
 			LocationManager service = (LocationManager) app.getSystemService(LOCATION_SERVICE);
 			// Issue 6410: Test not forcing cold start here
@@ -224,6 +234,7 @@ public class OsmAndLocationProvider implements SensorEventListener {
 			service.sendExtraCommand(GPS_PROVIDER, "force_time_injection", bundle);
 			app.getSettings().AGPS_DATA_LAST_TIME_DOWNLOADED.set(System.currentTimeMillis());
 		} catch (Exception e) {
+			LOG.debug(e);
 			app.getSettings().AGPS_DATA_LAST_TIME_DOWNLOADED.set(0L);
 		}
 	}
@@ -367,64 +378,76 @@ public class OsmAndLocationProvider implements SensorEventListener {
 
 	@Override
 	public void onSensorChanged(SensorEvent event) {
-		// Attention : sensor produces a lot of events & can hang the system
-		if (inUpdateValue) {
+		// Throttle updates to avoid overloading
+		long now = SystemClock.elapsedRealtime();
+		if (now - lastSensorUpdateTime < 50) {
 			return;
 		}
-		synchronized (this) {
-			if (!sensorRegistered) {
-				return;
-			}
-			inUpdateValue = true;
-			try {
-				float val = 0;
-				switch (event.sensor.getType()) {
-					case Sensor.TYPE_ACCELEROMETER:
-						System.arraycopy(event.values, 0, mGravs, 0, 3);
-						break;
-					case Sensor.TYPE_MAGNETIC_FIELD:
-						System.arraycopy(event.values, 0, mGeoMags, 0, 3);
-						break;
-					case Sensor.TYPE_ORIENTATION:
-					case Sensor.TYPE_ROTATION_VECTOR:
-						val = event.values[0];
-						break;
-					default:
-						return;
-				}
-				OsmandSettings settings = app.getSettings();
-				if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER || event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
-					boolean success = SensorManager.getRotationMatrix(mRotationM, null, mGravs, mGeoMags);
-					if (!success) {
-						return;
-					}
-					float[] orientation = SensorManager.getOrientation(mRotationM, new float[3]);
-					val = (float) Math.toDegrees(orientation[0]);
-				} else if (event.sensor.getType() == Sensor.TYPE_ROTATION_VECTOR) {
-					SensorManager.getRotationMatrixFromVector(mRotationM, event.values);
-					float[] orientation = SensorManager.getOrientation(mRotationM, new float[3]);
-					val = (float) Math.toDegrees(orientation[0]);
-				}
-				val = calcScreenOrientationCorrection(val);
-				val = calcGeoMagneticCorrection(val);
+		lastSensorUpdateTime = now;
 
-				float valRad = (float) (val / 180f * Math.PI);
-				lastValSin = (float) Math.sin(valRad);
-				lastValCos = (float) Math.cos(valRad);
-				// lastHeadingCalcTime = System.currentTimeMillis();
-				boolean filter = settings.USE_KALMAN_FILTER_FOR_COMPASS.get();
-				if (filter) {
-					filterCompassValue();
-				} else {
-					avgValSin = lastValSin;
-					avgValCos = lastValCos;
-				}
+		// Quickly copy data off the main thread
+		final int type = event.sensor.getType();
+		final float[] values = event.values.clone();
 
-				heading = getAngle(avgValSin, avgValCos);
-				updateCompassVal();
-			} finally {
-				inUpdateValue = false;
+		// Offload processing to a background thread
+		sensorExecutor.execute(() -> processSensorEvent(type, values));
+	}
+
+	private synchronized void processSensorEvent(int sensorType, float[] values) {
+
+		// Attention : sensor produces a lot of events & can hang the system
+		if (inUpdateValue || !sensorRegistered) {
+			return;
+		}
+		inUpdateValue = true;
+		try {
+			float val = 0;
+			switch (sensorType) {
+				case Sensor.TYPE_ACCELEROMETER:
+					System.arraycopy(values, 0, mGravs, 0, 3);
+					break;
+				case Sensor.TYPE_MAGNETIC_FIELD:
+					System.arraycopy(values, 0, mGeoMags, 0, 3);
+					break;
+				case Sensor.TYPE_ORIENTATION:
+				case Sensor.TYPE_ROTATION_VECTOR:
+					val = values[0];
+					break;
+				default:
+					return;
 			}
+			OsmandSettings settings = app.getSettings();
+			if (sensorType == Sensor.TYPE_ACCELEROMETER || sensorType == Sensor.TYPE_MAGNETIC_FIELD) {
+				boolean success = SensorManager.getRotationMatrix(mRotationM, null, mGravs, mGeoMags);
+				if (!success) {
+					return;
+				}
+				float[] orientation = SensorManager.getOrientation(mRotationM, new float[3]);
+				val = (float) Math.toDegrees(orientation[0]);
+			} else if (sensorType == Sensor.TYPE_ROTATION_VECTOR) {
+				SensorManager.getRotationMatrixFromVector(mRotationM, values);
+				float[] orientation = SensorManager.getOrientation(mRotationM, new float[3]);
+				val = (float) Math.toDegrees(orientation[0]);
+			}
+			val = calcScreenOrientationCorrection(val);
+			val = calcGeoMagneticCorrection(val);
+
+			float valRad = (float) (val / 180f * Math.PI);
+			lastValSin = (float) Math.sin(valRad);
+			lastValCos = (float) Math.cos(valRad);
+			boolean filter = settings.USE_KALMAN_FILTER_FOR_COMPASS.get();
+			if (filter) {
+				filterCompassValue();
+			} else {
+				avgValSin = lastValSin;
+				avgValCos = lastValCos;
+			}
+
+			heading = getAngle(avgValSin, avgValCos);
+			// Post UI updates safely
+			mainHandler.post(this::updateCompassVal);
+		} finally {
+			inUpdateValue = false;
 		}
 	}
 
@@ -476,11 +499,15 @@ public class OsmAndLocationProvider implements SensorEventListener {
 	}
 
 	private void updateCompassVal() {
-		for (OsmAndCompassListener c : compassListeners) {
-			c.updateCompassValue(heading);
+		Float heading = getHeading();
+		if (heading != null) {
+			for (OsmAndCompassListener c : compassListeners) {
+				c.updateCompassValue(heading);
+			}
 		}
 	}
 
+	@Nullable
 	public Float getHeading() {
 		return heading;
 	}
@@ -561,11 +588,9 @@ public class OsmAndLocationProvider implements SensorEventListener {
 		return r;
 	}
 
-
-	private void scheduleCheckIfGpsLost(net.osmand.Location location) {
+	private void scheduleCheckIfGpsLost(@NonNull net.osmand.Location location) {
 		RoutingHelper routingHelper = app.getRoutingHelper();
-		if (location != null && routingHelper.isFollowingMode() && routingHelper.getLeftDistance() > 0
-				&& simulatePosition == null) {
+		if (routingHelper.isFollowingMode() && routingHelper.getLeftDistance() > 0 && simulatePosition == null) {
 			long fixTime = location.getTime();
 			app.runInUIThreadAndCancelPrevious(LOST_LOCATION_MSG_ID, () -> {
 				net.osmand.Location lastKnown = getLastKnownLocation();
@@ -590,23 +615,18 @@ public class OsmAndLocationProvider implements SensorEventListener {
 				List<RouteSegmentResult> tunnel = routingHelper.getUpcomingTunnel(UPCOMING_TUNNEL_DISTANCE);
 				if (tunnel != null) {
 					simulatePosition = new SimulationProvider(location, tunnel);
-					simulatePosition.startSimulation();
-					simulatePositionImpl();
+					scheduleSimulatedPositionRun();
 				}
 			}, START_LOCATION_SIMULATION_DELAY);
 		}
 	}
 
-	public void simulatePosition() {
-		app.runInUIThreadAndCancelPrevious(RUN_SIMULATE_LOCATION_MSG_ID, this::simulatePositionImpl, 600);
-	}
-
-	private void simulatePositionImpl() {
+	private void scheduleSimulatedPositionRun() {
 		if (simulatePosition != null) {
-			net.osmand.Location loc = simulatePosition.getSimulatedLocation();
+			net.osmand.Location loc = simulatePosition.getSimulatedLocationForTunnel();
 			if (loc != null) {
 				setLocation(loc);
-				simulatePosition();
+				app.runInUIThreadAndCancelPrevious(RUN_SIMULATE_LOCATION_MSG_ID, this::scheduleSimulatedPositionRun, 600);
 			} else {
 				simulatePosition = null;
 			}
@@ -640,6 +660,7 @@ public class OsmAndLocationProvider implements SensorEventListener {
 		}
 		return updatedLocation;
 	}
+
 	public void setLocationFromService(net.osmand.Location location) {
 		if (locationSimulation.isRouteAnimating() || shouldIgnoreLocation(location)) {
 			return;
@@ -647,11 +668,12 @@ public class OsmAndLocationProvider implements SensorEventListener {
 		prevLocation = location;
 		if (location != null) {
 			lastTimeLocationFixed = System.currentTimeMillis();
-			notifyGpsLocationRecovered();
+			if (isPointAccurateForRouting(location) && !isTunnelLocationSimulated(location)) {
+				simulatePosition = null;
+				notifyGpsLocationRecovered();
+				scheduleCheckIfGpsLost(location);
+			}
 		}
-		// notify about lost location
-		scheduleCheckIfGpsLost(location);
-
 		RoutingHelper routingHelper = app.getRoutingHelper();
 		app.getSavingTrackHelper().updateLocation(location, heading);
 		app.getAverageSpeedComputer().updateLocation(location);
@@ -666,14 +688,13 @@ public class OsmAndLocationProvider implements SensorEventListener {
 			this.location = updatedLocation;
 			updateLocation(this.location);
 		}
-
 	}
 
 	public void setLocationFromSimulation(net.osmand.Location location) {
 		setLocation(location);
 	}
 
-	private void setLocation(net.osmand.Location location) {
+	private void setLocation(@Nullable net.osmand.Location location) {
 		if (shouldIgnoreLocation(location)) {
 			return;
 		}
@@ -681,14 +702,18 @@ public class OsmAndLocationProvider implements SensorEventListener {
 		if (location == null) {
 			gpsInfo.reset();
 		}
+		enhanceLocation(location);
+
 		if (location != null) {
 			// use because there is a bug on some devices with location.getTime()
 			lastTimeLocationFixed = System.currentTimeMillis();
-			simulatePosition = null;
-			notifyGpsLocationRecovered();
+			if (isPointAccurateForRouting(location) && !isTunnelLocationSimulated(location)) {
+				simulatePosition = null;
+				notifyGpsLocationRecovered();
+				scheduleCheckIfGpsLost(location);
+			}
 		}
-		enhanceLocation(location);
-		scheduleCheckIfGpsLost(location);
+
 		RoutingHelper routingHelper = app.getRoutingHelper();
 		// 1. Logging services
 		if (location != null) {
@@ -707,7 +732,13 @@ public class OsmAndLocationProvider implements SensorEventListener {
 		updateLocation(this.location);
 	}
 
-
+	public void ensureLatestLocation() {
+		if (prevLocation != null && (location == null || prevLocation.getTime() > location.getTime())) {
+			cachedLocation = location = prevLocation;
+			cachedLocationTimeFix = lastTimeLocationFixed;
+			updateLocation(location);
+		}
+	}
 
 	private void notifyGpsLocationRecovered() {
 		if (gpsSignalLost) {
@@ -725,7 +756,6 @@ public class OsmAndLocationProvider implements SensorEventListener {
 			updateSpeedEmulator(location);
 		}
 	}
-
 
 	public NavigationInfo getNavigationInfo() {
 		return navigationInfo;
@@ -846,7 +876,8 @@ public class OsmAndLocationProvider implements SensorEventListener {
 		try {
 			LocationManager manager = (LocationManager) app.getSystemService(LOCATION_SERVICE);
 			return manager.isProviderEnabled(GPS_PROVIDER);
-		} catch (Exception ignored) {
+		} catch (Exception e) {
+			LOG.debug(e);
 		}
 		return false;
 	}
@@ -855,7 +886,8 @@ public class OsmAndLocationProvider implements SensorEventListener {
 		try {
 			LocationManager manager = (LocationManager) app.getSystemService(LOCATION_SERVICE);
 			return manager.isProviderEnabled(NETWORK_PROVIDER);
-		} catch (Exception ignored) {
+		} catch (Exception e) {
+			LOG.debug(e);
 		}
 		return false;
 	}

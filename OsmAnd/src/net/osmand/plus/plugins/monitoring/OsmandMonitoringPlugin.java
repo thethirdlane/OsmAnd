@@ -1,6 +1,5 @@
 package net.osmand.plus.plugins.monitoring;
 
-import static net.osmand.IndexConstants.GPX_FILE_EXT;
 import static net.osmand.aidlapi.OsmAndCustomizationConstants.PLUGIN_OSMAND_MONITORING;
 import static net.osmand.plus.views.mapwidgets.WidgetType.TRIP_RECORDING_DISTANCE;
 import static net.osmand.plus.views.mapwidgets.WidgetType.TRIP_RECORDING_DOWNHILL;
@@ -18,12 +17,6 @@ import androidx.fragment.app.FragmentManager;
 import net.osmand.Location;
 import net.osmand.PlatformUtil;
 import net.osmand.data.ValueHolder;
-import net.osmand.plus.plugins.monitoring.actions.FinishTripRecordingAction;
-import net.osmand.plus.plugins.monitoring.actions.SaveRecordedTripAndContinueAction;
-import net.osmand.plus.plugins.monitoring.actions.StartNewTripSegmentAction;
-import net.osmand.plus.plugins.monitoring.actions.TripRecordingAction;
-import net.osmand.plus.quickaction.QuickActionType;
-import net.osmand.shared.gpx.GpxFile;
 import net.osmand.plus.NavigationService;
 import net.osmand.plus.OsmAndTaskManager.OsmAndTaskRunnable;
 import net.osmand.plus.OsmandApplication;
@@ -31,18 +24,22 @@ import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.dashboard.tools.DashFragmentData;
 import net.osmand.plus.plugins.OsmandPlugin;
-import net.osmand.plus.plugins.monitoring.widgets.TripRecordingDistanceWidget;
+import net.osmand.plus.plugins.monitoring.actions.FinishTripRecordingAction;
+import net.osmand.plus.plugins.monitoring.actions.SaveRecordedTripAndContinueAction;
+import net.osmand.plus.plugins.monitoring.actions.StartNewTripSegmentAction;
+import net.osmand.plus.plugins.monitoring.actions.TripRecordingAction;
+import net.osmand.plus.plugins.monitoring.live.LiveMonitoringHelper;
+import net.osmand.plus.plugins.monitoring.widgets.*;
 import net.osmand.plus.plugins.monitoring.widgets.TripRecordingElevationWidget.TripRecordingDownhillWidget;
 import net.osmand.plus.plugins.monitoring.widgets.TripRecordingElevationWidget.TripRecordingUphillWidget;
-import net.osmand.plus.plugins.monitoring.widgets.TripRecordingTimeWidget;
+import net.osmand.plus.quickaction.QuickActionType;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.backend.WidgetsAvailabilityHelper;
 import net.osmand.plus.settings.controllers.BatteryOptimizationController;
+import net.osmand.plus.settings.enums.ScreenLayoutMode;
 import net.osmand.plus.settings.fragments.SettingsScreenType;
-import net.osmand.plus.track.data.GPXInfo;
 import net.osmand.plus.track.fragments.TrackMenuFragment;
-import net.osmand.plus.track.helpers.GpxUiHelper;
 import net.osmand.plus.track.helpers.SelectedGpxFile;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.UiUtilities;
@@ -53,6 +50,7 @@ import net.osmand.plus.views.mapwidgets.WidgetType;
 import net.osmand.plus.views.mapwidgets.WidgetsPanel;
 import net.osmand.plus.views.mapwidgets.widgets.MapWidget;
 import net.osmand.plus.views.mapwidgets.widgets.TextInfoWidget;
+import net.osmand.shared.gpx.GpxFile;
 import net.osmand.util.Algorithms;
 
 import org.apache.commons.logging.Log;
@@ -81,7 +79,7 @@ public class OsmandMonitoringPlugin extends OsmandPlugin {
 	private TextInfoWidget uphillWidget;
 	private TextInfoWidget downhillWidget;
 
-	public OsmandMonitoringPlugin(OsmandApplication app) {
+	public OsmandMonitoringPlugin(@NonNull OsmandApplication app) {
 		super(app);
 		liveMonitoringHelper = new LiveMonitoringHelper(app);
 		registerWidgetsVisibility();
@@ -144,7 +142,7 @@ public class OsmandMonitoringPlugin extends OsmandPlugin {
 	public CharSequence getDescription(boolean linksEnabled) {
 		String docsUrl = app.getString(R.string.docs_plugin_trip_recording);
 		String description = app.getString(R.string.record_plugin_description, docsUrl);
-		return linksEnabled ? UiUtilities.createUrlSpannable(description, docsUrl) : description;
+		return linksEnabled ? UiUtilities.createUrlSpannable(app, description, docsUrl) : description;
 	}
 
 	@Override
@@ -187,8 +185,9 @@ public class OsmandMonitoringPlugin extends OsmandPlugin {
 	}
 
 	@Override
-	public void createWidgets(@NonNull MapActivity mapActivity, @NonNull List<MapWidgetInfo> widgetsInfos, @NonNull ApplicationMode appMode) {
-		WidgetInfoCreator creator = new WidgetInfoCreator(app, appMode);
+	public void createWidgets(@NonNull MapActivity mapActivity, @NonNull List<MapWidgetInfo> widgetsInfos,
+			@NonNull ApplicationMode appMode, @Nullable ScreenLayoutMode layoutMode) {
+		WidgetInfoCreator creator = new WidgetInfoCreator(app, appMode, layoutMode);
 
 		MapWidget distanceWidget = createMapWidgetForParams(mapActivity, TRIP_RECORDING_DISTANCE);
 		widgetsInfos.add(creator.createWidgetInfo(distanceWidget));
@@ -206,17 +205,39 @@ public class OsmandMonitoringPlugin extends OsmandPlugin {
 	@Nullable
 	@Override
 	protected MapWidget createMapWidgetForParams(@NonNull MapActivity mapActivity, @NonNull WidgetType widgetType, @Nullable String customId, @Nullable WidgetsPanel widgetsPanel) {
-		switch (widgetType) {
-			case TRIP_RECORDING_DISTANCE:
-				return new TripRecordingDistanceWidget(mapActivity, customId, widgetsPanel);
-			case TRIP_RECORDING_TIME:
-				return new TripRecordingTimeWidget(mapActivity, customId, widgetsPanel);
-			case TRIP_RECORDING_UPHILL:
-				return new TripRecordingUphillWidget(mapActivity, customId, widgetsPanel);
-			case TRIP_RECORDING_DOWNHILL:
-				return new TripRecordingDownhillWidget(mapActivity, customId, widgetsPanel);
-		}
-		return null;
+		return switch (widgetType) {
+			case TRIP_RECORDING_DISTANCE -> {
+				TripRecordingDistanceWidgetState distanceWidgetState = new TripRecordingDistanceWidgetState(app, customId, widgetType);
+				yield new TripRecordingDistanceWidget(mapActivity, distanceWidgetState, customId, widgetsPanel);
+			}
+			case TRIP_RECORDING_TIME ->
+					new TripRecordingTimeWidget(mapActivity, customId, widgetsPanel);
+			case TRIP_RECORDING_UPHILL -> {
+				TripRecordingElevationWidgetState widgetState = new TripRecordingElevationWidgetState(app, true, customId, widgetType);
+				yield new TripRecordingUphillWidget(mapActivity, widgetState, customId, widgetsPanel);
+			}
+			case TRIP_RECORDING_DOWNHILL -> {
+				TripRecordingElevationWidgetState uphillWidgetState = new TripRecordingElevationWidgetState(app, false, customId, widgetType);
+				yield new TripRecordingDownhillWidget(mapActivity, uphillWidgetState, customId, widgetsPanel);
+			}
+			case TRIP_RECORDING_AVERAGE_SLOPE -> {
+				TripRecordingSlopeWidgetState slopeWidgetState = new TripRecordingSlopeWidgetState(app, customId, widgetType);
+				yield new TripRecordingSlopeWidget(mapActivity, slopeWidgetState, widgetType, customId, widgetsPanel);
+			}
+			case TRIP_RECORDING_MAX_SPEED -> {
+				TripRecordingMaxSpeedWidgetState maxSpeedWidgetState = new TripRecordingMaxSpeedWidgetState(app, customId, widgetType);
+				yield new TripRecordingMaxSpeedWidget(mapActivity, maxSpeedWidgetState, widgetType, customId, widgetsPanel);
+			}
+			case TRIP_RECORDING_AVG_SPEED -> {
+				TripRecordingAvgSpeedWidgetState avgSpeedWidgetState = new TripRecordingAvgSpeedWidgetState(app, customId, widgetType);
+				yield new TripRecordingAvgSpeedWidget(mapActivity, avgSpeedWidgetState, widgetType, customId, widgetsPanel);
+			}
+			case TRIP_RECORDING_MOVING_TIME -> {
+				TripRecordingMovingTimeWidgetState movingTimeWidgetState = new TripRecordingMovingTimeWidgetState(app, customId, widgetType);
+				yield new TripRecordingMovingTimeWidget(mapActivity, movingTimeWidgetState, widgetType, customId, widgetsPanel);
+			}
+			default -> null;
+		};
 	}
 
 	@Override
@@ -329,9 +350,9 @@ public class OsmandMonitoringPlugin extends OsmandPlugin {
 					GpxFile gpxFile = null;
 					File file = null;
 					if (!Algorithms.isEmpty(gpxFilesByName)) {
-						String gpxFileName = gpxFilesByName.keySet().iterator().next();
-						gpxFile = gpxFilesByName.get(gpxFileName);
-						file = getSavedGpxFile(gpxFileName + GPX_FILE_EXT);
+						String name = gpxFilesByName.keySet().iterator().next();
+						gpxFile = gpxFilesByName.get(name);
+						file = new File(gpxFile.getPath());
 					}
 					boolean fileExists = file != null && file.exists();
 					boolean gpxFileNonEmpty = gpxFile != null && (gpxFile.hasTrkPt() || gpxFile.hasWptPt());
@@ -339,8 +360,12 @@ public class OsmandMonitoringPlugin extends OsmandPlugin {
 						if (openTrack) {
 							TrackMenuFragment.openTrack(fragmentActivity, file, null);
 						} else {
+							boolean showOnMap = app.getSelectedGpxHelper().getSelectedCurrentRecordingTrack() != null;
+							if (showOnMap) {
+								app.getSelectedGpxHelper().setGpxFileToDisplay(gpxFile);
+							}
 							FragmentManager fragmentManager = fragmentActivity.getSupportFragmentManager();
-							SaveGPXBottomSheet.showInstance(fragmentManager, file.getAbsolutePath());
+							SaveGPXBottomSheet.showInstance(fragmentManager, file);
 						}
 					}
 				}
@@ -349,20 +374,6 @@ public class OsmandMonitoringPlugin extends OsmandPlugin {
 				}
 			}
 		}, (Void) null);
-	}
-
-	@Nullable
-	private File getSavedGpxFile(@NonNull String relativeFileNameWithExt) {
-		File recDir = app.getAppCustomization().getTracksDir();
-		List<GPXInfo> gpxInfoList = new ArrayList<>();
-		GpxUiHelper.readGpxDirectory(recDir, gpxInfoList, "", false);
-		for (GPXInfo gpxInfo : gpxInfoList) {
-			if (relativeFileNameWithExt.equals(gpxInfo.getFileName())) {
-				return new File(recDir, relativeFileNameWithExt);
-			}
-		}
-
-		return null;
 	}
 
 	public void updateWidgets() {

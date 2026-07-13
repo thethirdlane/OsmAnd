@@ -1,7 +1,7 @@
 package net.osmand.plus.views.mapwidgets.configure.buttons;
 
-import static net.osmand.plus.views.controls.maphudbuttons.ButtonPositionSize.POS_BOTTOM;
-import static net.osmand.plus.views.controls.maphudbuttons.ButtonPositionSize.POS_RIGHT;
+import static net.osmand.shared.grid.ButtonPositionSize.POS_BOTTOM;
+import static net.osmand.shared.grid.ButtonPositionSize.POS_RIGHT;
 
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.LayerDrawable;
@@ -18,9 +18,11 @@ import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.quickaction.ButtonAppearanceParams;
 import net.osmand.plus.quickaction.QuickAction;
+import net.osmand.plus.quickaction.actions.ChangeMapOrientationAction;
 import net.osmand.plus.settings.backend.preferences.CommonPreference;
-import net.osmand.plus.views.controls.maphudbuttons.ButtonPositionSize;
+import net.osmand.plus.views.controls.maphudbuttons.CompassDrawable;
 import net.osmand.plus.views.layers.MapQuickActionLayer;
+import net.osmand.shared.grid.ButtonPositionSize;
 import net.osmand.util.Algorithms;
 
 import java.lang.reflect.Type;
@@ -172,18 +174,19 @@ public class QuickActionButtonState extends MapButtonState {
 
 	@NonNull
 	@Override
-	public ButtonAppearanceParams createAppearanceParams() {
-		ButtonAppearanceParams appearanceParams = super.createAppearanceParams();
+	public ButtonAppearanceParams createAppearanceParams(@Nullable Boolean nightMode) {
+		ButtonAppearanceParams appearanceParams = super.createAppearanceParams(nightMode);
 		if (Algorithms.isEmpty(getSavedIconName())) {
-			appearanceParams.setIconName(getDefaultIconName());
+			appearanceParams.setIconName(getDefaultIconName(nightMode));
 		}
 		return appearanceParams;
 	}
 
 	@NonNull
-	public String getDefaultIconName() {
+	public String getDefaultIconName(@Nullable Boolean nightMode) {
 		if (isSingleAction()) {
-			int iconId = getQuickActions().get(0).getIconRes(app);
+			QuickAction firstAction = getQuickActions().get(0);
+			int iconId = nightMode != null ? firstAction.getIconRes(app, nightMode) : firstAction.getIconRes(app);
 			if (iconId > 0) {
 				return app.getResources().getResourceEntryName(iconId);
 			}
@@ -201,6 +204,11 @@ public class QuickActionButtonState extends MapButtonState {
 				Drawable drawable = super.getIcon(iconId, color, nightMode, true);
 				Drawable slashIcon = uiUtilities.getIcon(nightMode ? R.drawable.ic_action_icon_hide_dark : R.drawable.ic_action_icon_hide_white);
 				return new LayerDrawable(new Drawable[] {drawable, slashIcon});
+			} else if (isSingleAction() && quickActions.get(0) instanceof ChangeMapOrientationAction) {
+				Drawable drawable = super.getIcon(iconId, 0, nightMode, true);
+				if (drawable != null) {
+					return new CompassDrawable(drawable);
+				}
 			}
 		}
 		return super.getIcon(iconId, color, nightMode, mapIcon);

@@ -30,6 +30,7 @@ import net.osmand.binary.BinaryMapRouteReaderAdapter.RouteSubregion;
 import net.osmand.binary.RouteDataObject;
 import net.osmand.data.QuadPointDouble;
 import net.osmand.data.QuadRect;
+import net.osmand.map.WorldRegion;
 import net.osmand.router.BinaryRoutePlanner.FinalRouteSegment;
 import net.osmand.router.BinaryRoutePlanner.RouteSegment;
 import net.osmand.router.BinaryRoutePlanner.RouteSegmentPoint;
@@ -43,7 +44,7 @@ public class RoutingContext {
 
 	public static boolean SHOW_GC_SIZE = false;
 	public static boolean PRINT_ROUTING_ALERTS = false;
-	 
+
 	
 	private final static Log log = PlatformUtil.getLog(RoutingContext.class);
 	
@@ -58,6 +59,7 @@ public class RoutingContext {
 	// 0. Reference to native routingcontext for multiple routes
 	public long nativeRoutingContext;
 	public boolean keepNativeRoutingContext;
+	public boolean requestNativePrepareResult; // OK for tests/tools. Do not use in Android UI.
 	
 	// 1. Initial variables
 	public int startX;
@@ -75,8 +77,9 @@ public class RoutingContext {
 	public int dijkstraMode;
 	public boolean publicTransport;
 	public HashSet<BinaryMapIndexReader> mapIndexReaderFilter = new HashSet<>();
-	
-	
+	public String[] regionsCoveringStartAndTargets = new String[0];
+	public boolean hhHasUnsupportedParameters = false;
+
 	public RouteCalculationProgress calculationProgress;
 	public RouteCalculationProgress calculationProgressFirstPhase;
 	public boolean leftSideNavigation;
@@ -99,6 +102,7 @@ public class RoutingContext {
 	public TileStatistics global = new TileStatistics();
 	// updated by route planner in bytes
 	public int memoryOverhead = 0;
+	public int memoryHits = 0; // reset each routing run
 	public float routingTime = 0;
 
 	// callback of processing segments
@@ -207,6 +211,7 @@ public class RoutingContext {
 	}
 	
 	public void unloadAllData(RoutingContext except) {
+		memoryHits = 0;
 		for (RoutingSubregionTile tl : subregionTiles) {
 			if (tl.isLoaded()) {
 				if(except == null || except.searchSubregionTile(tl.subregion) < 0){
@@ -381,10 +386,19 @@ public class RoutingContext {
 		List<RoutingSubregionTile> collection = null;
 		for (Entry<BinaryMapIndexReader, List<RouteSubregion>> r : map.entrySet()) {
 			BinaryMapIndexReader reader = r.getKey();
-			boolean isLiveUpdate = reader.getHHRoutingIndexes().size() == 0;
-			if (!isLiveUpdate && mapIndexReaderFilter.size() > 0 && !mapIndexReaderFilter.contains(r.getKey())) {
-				continue;
+
+			if (!mapIndexReaderFilter.isEmpty()) {
+				boolean isUnwantedMap = !mapIndexReaderFilter.contains(reader);
+				boolean containsFastRouting = !reader.getHHRoutingIndexes().isEmpty();
+				if (isUnwantedMap && containsFastRouting) {
+					continue;
+				}
+				boolean isWorldMap = reader.getFile().getName().toLowerCase().startsWith(WorldRegion.WORLD + "_");
+				if (isWorldMap) {
+					continue;
+				}
 			}
+
 			// NOTE: load headers same as we do in non-native (it is not native optimized)
 			try {
 				boolean intersect = false;
@@ -480,17 +494,21 @@ public class RoutingContext {
 			int clt = getCurrentlyLoadedTiles();
 			long us1 = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory());
 			unloadUnusedTiles(memoryLimit);
+			memoryHits++;
+			if (config.memoryMaxHits >= 0 && config.memoryMaxHits < memoryHits) {
+				throwNotEnoughMemory();
+			}
 			if (h1 != 0 && getCurrentlyLoadedTiles() != clt) {
 				int sz2 = getCurrentEstimatedSize();
 				long h2 = runGCUsedMemory();
 				float mb = (1 << 20);
-				log.warn("Unload tiles :  estimated " + (sz1 - sz2) / mb + " ?= " + (h1 - h2) / mb + " actual");
+				log.warn("Unload tiles :  estimated " + (sz1 - sz2) / mb + " ?= " + (h1 - h2) / mb + " actual " + memoryHits);
 				log.warn("Used after " + h2 / mb + " of " + Runtime.getRuntime().totalMemory() / mb );
 			} else {
 				float mb = (1 << 20);
 				int sz2 = getCurrentEstimatedSize();
 				log.warn("Unload tiles :  occupied before " + sz1 / mb + " Mb - now  " + sz2 / mb + "MB "
-						+ memoryLimit / mb + " limit MB " + config.memoryLimitation / mb);
+						+ memoryLimit / mb + " limit MB " + config.memoryLimitation / mb + " "  + memoryHits);
 				long us2 = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory());
 				log.warn("Used memory before " + us1 / mb + " after " + us1 / mb );
 			}
@@ -975,6 +993,14 @@ public class RoutingContext {
 	protected void finalize() throws Throwable {
 		deleteNativeRoutingContext();
 		super.finalize();
+	}
+
+	public void throwNotEnoughMemory() {
+		throw new IllegalStateException(
+				String.format("There is not enough memory %.5f, %.5f -> %.5f, %.5f - limit  %d  MB",
+						MapUtils.get31LatitudeY(startY), MapUtils.get31LongitudeX(startX),
+						MapUtils.get31LatitudeY(targetY), MapUtils.get31LongitudeX(targetX),
+						config.memoryLimitation / (1 << 20)));		
 	}
 
 }

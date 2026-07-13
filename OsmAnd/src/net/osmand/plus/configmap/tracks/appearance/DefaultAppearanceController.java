@@ -2,22 +2,19 @@ package net.osmand.plus.configmap.tracks.appearance;
 
 import static net.osmand.shared.gpx.GpxParameter.COLOR;
 import static net.osmand.shared.gpx.GpxParameter.COLORING_TYPE;
-
-import android.os.AsyncTask;
+import static net.osmand.shared.gpx.GpxParameter.SPLIT_INTERVAL;
+import static net.osmand.shared.gpx.GpxParameter.SPLIT_TYPE;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.FragmentActivity;
 
-import net.osmand.shared.gpx.GpxDirItem;
-import net.osmand.shared.gpx.GpxParameter;
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.base.dialog.DialogManager;
 import net.osmand.plus.base.dialog.interfaces.controller.IDialogController;
 import net.osmand.plus.card.color.ColoringStyle;
 import net.osmand.plus.card.color.ColoringStyleCardController.IColorCardControllerListener;
-import net.osmand.plus.card.color.palette.main.data.PaletteColor;
-import net.osmand.shared.gpx.TrackItem;
 import net.osmand.plus.configmap.tracks.appearance.data.AppearanceData;
 import net.osmand.plus.configmap.tracks.appearance.data.AppearanceData.AppearanceChangedListener;
 import net.osmand.plus.configmap.tracks.appearance.subcontrollers.ArrowsCardController;
@@ -26,11 +23,18 @@ import net.osmand.plus.configmap.tracks.appearance.subcontrollers.SplitCardContr
 import net.osmand.plus.configmap.tracks.appearance.subcontrollers.StartFinishCardController;
 import net.osmand.plus.configmap.tracks.appearance.subcontrollers.WidthCardController;
 import net.osmand.plus.myplaces.tracks.tasks.ChangeTracksAppearanceTask;
-import net.osmand.shared.gpx.data.TrackFolder;
+import net.osmand.plus.track.helpers.GpxSelectionHelper;
+import net.osmand.plus.track.helpers.SelectedGpxFile;
 import net.osmand.shared.gpx.GpxDbHelper;
+import net.osmand.shared.gpx.GpxDirItem;
+import net.osmand.shared.gpx.GpxParameter;
+import net.osmand.shared.gpx.TrackItem;
+import net.osmand.shared.gpx.data.TrackFolder;
+import net.osmand.shared.palette.domain.PaletteItem;
 import net.osmand.util.Algorithms;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 public class DefaultAppearanceController implements IDialogController, IColorCardControllerListener,
@@ -40,6 +44,7 @@ public class DefaultAppearanceController implements IDialogController, IColorCar
 
 	private final OsmandApplication app;
 	private final GpxDbHelper gpxDbHelper;
+	private final GpxSelectionHelper selectionHelper;
 
 	private final ArrowsCardController arrowsCardController;
 	private final StartFinishCardController iconsCardController;
@@ -57,6 +62,7 @@ public class DefaultAppearanceController implements IDialogController, IColorCar
 		this.app = app;
 		this.folder = folder;
 		this.gpxDbHelper = app.getGpxDbHelper();
+		this.selectionHelper = app.getSelectedGpxHelper();
 		this.dirItem = gpxDbHelper.getGpxDirItem(folder.getDirFile());
 		this.initialData = buildAppearanceData(dirItem);
 		this.data = new AppearanceData(initialData).setListener(this);
@@ -84,8 +90,10 @@ public class DefaultAppearanceController implements IDialogController, IColorCar
 	}
 
 	@Override
-	public void onColorSelectedFromPalette(@NonNull PaletteColor paletteColor) {
-		data.setParameter(COLOR, paletteColor.getColor());
+	public void onPaletteItemSelected(@NonNull PaletteItem item) {
+		if (item instanceof PaletteItem.Solid solid) {
+			data.setParameter(COLOR, solid.getColorInt());
+		}
 	}
 
 	public boolean hasAnyChangesToSave() {
@@ -93,8 +101,14 @@ public class DefaultAppearanceController implements IDialogController, IColorCar
 	}
 
 	public void saveChanges(@NonNull FragmentActivity activity, boolean updateExisting) {
-		colorCardController.getColorsPaletteController().refreshLastUsedTime();
+		boolean colorChanged = !Algorithms.objectEquals(dirItem.getParameter(COLOR), data.getParameter(COLOR));
+		boolean typeChanged = !Algorithms.objectEquals(dirItem.getParameter(SPLIT_TYPE), data.getParameter(SPLIT_TYPE));
+		boolean intervalChanged = !Algorithms.objectEquals(dirItem.getParameter(SPLIT_INTERVAL), data.getParameter(SPLIT_INTERVAL));
+		boolean splitChanged = typeChanged || intervalChanged;
 
+		if (colorChanged) {
+			colorCardController.getColorsPaletteController().renewLastUsedTime();
+		}
 		for (GpxParameter parameter : GpxParameter.Companion.getAppearanceParameters()) {
 			dirItem.setParameter(parameter, data.getParameter(parameter));
 		}
@@ -106,8 +120,15 @@ public class DefaultAppearanceController implements IDialogController, IColorCar
 				onAppearanceSaved();
 				return true;
 			});
-			task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+			OsmAndTaskManager.executeTask(task);
 		} else {
+			if (splitChanged) {
+				String path = dirItem.getFile().path();
+				List<SelectedGpxFile> gpxFiles = selectionHelper.getSelectedFilesByDir(path);
+				for (SelectedGpxFile selectedGpxFile : gpxFiles) {
+					selectedGpxFile.resetSplitProcessed();
+				}
+			}
 			onAppearanceSaved();
 		}
 	}

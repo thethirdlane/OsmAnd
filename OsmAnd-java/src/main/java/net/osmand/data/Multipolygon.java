@@ -115,8 +115,9 @@ public class Multipolygon {
 	 */
 	public boolean containsPoint(double latitude, double longitude) {
 		// fast check
-		if (maxLat + 0.3 < latitude || minLat - 0.3 > latitude ||
-				maxLon + 0.3 < longitude || minLon - 0.3 > longitude) {
+		double d = 0.05;
+		if (maxLat + d < latitude || minLat - d > latitude ||
+				maxLon + d < longitude || minLon - d > longitude) {
 			return false;
 		}
 
@@ -192,6 +193,20 @@ public class Multipolygon {
 		}
 
 		return OsmMapUtils.getWeightCenterForNodes(points);
+	}
+	
+	public LatLon getPolyCenter() {
+		if (outerRings.size() >= 1) {
+			Ring ring = outerRings.get(0);
+			if (ring.isClosed()) {
+				List<List<Node>> innerWays = new ArrayList<>();
+				for (Ring r : getInnerRings()) {
+					innerWays.add(r.getBorder());
+				}
+				return OsmMapUtils.getComplexPolyCenter(ring.getBorder(), innerWays);
+			}
+		}
+		return getCenterPoint();
 	}
 
 	public void mergeWith(Multipolygon multipolygon) {

@@ -20,15 +20,20 @@ import org.junit.Before;
 
 public abstract class AndroidTest {
 
+	protected Context testContext;
 	protected OsmandApplication app;
 	protected OsmandSettings settings;
 	protected AppInitIdlingResource appInitIdlingResource;
 
 	@Before
 	public void setup() {
-		Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
-		app = ((OsmandApplication) context.getApplicationContext());
+		Context targetContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
+		testContext = InstrumentationRegistry.getInstrumentation().getContext();
+		app = ((OsmandApplication) targetContext.getApplicationContext());
 		settings = app.getSettings();
+
+//		settings.USE_OPENGL_RENDER.set(false);
+		settings.setPreferenceForAllModes(settings.DO_NOT_USE_ANIMATIONS.getId(), true);
 
 		EspressoUtils.grantPermissions(app);
 		IdlingPolicies.setIdlingResourceTimeout(5, MINUTES);
@@ -37,11 +42,16 @@ public abstract class AndroidTest {
 		registerIdlingResources(appInitIdlingResource);
 
 		Espresso.onIdle();
+		app.showShortToastMessage(this.getClass().getSimpleName());
 	}
 
 	@After
 	public void cleanUp() {
 		unregisterIdlingResources(appInitIdlingResource);
+
+		if (appInitIdlingResource != null) {
+			appInitIdlingResource.unregisterListener();
+		}
 	}
 
 	protected void registerIdlingResources(@NonNull IdlingResource... idlingResources) {

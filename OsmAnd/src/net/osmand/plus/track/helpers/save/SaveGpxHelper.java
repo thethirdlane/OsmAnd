@@ -1,15 +1,15 @@
 package net.osmand.plus.track.helpers.save;
 
-import android.os.AsyncTask;
-
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import net.osmand.shared.gpx.GpxFile;
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.myplaces.tracks.tasks.SaveCurrentTrackTask;
+import net.osmand.shared.gpx.GpxFile;
 
 import java.io.File;
+import java.util.Objects;
 
 public class SaveGpxHelper {
 
@@ -21,20 +21,13 @@ public class SaveGpxHelper {
 		saveGpx(new File(gpx.getPath()), gpx, listener);
 	}
 
-	public static void saveGpx(@NonNull File file, @NonNull GpxFile gpx) {
-		saveGpx(file, gpx, null);
+	public static void saveGpx(@NonNull File file, @NonNull GpxFile gpx, @Nullable SaveGpxListener listener) {
+		OsmAndTaskManager.executeTask(new SaveGpxAsyncTask(Objects.requireNonNull(file),
+				Objects.requireNonNull(gpx), listener));
 	}
 
-	public static void saveGpx(@NonNull File file, @NonNull GpxFile gpx,
-	                           @Nullable SaveGpxListener listener) {
-		new SaveGpxAsyncTask(file, gpx, listener)
-				.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+	// TODO Do we need this? OsmandMonitoringPlugin.saveCurrentTrack() should be enough
+	public static void saveCurrentTrack(@NonNull OsmandApplication app, @NonNull GpxFile gpx, @NonNull SaveGpxListener listener) {
+		OsmAndTaskManager.executeTask(new SaveCurrentTrackTask(app, Objects.requireNonNull(gpx), listener));
 	}
-
-	public static void saveCurrentTrack(@NonNull OsmandApplication app, @NonNull GpxFile gpx,
-	                                    @NonNull SaveGpxListener listener) {
-		new SaveCurrentTrackTask(app, gpx, listener)
-				.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
-	}
-
 }

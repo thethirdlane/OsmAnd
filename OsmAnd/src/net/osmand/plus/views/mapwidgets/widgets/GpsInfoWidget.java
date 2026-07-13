@@ -20,9 +20,13 @@ public class GpsInfoWidget extends SimpleWidget {
 
 	public GpsInfoWidget(@NonNull MapActivity mapActivity, @Nullable String customId, @Nullable WidgetsPanel widgetsPanel) {
 		super(mapActivity, GPS_INFO, customId, widgetsPanel);
+	}
+
+	@Override
+	protected void setupView(@NonNull View view) {
+		super.setupView(view);
 		setIcons(GPS_INFO);
 		setText(null, null);
-		setOnClickListener(getOnClickListener());
 	}
 
 	@Override

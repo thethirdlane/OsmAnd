@@ -1,13 +1,11 @@
 package net.osmand.plus.mapmarkers;
 
 import android.graphics.drawable.Drawable;
-import android.os.AsyncTask;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
-import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
@@ -21,6 +19,7 @@ import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
+import androidx.fragment.app.FragmentTransaction;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -32,15 +31,15 @@ import net.osmand.data.LatLon;
 import net.osmand.data.PointDescription;
 import net.osmand.data.RotatedTileBox;
 import net.osmand.plus.OsmAndLocationProvider.OsmAndLocationListener;
-import net.osmand.plus.OsmandApplication;
+import net.osmand.plus.OsmAndTaskManager;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
-import net.osmand.plus.base.BaseOsmAndFragment;
+import net.osmand.plus.base.BaseFullScreenFragment;
 import net.osmand.plus.helpers.AndroidUiHelper;
 import net.osmand.plus.helpers.MapDisplayPositionManager;
 import net.osmand.plus.helpers.MapDisplayPositionManager.IMapDisplayPositionProvider;
-import net.osmand.plus.helpers.TargetPointsHelper;
 import net.osmand.plus.helpers.TargetPoint;
+import net.osmand.plus.helpers.TargetPointsHelper;
 import net.osmand.plus.mapmarkers.PlanRouteOptionsBottomSheetDialogFragment.PlanRouteOptionsFragmentListener;
 import net.osmand.plus.mapmarkers.adapters.MapMarkersItemTouchHelperCallback;
 import net.osmand.plus.mapmarkers.adapters.MapMarkersListAdapter;
@@ -48,24 +47,28 @@ import net.osmand.plus.measurementtool.SnapToRoadBottomSheetDialogFragment;
 import net.osmand.plus.measurementtool.SnapToRoadBottomSheetDialogFragment.SnapToRoadFragmentListener;
 import net.osmand.plus.routing.RoutingHelper;
 import net.osmand.plus.settings.backend.ApplicationMode;
-import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.enums.MapPosition;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.ColorUtilities;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTargetsCollection;
 import net.osmand.plus.utils.OsmAndFormatter;
+import net.osmand.plus.views.MapLayers;
 import net.osmand.plus.views.OsmandMapTileView;
+import net.osmand.plus.views.controls.maphudbuttons.MapButton;
 import net.osmand.plus.views.layers.MapMarkersLayer;
+import net.osmand.plus.views.mapwidgets.widgets.RulerWidget;
 import net.osmand.shared.gpx.primitives.TrkSegment;
 import net.osmand.shared.gpx.primitives.WptPt;
 import net.osmand.util.MapUtils;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
-public class PlanRouteFragment extends BaseOsmAndFragment
-		implements OsmAndLocationListener, IMapDisplayPositionProvider {
+public class PlanRouteFragment extends BaseFullScreenFragment implements OsmAndLocationListener, IMapDisplayPositionProvider {
 
-	public static final String TAG = "PlanRouteFragment";
+	public static final String TAG = PlanRouteFragment.class.getSimpleName();
 	private static final int MIN_DISTANCE_FOR_RECALCULATE = 50; // in meters
 
 	private MapMarkersHelper markersHelper;
@@ -86,7 +89,12 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 	private Location location;
 
 	private View mainView;
-	private RecyclerView markersRv;
+	private ImageButton snapToRoadButton;
+	private RecyclerView recyclerView;
+
+	@Nullable
+	private RulerWidget rulerWidget;
+	private List<MapButton> mapButtons = new ArrayList<>();
 
 	@Override
 	protected boolean isUsedOnMap() {
@@ -112,7 +120,7 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 			@Nullable Bundle savedInstanceState) {
 		updateNightMode();
 		MapActivity mapActivity = getMapActivity();
-		markersHelper = mapActivity.getMyApplication().getMapMarkersHelper();
+		markersHelper = app.getMapMarkersHelper();
 		planRouteContext = markersHelper.getPlanRouteContext();
 		planRouteContext.setListener(new MarkersPlanRouteContext.PlanRouteProgressListener() {
 			@Override
@@ -164,17 +172,19 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 			((PlanRouteOptionsBottomSheetDialogFragment) optionsFragment).setListener(createOptionsFragmentListener());
 		}
 
-		toolbarHeight = mapActivity.getResources().getDimensionPixelSize(R.dimen.dashboard_map_toolbar);
+		toolbarHeight = getDimensionPixelSize(R.dimen.dashboard_map_toolbar);
 
 		int backgroundColor = ColorUtilities.getActivityBgColor(mapActivity, nightMode);
 		portrait = AndroidUiHelper.isOrientationPortrait(mapActivity);
 		fullScreen = portrait && planRouteContext.isMarkersListOpened();
 		int layoutRes = fullScreen ? R.layout.fragment_plan_route_full_screen : R.layout.fragment_plan_route_half_screen;
 
-		View view = themedInflater.inflate(layoutRes, null);
+		View view = inflate(layoutRes);
 
 		mainView = fullScreen ? view : view.findViewById(R.id.main_view);
+		snapToRoadButton = view.findViewById(R.id.snap_to_road_image_button);
 
+		AndroidUiHelper.updateVisibility(view.findViewById(R.id.map_controls_container), !fullScreen);
 		enterPlanRouteMode();
 
 		View markersListContainer = mainView.findViewById(R.id.markers_list_container);
@@ -247,13 +257,13 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 
 		mainView.findViewById(R.id.options_button).setOnClickListener(v -> optionsOnClick());
 
-		markersRv = mainView.findViewById(R.id.markers_recycler_view);
+		recyclerView = mainView.findViewById(R.id.markers_recycler_view);
 
 		adapter = new MapMarkersListAdapter(mapActivity);
 		adapter.setHasStableIds(true);
 		adapter.setSnappedToRoadPoints(planRouteContext.getSnappedToRoadPoints());
 		ItemTouchHelper touchHelper = new ItemTouchHelper(new MapMarkersItemTouchHelperCallback(adapter));
-		touchHelper.attachToRecyclerView(markersRv);
+		touchHelper.attachToRecyclerView(recyclerView);
 		adapter.setAdapterListener(new MapMarkersListAdapter.MapMarkersListAdapterListener() {
 
 			private int fromPosition;
@@ -266,7 +276,7 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 
 			@Override
 			public void onCheckBoxClick(View view) {
-				int pos = markersRv.getChildAdapterPosition(view);
+				int pos = recyclerView.getChildAdapterPosition(view);
 				if (pos == RecyclerView.NO_POSITION) {
 					return;
 				}
@@ -287,7 +297,7 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 
 			@Override
 			public void onItemClick(View v) {
-				int pos = markersRv.getChildAdapterPosition(v);
+				int pos = recyclerView.getChildAdapterPosition(v);
 				if (pos == RecyclerView.NO_POSITION) {
 					return;
 				}
@@ -311,7 +321,7 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 			public void onDragEnded(RecyclerView.ViewHolder holder) {
 				toPosition = holder.getAdapterPosition();
 				if (toPosition >= 0 && fromPosition >= 0) {
-					mapActivity.getMyApplication().getMapMarkersHelper().saveGroups(false);
+					app.getMapMarkersHelper().saveGroups(false);
 					mapActivity.refreshMap();
 					adapter.reloadData();
 					try {
@@ -324,11 +334,11 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 				}
 			}
 		});
-		markersRv.setPadding(0, (int) mapActivity.getResources().getDimension(R.dimen.map_markers_recycler_view_padding_top),
+		recyclerView.setPadding(0, (int) mapActivity.getResources().getDimension(R.dimen.map_markers_recycler_view_padding_top),
 				0, (int) mapActivity.getResources().getDimension(R.dimen.map_markers_recycler_view_padding_bottom));
-		markersRv.setClipToPadding(false);
-		markersRv.setLayoutManager(new LinearLayoutManager(getContext()));
-		markersRv.setAdapter(adapter);
+		recyclerView.setClipToPadding(false);
+		recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
+		recyclerView.setAdapter(adapter);
 
 		if (planRouteContext.isProgressBarVisible()) {
 			showProgressBar();
@@ -338,11 +348,24 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 	}
 
 	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.replace(InsetTarget.createLeftSideContainer(true, true, R.id.main_view).build());
+		collection.replace(InsetTarget.createLeftSideContainer(false, true, R.id.map_controls_container).build());
+		return collection;
+	}
+
+	@Override
 	public void onResume() {
 		super.onResume();
 		MapActivity mapActivity = getMapActivity();
-		mapActivity.getMyApplication().getLocationProvider().addLocationListener(this);
+		app.getLocationProvider().addLocationListener(this);
 		mapActivity.getMapLayers().getMapControlsLayer().showMapControlsIfHidden();
+
+		View view = getView();
+		if (view != null) {
+			setupControlButtons(view);
+		}
 	}
 
 	@Override
@@ -350,8 +373,9 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 		super.onPause();
 		MapActivity mapActivity = getMapActivity();
 		if (mapActivity != null) {
-			mapActivity.getMyApplication().getLocationProvider().removeLocationListener(this);
+			app.getLocationProvider().removeLocationListener(this);
 		}
+		removeControlButtons();
 	}
 
 	@Override
@@ -377,7 +401,7 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 	public void updateLocation(Location loc) {
 		MapActivity mapActivity = getMapActivity();
 		if (mapActivity != null) {
-			Location location = mapActivity.getMyApplication().getLocationProvider().getLastStaleKnownLocation();
+			Location location = app.getLocationProvider().getLastStaleKnownLocation();
 			boolean newLocation = this.location == null || location == null;
 			boolean locationChanged = this.location != null && location != null
 					&& this.location.getLatitude() != location.getLatitude()
@@ -385,7 +409,7 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 			boolean farEnough = locationChanged && MapUtils.getDistance(this.location.getLatitude(), this.location.getLongitude(),
 					location.getLatitude(), location.getLongitude()) >= MIN_DISTANCE_FOR_RECALCULATE;
 			if (newLocation || farEnough) {
-				mapActivity.getMyApplication().runInUIThread(() -> {
+				app.runInUIThread(() -> {
 					PlanRouteFragment.this.location = location;
 					adapter.reloadData();
 					try {
@@ -399,21 +423,12 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 		}
 	}
 
-	private MapActivity getMapActivity() {
-		return (MapActivity) getActivity();
-	}
-
 	private MapMarkersLayer getMapMarkersLayer() {
 		MapActivity mapActivity = getMapActivity();
 		if (mapActivity != null) {
 			return mapActivity.getMapLayers().getMapMarkersLayer();
 		}
 		return null;
-	}
-
-	@Override
-	protected Drawable getContentIcon(@DrawableRes int id) {
-		return getIcon(id, ColorUtilities.getDefaultIconColorId(nightMode));
 	}
 
 	private Drawable getActiveIcon(@DrawableRes int id) {
@@ -473,9 +488,9 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 			public void navigateOnClick() {
 				if (mapActivity != null) {
 					boolean hasTargets = false;
-					TargetPointsHelper targetPointsHelper = mapActivity.getMyApplication().getTargetPointsHelper();
+					TargetPointsHelper targetPointsHelper = app.getTargetPointsHelper();
 					List<MapMarker> markers = markersHelper.getSelectedMarkers();
-					if (markers.size() > 0) {
+					if (!markers.isEmpty()) {
 						int i = 0;
 						if (markersHelper.isStartFromMyLocation()) {
 							targetPointsHelper.clearStartPoint(false);
@@ -491,10 +506,10 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 									m.getPointDescription(mapActivity));
 							targetPoints.add(t);
 						}
-						if (mapActivity.getMyApplication().getSettings().ROUTE_MAP_MARKERS_ROUND_TRIP.get()) {
+						if (settings.ROUTE_MAP_MARKERS_ROUND_TRIP.get()) {
 							TargetPoint end = targetPointsHelper.getPointToStart();
 							if (end == null) {
-								Location loc = mapActivity.getMyApplication().getLocationProvider().getLastKnownLocation();
+								Location loc = app.getLocationProvider().getLastKnownLocation();
 								if (loc != null) {
 									end = TargetPoint.createStartPoint(new LatLon(loc.getLatitude(), loc.getLongitude()),
 											new PointDescription(PointDescription.POINT_TYPE_MY_LOCATION,
@@ -527,7 +542,6 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 			@Override
 			public void doorToDoorOnClick() {
 				if (mapActivity != null) {
-					OsmandApplication app = mapActivity.getMyApplication();
 					Location myLoc = app.getLocationProvider().getLastStaleKnownLocation();
 					boolean startFromLocation = app.getMapMarkersHelper().isStartFromMyLocation() && myLoc != null;
 					if (selectedCount > (startFromLocation ? 0 : 1)) {
@@ -551,7 +565,6 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 	private void roundTripOnClick() {
 		MapActivity mapActivity = getMapActivity();
 		if (mapActivity != null) {
-			OsmandSettings settings = mapActivity.getMyApplication().getSettings();
 			settings.ROUTE_MAP_MARKERS_ROUND_TRIP.set(!settings.ROUTE_MAP_MARKERS_ROUND_TRIP.get());
 			adapter.reloadData();
 			adapter.notifyDataSetChanged();
@@ -589,12 +602,32 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 		planRouteContext.setProgressBarVisible(true);
 	}
 
+	protected void setupControlButtons(@NonNull View view) {
+		removeControlButtons();
+
+		mapButtons = new ArrayList<>();
+		mapButtons.add(view.findViewById(R.id.map_zoom_in_button));
+		mapButtons.add(view.findViewById(R.id.map_zoom_out_button));
+		mapButtons.add(view.findViewById(R.id.map_my_location_button));
+
+		MapLayers mapLayers = app.getOsmandMap().getMapLayers();
+		mapLayers.getMapControlsLayer().addCustomizedDefaultMapButtons(mapButtons);
+		rulerWidget = mapLayers.getMapInfoLayer().setupRulerWidget(view.findViewById(R.id.map_ruler_layout));
+	}
+
+	protected void removeControlButtons() {
+		MapLayers mapLayers = app.getOsmandMap().getMapLayers();
+		mapLayers.getMapControlsLayer().removeCustomMapButtons(mapButtons);
+		if (rulerWidget != null) {
+			mapLayers.getMapInfoLayer().removeRulerWidgets(Collections.singletonList(rulerWidget));
+		}
+	}
+
 	private void enterPlanRouteMode() {
 		MapActivity mapActivity = getMapActivity();
 		MapMarkersLayer markersLayer = getMapMarkersLayer();
 		if (mapActivity != null && markersLayer != null) {
 			isInPlanRouteMode = true;
-			markersLayer.setInPlanRouteMode(true);
 			mapActivity.disableDrawer();
 
 			AndroidUiHelper.setVisibility(mapActivity, portrait ? View.INVISIBLE : View.GONE,
@@ -615,7 +648,7 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 			setupAppModesBtn();
 			updateMapDisplayPosition();
 
-			selectedCount = mapActivity.getMyApplication().getMapMarkersHelper().getSelectedMarkersCount();
+			selectedCount = app.getMapMarkersHelper().getSelectedMarkersCount();
 			planRouteContext.recreateSnapTrkSegment(planRouteContext.isAdjustMapOnStart());
 			planRouteContext.setAdjustMapOnStart(true);
 			mapActivity.refreshMap();
@@ -628,7 +661,6 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 		MapMarkersLayer markersLayer = getMapMarkersLayer();
 		if (mapActivity != null && markersLayer != null) {
 			isInPlanRouteMode = false;
-			markersLayer.setInPlanRouteMode(false);
 			mapActivity.enableDrawer();
 			if (toolbarController != null) {
 				mapActivity.hideTopToolbar(toolbarController);
@@ -639,7 +671,7 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 					R.id.map_route_info_button, R.id.map_menu_button, R.id.map_compass_button,
 					R.id.map_layers_button, R.id.map_search_button, R.id.map_quick_actions_button);
 
-			mapActivity.findViewById(R.id.snap_to_road_image_button).setVisibility(View.GONE);
+			snapToRoadButton.setVisibility(View.GONE);
 			mainView.findViewById(R.id.snap_to_road_progress_bar).setVisibility(View.GONE);
 			mapActivity.findViewById(R.id.bottom_controls_container).setVisibility(View.VISIBLE);
 
@@ -655,36 +687,18 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 	private void setupAppModesBtn() {
 		MapActivity mapActivity = getMapActivity();
 		if (mapActivity != null) {
-			ImageButton appModesBtn = mapActivity.findViewById(R.id.snap_to_road_image_button);
-			appModesBtn.setBackgroundResource(nightMode ? R.drawable.btn_circle_night : R.drawable.btn_circle);
-			appModesBtn.setImageDrawable(getActiveIcon(planRouteContext.getSnappedMode().getIconRes()));
-			appModesBtn.setOnClickListener(v -> {
-				SnapToRoadBottomSheetDialogFragment fragment = new SnapToRoadBottomSheetDialogFragment();
-				fragment.setListener(createSnapToRoadFragmentListener());
-				fragment.setRemoveDefaultMode(false);
-				fragment.show(mapActivity.getSupportFragmentManager(), SnapToRoadBottomSheetDialogFragment.TAG);
-			});
-			if (!portrait) {
-				FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) appModesBtn.getLayoutParams();
-				params.leftMargin = mapActivity.getResources().getDimensionPixelSize(R.dimen.dashboard_land_width);
-				appModesBtn.setLayoutParams(params);
-			}
-			appModesBtn.setVisibility(View.VISIBLE);
+			snapToRoadButton.setBackgroundResource(nightMode ? R.drawable.btn_circle_night : R.drawable.btn_circle);
+			snapToRoadButton.setImageDrawable(getActiveIcon(planRouteContext.getSnappedMode().getIconRes()));
+			snapToRoadButton.setOnClickListener(v -> SnapToRoadBottomSheetDialogFragment.showInstance(mapActivity, createSnapToRoadFragmentListener(), false));
+			snapToRoadButton.setVisibility(View.VISIBLE);
 		}
 	}
 
 	private void optionsOnClick() {
-		MapActivity mapActivity = getMapActivity();
-		if (mapActivity != null) {
-			Bundle args = new Bundle();
-			args.putBoolean(PlanRouteOptionsBottomSheetDialogFragment.SELECT_ALL_KEY,
-					!(selectedCount == markersHelper.getMapMarkers().size() && markersHelper.isStartFromMyLocation()));
-			PlanRouteOptionsBottomSheetDialogFragment fragment = new PlanRouteOptionsBottomSheetDialogFragment();
-			fragment.setArguments(args);
-			fragment.setUsedOnMap(true);
-			fragment.setListener(createOptionsFragmentListener());
-			fragment.show(mapActivity.getSupportFragmentManager(), PlanRouteOptionsBottomSheetDialogFragment.TAG);
-		}
+		callMapActivity(mapActivity -> {
+			boolean selectAll = !(selectedCount == markersHelper.getMapMarkers().size() && markersHelper.isStartFromMyLocation());
+			PlanRouteOptionsBottomSheetDialogFragment.showInstance(mapActivity, selectAll, createOptionsFragmentListener());
+		});
 	}
 
 	private void updateText() {
@@ -704,13 +718,13 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 				WptPt pt2 = snapTrkSegment.getPoints().get(i);
 				dist += MapUtils.getDistance(pt1.getLat(), pt1.getLon(), pt2.getLat(), pt2.getLon());
 			}
-			distanceTv.setText(OsmAndFormatter.getFormattedDistance(dist, mapActivity.getMyApplication()) + (defaultMode ? "" : ","));
+			distanceTv.setText(OsmAndFormatter.getFormattedDistance(dist, app) + (defaultMode ? "" : ","));
 
 			if (defaultMode) {
 				timeTv.setText("");
 			} else {
 				int seconds = (int) (dist / appMode.getDefaultSpeed());
-				timeTv.setText("~ " + OsmAndFormatter.getFormattedDuration(seconds, mapActivity.getMyApplication()));
+				timeTv.setText("~ " + OsmAndFormatter.getFormattedDuration(seconds, app));
 			}
 
 			countTv.setText(mapActivity.getString(R.string.shared_string_markers) + ": " + selectedCount);
@@ -728,19 +742,10 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 	}
 
 	private void showHideMarkersList() {
-		MapActivity mapActivity = getMapActivity();
-		if (mapActivity != null && portrait) {
-			FragmentManager fragmentManager = mapActivity.getSupportFragmentManager();
-			if (fragmentManager.findFragmentByTag(TAG) == null) {
-				cancelSnapToRoad = false;
-				planRouteContext.setMarkersListOpened(!planRouteContext.isMarkersListOpened());
-				int containerRes = planRouteContext.isMarkersListOpened() ?
-						R.id.fragmentContainer : R.id.bottomFragmentContainer;
-				fragmentManager.beginTransaction()
-						.remove(this)
-						.add(containerRes, new PlanRouteFragment(), TAG)
-						.commitAllowingStateLoss();
-			}
+		if (portrait) {
+			cancelSnapToRoad = false;
+			planRouteContext.setMarkersListOpened(!planRouteContext.isMarkersListOpened());
+			callMapActivity(activity -> showInstance(activity, this));
 		}
 	}
 
@@ -757,12 +762,12 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 
 	private void showRouteOnMap(List<WptPt> points) {
 		MapActivity mapActivity = getMapActivity();
-		if (points.size() > 0 && mapActivity != null) {
+		if (!points.isEmpty() && mapActivity != null) {
 			OsmandMapTileView mapView = mapActivity.getMapView();
 			double left = 0, right = 0;
 			double top = 0, bottom = 0;
-			Location myLocation = mapActivity.getMyApplication().getLocationProvider().getLastStaleKnownLocation();
-			if (mapActivity.getMyApplication().getMapMarkersHelper().isStartFromMyLocation() && myLocation != null) {
+			Location myLocation = app.getLocationProvider().getLastStaleKnownLocation();
+			if (app.getMapMarkersHelper().isStartFromMyLocation() && myLocation != null) {
 				left = myLocation.getLongitude();
 				right = myLocation.getLongitude();
 				top = myLocation.getLatitude();
@@ -816,20 +821,21 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 		}
 	}
 
-	public static boolean showInstance(@NonNull MapActivity mapActivity) {
-		FragmentManager fragmentManager = mapActivity.getSupportFragmentManager();
-		if (AndroidUtils.isFragmentCanBeAdded(fragmentManager, TAG)) {
-			boolean portrait = AndroidUiHelper.isOrientationPortrait(mapActivity);
-			boolean markersListOpened = mapActivity.getMyApplication().getMapMarkersHelper()
-					.getPlanRouteContext()
-					.isMarkersListOpened();
+	public static boolean showInstance(@NonNull MapActivity activity,
+			@Nullable PlanRouteFragment previous) {
+		FragmentManager manager = activity.getSupportFragmentManager();
+		if (AndroidUtils.isFragmentCanBeAdded(manager, TAG)) {
+			boolean portrait = AndroidUiHelper.isOrientationPortrait(activity);
+			boolean markersListOpened = activity.getApp().getMapMarkersHelper().getPlanRouteContext().isMarkersListOpened();
 			boolean fullscreen = portrait && markersListOpened;
-			int containerRes = portrait
-					? (fullscreen ? R.id.fragmentContainer : R.id.bottomFragmentContainer)
-					: R.id.topFragmentContainer;
-			fragmentManager.beginTransaction()
-					.add(containerRes, new PlanRouteFragment(), TAG)
-					.commitAllowingStateLoss();
+			int containerRes = portrait ? (fullscreen ? R.id.fragmentContainer : R.id.bottomFragmentContainer) : R.id.topFragmentContainer;
+
+			FragmentTransaction transaction = manager.beginTransaction();
+			if (previous != null) {
+				transaction.remove(previous);
+			}
+			transaction.add(containerRes, new PlanRouteFragment(), TAG)
+					.commitNowAllowingStateLoss();
 			return true;
 		}
 		return false;
@@ -844,7 +850,7 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 			planRouteContext.recreateSnapTrkSegment(false);
 			return false;
 		});
-		task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+		OsmAndTaskManager.executeTask(task);
 	}
 
 	private void updateMapDisplayPosition() {
@@ -857,7 +863,7 @@ public class PlanRouteFragment extends BaseOsmAndFragment
 	@Override
 	public MapPosition getMapDisplayPosition() {
 		if (isInPlanRouteMode) {
-			return portrait ? MapPosition.MIDDLE_TOP : MapPosition.LANDSCAPE_MIDDLE_RIGHT;
+			return portrait ? MapPosition.MIDDLE_TOP : MapPosition.LANDSCAPE_MIDDLE_END;
 		}
 		return null;
 	}

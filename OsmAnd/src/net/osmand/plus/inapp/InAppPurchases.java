@@ -35,6 +35,31 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public abstract class InAppPurchases {
 
+	protected static final int FULL_VERSION_ID = 1;
+	protected static final int DEPTH_CONTOURS_ID = 2;
+	protected static final int CONTOUR_LINES_ID = 3;
+
+	protected static final int LIVE_UPDATES_ID = 5;
+	protected static final int OSMAND_PRO_ID = 6;
+	protected static final int MAPS_ID = 7;
+
+	protected static final int[] LIVE_UPDATES_SCOPE = new int[]{
+			FULL_VERSION_ID,
+			DEPTH_CONTOURS_ID,
+			CONTOUR_LINES_ID,
+	};
+
+	protected static final int[] OSMAND_PRO_SCOPE = new int[]{
+			FULL_VERSION_ID,
+			DEPTH_CONTOURS_ID,
+			CONTOUR_LINES_ID,
+			LIVE_UPDATES_ID,
+	};
+
+	protected static final int[] MAPS_SCOPE = new int[]{
+			FULL_VERSION_ID,
+	};
+
 	protected InAppPurchase fullVersion;
 	protected InAppPurchase depthContours;
 	protected InAppPurchase contourLines;
@@ -93,7 +118,7 @@ public abstract class InAppPurchases {
 	public InAppSubscription getAnyPurchasedOsmAndProSubscription() {
 		List<InAppSubscription> allSubscriptions = subscriptions.getAllSubscriptions();
 		for (InAppSubscription subscription : allSubscriptions) {
-			if (isOsmAndProSubscription(subscription) && subscription.isPurchased()) {
+			if (isOsmAndPro(subscription) && subscription.isPurchased()) {
 				return subscription;
 			}
 		}
@@ -141,11 +166,11 @@ public abstract class InAppPurchases {
 
 	public abstract boolean isContourLines(InAppPurchase p);
 
-	public abstract boolean isLiveUpdatesSubscription(InAppPurchase p);
+	public abstract boolean isLiveUpdates(InAppPurchase p);
 
-	public abstract boolean isOsmAndProSubscription(InAppPurchase p);
+	public abstract boolean isOsmAndPro(InAppPurchase p);
 
-	public abstract boolean isMapsSubscription(InAppPurchase p);
+	public abstract boolean isMaps(InAppPurchase p);
 
 	public abstract static class InAppSubscriptionList {
 
@@ -294,6 +319,30 @@ public abstract class InAppPurchases {
 		protected InAppPurchase(int featureId, @NonNull String sku) {
 			this.featureId = featureId;
 			this.sku = sku;
+		}
+
+		public boolean isFullVersion() {
+			return featureId == FULL_VERSION_ID;
+		}
+
+		public boolean isDepthContours() {
+			return featureId == DEPTH_CONTOURS_ID;
+		}
+
+		public boolean isContourLines() {
+			return featureId == CONTOUR_LINES_ID;
+		}
+
+		public boolean isLiveUpdates() {
+			return featureId == LIVE_UPDATES_ID;
+		}
+
+		public boolean isOsmAndPro() {
+			return featureId == OSMAND_PRO_ID;
+		}
+
+		public boolean isMaps() {
+			return featureId == MAPS_ID || featureId == FULL_VERSION_ID;
 		}
 
 		public int getFeatureId() {
@@ -635,6 +684,61 @@ public abstract class InAppPurchases {
 			} else {
 				return totalPeriods + " " + unitStr;
 			}
+		}
+
+		private String getDurationString(@NonNull Context ctx) {
+			long totalPeriods = getTotalPeriods();
+			String unitStr = getTotalUnitsString(ctx, false).toLowerCase();
+			if (AndroidUtils.isLayoutRtl(ctx)) {
+				return unitStr + " " + totalPeriods;
+			} else {
+				return totalPeriods + " " + unitStr;
+			}
+		}
+
+		private String getOriginalPricePeriodString(@NonNull Context ctx) {
+			Period subscriptionPeriod = subscription.getSubscriptionPeriod();
+			long originalNumberOfUnits = subscriptionPeriod != null ? subscriptionPeriod.getNumberOfUnits() : 1;
+			String originalUnitsStr = getTotalUnitsString(ctx, true).toLowerCase();
+			String originalPriceStr = subscription.getOriginalPrice(ctx);
+			if (AndroidUtils.isLayoutRtl(ctx)) {
+				if (subscriptionPeriod != null && originalNumberOfUnits == 3 && subscriptionPeriod.getUnit() == PeriodUnit.MONTH) {
+					return ctx.getString(R.string.months_3).toLowerCase() + " / " + originalPriceStr;
+				} else if (originalNumberOfUnits > 1) {
+					return originalUnitsStr + " " + originalNumberOfUnits + " / " + originalPriceStr;
+				}
+				return originalUnitsStr + " / " + originalPriceStr;
+			} else {
+				if (subscriptionPeriod != null && originalNumberOfUnits == 3 && subscriptionPeriod.getUnit() == PeriodUnit.MONTH) {
+					return originalPriceStr + " / " + ctx.getString(R.string.months_3).toLowerCase();
+				} else if (originalNumberOfUnits > 1) {
+					return originalPriceStr + " / " + originalNumberOfUnits + " " + originalUnitsStr;
+				}
+				return originalPriceStr + " / " + originalUnitsStr;
+			}
+		}
+
+		public boolean isFreeTrial() {
+			return introductoryPriceAmountMicros == 0;
+		}
+
+		@NonNull
+		public CharSequence getFreeTrialDescription(@NonNull Context ctx) {
+			String renewDescription = ctx.getString(R.string.subscription_then_price, getOriginalPricePeriodString(ctx));
+			String description = ctx.getString(R.string.subscription_free_trial_with_price, getDurationString(ctx),
+					getOriginalPricePeriodString(ctx));
+			SpannableStringBuilder formattedDescription = new SpannableStringBuilder(description);
+			int renewStart = description.indexOf(renewDescription);
+			if (renewStart >= 0) {
+				formattedDescription.setSpan(new CustomTypefaceSpan(DEFAULT), renewStart, description.length(),
+						Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+			}
+			return formattedDescription;
+		}
+
+		@NonNull
+		public CharSequence getRenewDescription(@NonNull Context ctx) {
+			return ctx.getString(R.string.subscription_then_price, getOriginalPricePeriodString(ctx));
 		}
 
 		public Pair<Spannable, Spannable> getFormattedDescription(@NonNull Context ctx, @ColorInt int textColor) {
@@ -1072,7 +1176,7 @@ public abstract class InAppPurchases {
 
 		@Override
 		public CharSequence getTitle(Context ctx) {
-			return ctx.getString(R.string.osm_live_payment_monthly_title);
+			return ctx.getString(R.string.monthly_subscription);
 		}
 
 		@Override
@@ -1131,7 +1235,7 @@ public abstract class InAppPurchases {
 
 		@Override
 		public CharSequence getTitle(Context ctx) {
-			return ctx.getString(R.string.osm_live_payment_3_months_title);
+			return ctx.getString(R.string.three_months_subscription);
 		}
 
 		@Override
@@ -1185,7 +1289,7 @@ public abstract class InAppPurchases {
 
 		@Override
 		public CharSequence getTitle(Context ctx) {
-			return ctx.getString(R.string.osm_live_payment_annual_title);
+			return ctx.getString(R.string.annual_subscription);
 		}
 
 		@Override
@@ -1225,6 +1329,258 @@ public abstract class InAppPurchases {
 		@Override
 		protected InAppSubscription newInstance(@NonNull String sku) {
 			return null;
+		}
+	}
+
+	public static class InAppPurchaseExternalSubscription extends InAppSubscription {
+
+		private final PurchaseOrigin origin;
+		private final int[] scope;
+		private String defaultPrice;
+		private String defaultMonthlyPrice;
+		private int monthlyDuration;
+
+		private InAppPurchaseExternalSubscription(int featureId, int[] scope, @NonNull String sku,
+												  @NonNull PurchaseOrigin origin) {
+			super(featureId, sku);
+			this.scope = scope;
+			this.origin = origin;
+		}
+
+		public PurchaseOrigin getOrigin() {
+			return origin;
+		}
+
+		@NonNull
+		@Override
+		public int[] getScope() {
+			return scope;
+		}
+
+		@Override
+		public boolean isLegacy() {
+			return false;
+		}
+
+		@Override
+		public String getDefaultPrice(Context ctx) {
+			return defaultPrice == null ? super.getDefaultPrice(ctx) : defaultPrice;
+		}
+
+		@Override
+		public String getDefaultMonthlyPrice(Context ctx) {
+			return defaultMonthlyPrice == null ? super.getDefaultMonthlyPrice(ctx) : defaultMonthlyPrice;
+		}
+
+		@Override
+		public int getPeriodTypeString() {
+			if (monthlyDuration == 1) {
+				return R.string.monthly_subscription;
+			} else if (monthlyDuration == 3) {
+				return R.string.three_months_subscription;
+			} else if (monthlyDuration == 12) {
+				return R.string.annual_subscription;
+			} else if (monthlyDuration == 36) {
+				return R.string.three_years_subscription;
+			} else {
+				return R.string.monthly_subscription;
+			}
+		}
+
+		@Override
+		public void setPriceValue(double priceValue) {
+			super.setPriceValue(priceValue);
+			monthlyPriceValue = priceValue / monthlyDuration;
+		}
+
+		@Override
+		public void setOriginalPriceValue(double originalPriceValue) {
+			super.setOriginalPriceValue(originalPriceValue);
+			monthlyOriginalPriceValue = originalPriceValue / monthlyDuration;
+		}
+
+		@Override
+		public CharSequence getTitle(Context ctx) {
+			if (monthlyDuration == 1) {
+				return ctx.getString(R.string.monthly_subscription);
+			} else if (monthlyDuration == 3) {
+				return ctx.getString(R.string.three_months_subscription);
+			} else if (monthlyDuration == 12) {
+				return ctx.getString(R.string.annual_subscription);
+			} else if (monthlyDuration == 36) {
+				return ctx.getString(R.string.osm_live_payment_3_years_title);
+			} else {
+				return ctx.getString(R.string.monthly_subscription);
+			}
+		}
+
+		@Override
+		public String getPriceWithPeriod(Context ctx) {
+			String period;
+			if (monthlyDuration == 1) {
+				period = ctx.getString(R.string.month);
+			} else if (monthlyDuration == 3) {
+				period = ctx.getString(R.string.months_3);
+			} else if (monthlyDuration == 12) {
+				period = ctx.getString(R.string.year);
+			} else if (monthlyDuration == 36) {
+				period = ctx.getString(R.string.years_3);
+			} else {
+				period = ctx.getString(R.string.month);
+			}
+			return ctx.getString(R.string.ltr_or_rtl_combine_via_slash_with_space, getPrice(ctx),
+					period.toLowerCase());
+		}
+
+		@Override
+		public CharSequence getRenewDescription(@NonNull Context ctx) {
+			if (monthlyDuration == 1) {
+				return ctx.getString(R.string.osm_live_payment_renews_monthly);
+			} else if (monthlyDuration == 3) {
+				return ctx.getString(R.string.osm_live_payment_renews_quarterly);
+			} else if (monthlyDuration == 12) {
+				return ctx.getString(R.string.osm_live_payment_renews_annually);
+			} else if (monthlyDuration == 36) {
+				return ctx.getString(R.string.osm_live_payment_renews_3_years);
+			} else {
+				return ctx.getString(R.string.osm_live_payment_renews_monthly);
+			}
+		}
+
+		@Override
+		public CharSequence getDescription(@NonNull Context ctx) {
+			return "";
+		}
+
+		@Nullable
+		@Override
+		protected InAppSubscription newInstance(@NonNull String sku) {
+			return null;
+		}
+
+		public static InAppPurchaseExternalSubscription buildFromJson(@NonNull OsmandApplication ctx,
+																	  @NonNull JSONObject json) throws Exception {
+			if (!json.has("cross-platform")) {
+				return null;
+			}
+			boolean crossPlatform = json.getString("cross-platform").equals("true");
+			if (!crossPlatform) {
+				throw new IllegalArgumentException("Subscription is not cross-platform");
+			}
+			int monthlyDuration;
+			String durationUnit = json.getString("duration_unit");
+			if (durationUnit.equals("month")) {
+				monthlyDuration = Integer.parseInt(json.getString("duration"));
+			} else if (durationUnit.equals("year")) {
+				monthlyDuration = Integer.parseInt(json.getString("duration")) * 12;
+			} else {
+				throw new IllegalArgumentException("Unknown duration unit: " + durationUnit);
+			}
+
+			String sku = json.getString("sku");
+			if (Algorithms.isEmpty(sku)) {
+				throw new IllegalArgumentException("SKU is empty");
+			}
+
+			String platform = json.getString("platform");
+			if (Algorithms.isEmpty(platform)) {
+				throw new IllegalArgumentException("Platform is empty");
+			}
+			PurchaseOrigin origin = ctx.getInAppPurchaseHelper().getPurchaseOriginByPlatform(platform);
+
+			int defaultPriceMillis = Integer.parseInt(json.getString("defPriceEurMillis"));
+			String defaultPrice = String.format(Locale.US, "€%.2f", defaultPriceMillis / 1000d).replace('.', ',');
+			String defaultMonthlyPrice = String.format(Locale.US, "€%.2f", defaultPriceMillis / 1000d / monthlyDuration).replace('.', ',');
+
+			boolean featurePro = json.getString("feature_pro").equals("true")
+					|| json.getString("feature_pro_no_cloud").equals("true");
+			boolean featureMaps = json.getString("feature_maps").equals("true");
+			boolean featureLive = json.getString("feature_live_maps").equals("true");
+
+			int featureId;
+			int[] scope;
+			if (featurePro) {
+				featureId = OSMAND_PRO_ID;
+				scope = OSMAND_PRO_SCOPE;
+			} else if (featureMaps) {
+				featureId = FULL_VERSION_ID;
+				scope = MAPS_SCOPE;
+			} else if (featureLive) {
+				featureId = LIVE_UPDATES_ID;
+				scope = LIVE_UPDATES_SCOPE;
+			} else {
+				throw new IllegalArgumentException("Subscription is not supported");
+			}
+			InAppPurchaseExternalSubscription res = new InAppPurchaseExternalSubscription(featureId, scope, sku, origin);
+			res.monthlyDuration = monthlyDuration;
+			res.defaultPrice = defaultPrice;
+			res.defaultMonthlyPrice = defaultMonthlyPrice;
+			return res;
+		}
+	}
+
+	public static class InAppPurchaseExternalInApp extends InAppPurchase {
+
+		private final PurchaseOrigin origin;
+
+		private InAppPurchaseExternalInApp(int featureId, @NonNull String sku, @NonNull PurchaseOrigin origin) {
+			super(featureId, sku);
+			this.origin = origin;
+		}
+
+		public PurchaseOrigin getOrigin() {
+			return origin;
+		}
+
+		@NonNull
+		@Override
+		public int[] getScope() {
+			return new int[0];
+		}
+
+		@Override
+		public boolean isLegacy() {
+			return false;
+		}
+
+		public static InAppPurchaseExternalInApp buildFromJson(@NonNull OsmandApplication ctx,
+														@NonNull JSONObject json) throws Exception {
+			if (!json.has("cross-platform")) {
+				return null;
+			}
+			boolean crossPlatform = json.getString("cross-platform").equals("true");
+			if (!crossPlatform) {
+				throw new IllegalArgumentException("InApp is not cross-platform");
+			}
+			String sku = json.getString("sku");
+			if (Algorithms.isEmpty(sku)) {
+				throw new IllegalArgumentException("SKU is empty");
+			}
+
+			String platform = json.getString("platform");
+			if (Algorithms.isEmpty(platform)) {
+				throw new IllegalArgumentException("Platform is empty");
+			}
+			PurchaseOrigin origin = ctx.getInAppPurchaseHelper().getPurchaseOriginByPlatform(platform);
+
+			boolean featurePro = json.getString("feature_pro").equals("true");
+			boolean featureMaps = json.getString("feature_maps").equals("true");
+			boolean featureContour = json.getString("feature_contours").equals("true");
+			boolean featureNautical = json.getString("feature_nautical").equals("true");
+
+			int featureId;
+			if (featurePro) {
+				featureId = OSMAND_PRO_ID;
+			} else if (featureMaps) {
+				featureId = FULL_VERSION_ID;
+			} else if (featureContour) {
+				featureId = CONTOUR_LINES_ID;
+			} else if (featureNautical) {
+				featureId = DEPTH_CONTOURS_ID;
+			} else {
+				throw new IllegalArgumentException("InApp is not supported");
+			}
+			return new InAppPurchaseExternalInApp(featureId, sku, origin);
 		}
 	}
 
@@ -1323,4 +1679,3 @@ public abstract class InAppPurchases {
 		}
 	}
 }
-

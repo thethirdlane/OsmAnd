@@ -5,13 +5,16 @@ import static net.osmand.plus.download.local.LocalItemType.MAP_DATA;
 import static net.osmand.plus.download.local.LocalItemType.ROAD_DATA;
 import static net.osmand.plus.plugins.audionotes.AudioVideoNotesPlugin.AV_DEFAULT_ACTION_AUDIO;
 import static net.osmand.plus.plugins.audionotes.AudioVideoNotesPlugin.AV_DEFAULT_ACTION_CHOOSE;
-import static net.osmand.plus.plugins.audionotes.AudioVideoNotesPlugin.AV_DEFAULT_ACTION_TAKEPICTURE;
+import static net.osmand.plus.plugins.audionotes.AudioVideoNotesPlugin.AV_DEFAULT_ACTION_PHOTO;
 import static net.osmand.plus.plugins.audionotes.AudioVideoNotesPlugin.AV_DEFAULT_ACTION_VIDEO;
 import static net.osmand.plus.plugins.audionotes.AudioVideoNotesPlugin.DEFAULT_ACTION_SETTING_ID;
 import static net.osmand.plus.plugins.srtm.TerrainMode.DEFAULT_KEY;
 import static net.osmand.plus.plugins.srtm.TerrainMode.TerrainType.HEIGHT;
 import static net.osmand.plus.settings.backend.backup.exporttype.AbstractMapExportType.OFFLINE_MAPS_EXPORT_TYPE_KEY;
 import static net.osmand.plus.settings.enums.LocalSortMode.COUNTRY_NAME_ASCENDING;
+import static net.osmand.plus.settings.fragments.RouteParametersFragment.DISABLE_MODE;
+import static net.osmand.plus.settings.fragments.RouteParametersFragment.DISABLE_OFFROUTE_RECALC;
+import static net.osmand.plus.settings.fragments.RouteParametersFragment.ROUTING_RECALC_DISTANCE;
 import static net.osmand.plus.views.mapwidgets.MapWidgetRegistry.COLLAPSED_PREFIX;
 import static net.osmand.plus.views.mapwidgets.MapWidgetRegistry.HIDE_PREFIX;
 import static net.osmand.plus.views.mapwidgets.MapWidgetRegistry.SETTINGS_SEPARATOR;
@@ -35,6 +38,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 
+import net.osmand.LocationConvert;
 import net.osmand.data.LatLon;
 import net.osmand.data.SpecialPointType;
 import net.osmand.plus.api.SettingsAPI;
@@ -45,27 +49,40 @@ import net.osmand.plus.download.local.LocalItemUtils;
 import net.osmand.plus.keyevent.devices.KeyboardDeviceProfile;
 import net.osmand.plus.keyevent.devices.ParrotDeviceProfile;
 import net.osmand.plus.keyevent.devices.WunderLINQDeviceProfile;
+import net.osmand.plus.gallery.attached.helpers.AttachedMediaDataHelper;
 import net.osmand.plus.mapmarkers.MarkersDb39HelperLegacy;
 import net.osmand.plus.myplaces.favorites.FavouritesHelper;
+import net.osmand.plus.plugins.PluginsHelper;
+import net.osmand.plus.plugins.audionotes.AudioVideoNotesPlugin;
 import net.osmand.plus.plugins.srtm.TerrainMode;
 import net.osmand.plus.profiles.LocationIcon;
+import net.osmand.plus.profiles.ProfileIcons;
 import net.osmand.plus.quickaction.MapButtonsHelper;
 import net.osmand.plus.resources.migration.MergeAssetFilesVersionAlgorithm;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.ApplicationModeBean;
 import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.backend.WidgetsAvailabilityHelper;
+import net.osmand.plus.settings.backend.backup.SettingsHelper;
 import net.osmand.plus.settings.backend.backup.exporttype.ExportType;
 import net.osmand.plus.settings.backend.preferences.*;
+import net.osmand.plus.settings.coordinates.CoordinateFormatIds;
+import net.osmand.plus.settings.coordinates.CoordinateFormatSettingsStorage;
 import net.osmand.plus.settings.enums.CompassMode;
+import net.osmand.plus.settings.enums.GridFormat;
 import net.osmand.plus.settings.enums.LocalSortMode;
+import net.osmand.plus.settings.enums.ScreenLayoutMode;
 import net.osmand.plus.settings.enums.WidgetSize;
 import net.osmand.plus.views.layers.RadiusRulerControlLayer.RadiusRulerMode;
 import net.osmand.plus.views.mapwidgets.WidgetGroup;
 import net.osmand.plus.views.mapwidgets.WidgetType;
 import net.osmand.plus.views.mapwidgets.WidgetsIdsMapper;
+import net.osmand.plus.views.mapwidgets.WidgetsPanel;
 import net.osmand.plus.views.mapwidgets.configure.buttons.QuickActionButtonState;
 import net.osmand.util.Algorithms;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.lang.reflect.Type;
 import java.util.*;
@@ -143,9 +160,20 @@ public class AppVersionUpgradeOnInit {
 	public static final int VERSION_4_8_03 = 4803;
 	public static final int VERSION_5_0_00 = 5000;
 	public static final int VERSION_5_0_01 = 5001;
-	public static final int VERSION_5_0_02 = 5002;
+	// 5005 - (Resend user purchases)
+	public static final int VERSION_5_0_05 = 5005;
+	public static final int VERSION_5_1_00 = 5100;
+	// 5101 - 5.1-01 (Migrate show_next_turn_info to widget-specific preference)
+	public static final int VERSION_5_1_01 = 5101;
+	public static final int VERSION_5_2_04 = 5204;
+	public static final int VERSION_5_3_00 = 5300;
+	public static final int VERSION_5_3_01 = 5301;
+	public static final int VERSION_5_3_02 = 5302;
+	public static final int VERSION_5_3_04 = 5304;
+	public static final int VERSION_5_3_05 = 5305;
+	public static final int VERSION_5_3_06 = 5306;
 
-	public static final int LAST_APP_VERSION = VERSION_5_0_01;
+	public static final int LAST_APP_VERSION = VERSION_5_3_06;
 
 	private static final String VERSION_INSTALLED = "VERSION_INSTALLED";
 
@@ -276,7 +304,9 @@ public class AppVersionUpgradeOnInit {
 				if (prevAppVersion < VERSION_4_8_02) {
 					migrateTerrainModeDefaultPreferences(settings);
 				}
+				boolean mergingAssets = false;
 				if (prevAppVersion < VERSION_5_0_00) {
+					mergingAssets = true;
 					app.getAppInitializer().addOnFinishListener(
 							init -> MergeAssetFilesVersionAlgorithm.execute(app)
 					);
@@ -284,8 +314,37 @@ public class AppVersionUpgradeOnInit {
 				if (prevAppVersion < VERSION_5_0_01) {
 					migrateSideWidgetsSizePrefToSmall(settings);
 				}
-				if (prevAppVersion < VERSION_5_0_02) {
+				if (prevAppVersion < VERSION_5_0_05) {
 					settings.BILLING_PURCHASE_TOKENS_SENT.set("");
+				}
+				if (prevAppVersion < VERSION_5_1_00 && !mergingAssets) {
+					app.getAppInitializer().addOnFinishListener(
+							init -> MergeAssetFilesVersionAlgorithm.execute(app)
+					);
+				}
+				if (prevAppVersion < VERSION_5_1_01) {
+					migrateShowNextTurnInfoPrefToWidgetSpecific();
+				}
+				if (prevAppVersion < VERSION_5_2_04) {
+					migrateRouteRecalculationValues();
+				}
+				if (prevAppVersion < VERSION_5_3_00) {
+					migrateWidgetPanels();
+				}
+				if (prevAppVersion < VERSION_5_3_01) {
+					migrateWidgetPanelsPages();
+				}
+				if (prevAppVersion < VERSION_5_3_02) {
+					migrateAstronomyPreferences();
+				}
+				if (prevAppVersion < VERSION_5_3_04) {
+					migrateProfileIconsToMx(settings);
+				}
+				if (prevAppVersion < VERSION_5_3_05) {
+					app.getAppInitializer().addOnFinishListener(init -> migrateAudioVideoNotesToFavorites());
+				}
+				if (prevAppVersion < VERSION_5_3_06) {
+					migrateCoordinateFormatSettings(settings);
 				}
 				startPrefs.edit().putInt(VERSION_INSTALLED_NUMBER, lastVersion).commit();
 				startPrefs.edit().putString(VERSION_INSTALLED, Version.getFullVersion(app)).commit();
@@ -519,8 +578,8 @@ public class AppVersionUpgradeOnInit {
 			idsMapper.addReplacement(BEARING_WIDGET_LEGACY, getBearingWidgetId(appMode));
 			idsMapper.addReplacement(AV_NOTES_WIDGET_LEGACY, getAudioVideoNotesWidgetId(appMode));
 
-			if (settings.MAP_INFO_CONTROLS.isSetForMode(appMode)) {
-				replaceWidgetIds(settings.MAP_INFO_CONTROLS, appMode, idsMapper, SETTINGS_SEPARATOR, null);
+			if (settings.getMapInfoControls(null).isSetForMode(appMode)) {
+				replaceWidgetIds(settings.getMapInfoControls(null), appMode, idsMapper, SETTINGS_SEPARATOR, null);
 				hideNotReplacedWidgets(appMode);
 			}
 			if (settings.RIGHT_WIDGET_PANEL_ORDER.isSetForMode(appMode)) {
@@ -561,7 +620,7 @@ public class AppVersionUpgradeOnInit {
 			return AV_NOTES_RECORD_AUDIO.id;
 		} else if (audioVideoNotesStateId == AV_DEFAULT_ACTION_VIDEO) {
 			return AV_NOTES_RECORD_VIDEO.id;
-		} else if (audioVideoNotesStateId == AV_DEFAULT_ACTION_TAKEPICTURE) {
+		} else if (audioVideoNotesStateId == AV_DEFAULT_ACTION_PHOTO) {
 			return AV_NOTES_TAKE_PHOTO.id;
 		} else {
 			return AV_NOTES_ON_REQUEST.id;
@@ -571,7 +630,7 @@ public class AppVersionUpgradeOnInit {
 	private void hideNotReplacedWidgets(@NonNull ApplicationMode appMode) {
 		OsmandSettings settings = app.getSettings();
 
-		String widgetsVisibilityString = settings.MAP_INFO_CONTROLS.getModeValue(appMode);
+		String widgetsVisibilityString = settings.getMapInfoControls(null).getModeValue(appMode);
 		List<String> widgetsVisibility = new ArrayList<>(Arrays.asList(widgetsVisibilityString.split(SETTINGS_SEPARATOR)));
 
 		List<String> newWidgetsIds = new ArrayList<>();
@@ -593,7 +652,7 @@ public class AppVersionUpgradeOnInit {
 		for (String widgetVisibility : widgetsVisibility) {
 			newWidgetsVisibilityString.append(widgetVisibility).append(SETTINGS_SEPARATOR);
 		}
-		settings.MAP_INFO_CONTROLS.setModeValue(appMode, newWidgetsVisibilityString.toString());
+		settings.getMapInfoControls(null).setModeValue(appMode, newWidgetsVisibilityString.toString());
 	}
 
 	private void revertRadiusRulerWidgetPreferenceMigration() {
@@ -638,8 +697,8 @@ public class AppVersionUpgradeOnInit {
 			}
 
 			idsMapper.resetAppliedVisibleReplacements();
-			if (settings.MAP_INFO_CONTROLS.isSet()) {
-				replaceWidgetIds(settings.MAP_INFO_CONTROLS, appMode, idsMapper, SETTINGS_SEPARATOR, null);
+			if (settings.getMapInfoControls(null).isSet()) {
+				replaceWidgetIds(settings.getMapInfoControls(null), appMode, idsMapper, SETTINGS_SEPARATOR, null);
 			}
 		}
 	}
@@ -763,7 +822,7 @@ public class AppVersionUpgradeOnInit {
 			for (int i = 0; i < verticalWidgets.size(); i++) {
 				String widgetId = verticalWidgets.get(i);
 				if (WidgetType.isOriginalWidget(widgetId) && allSideWidgets.contains(widgetId)) {
-					String widgetsVisibilityString = settings.MAP_INFO_CONTROLS.getModeValue(appMode);
+					String widgetsVisibilityString = settings.getMapInfoControls(null).getModeValue(appMode);
 					List<String> widgetsVisibility = new ArrayList<>(Arrays.asList(widgetsVisibilityString.split(SETTINGS_SEPARATOR)));
 					widgetsVisibility.remove(widgetId);
 					widgetsVisibility.remove(COLLAPSED_PREFIX + widgetId);
@@ -773,14 +832,14 @@ public class AppVersionUpgradeOnInit {
 
 					verticalWidgets.set(i, widgetId);
 					verticalPanelPreference.setModeValues(appMode, verticalWidgets);
-					settings.CUSTOM_WIDGETS_KEYS.addModeValue(appMode, widgetId);
+					settings.getCustomWidgetsKeys(null).addModeValue(appMode, widgetId);
 
 					widgetsVisibility.add(widgetId);
 					StringBuilder newVisibilityString = new StringBuilder();
 					for (String visibility : widgetsVisibility) {
 						newVisibilityString.append(visibility).append(SETTINGS_SEPARATOR);
 					}
-					settings.MAP_INFO_CONTROLS.setModeValue(appMode, newVisibilityString.toString());
+					settings.getMapInfoControls(null).setModeValue(appMode, newVisibilityString.toString());
 				}
 			}
 		}
@@ -965,7 +1024,6 @@ public class AppVersionUpgradeOnInit {
 	}
 
 	private void migrateSideWidgetsSizePrefToSmall(@NonNull OsmandSettings settings) {
-
 		for (ApplicationMode mode : ApplicationMode.allPossibleValues()) {
 			List<String> leftPages = settings.LEFT_WIDGET_PANEL_ORDER.getStringsListForProfile(mode);
 			migrateSidePanelSizes(settings, mode, leftPages);
@@ -993,6 +1051,181 @@ public class AppVersionUpgradeOnInit {
 							.makeProfile();
 					pref.resetModeToDefault(mode);
 				}
+			}
+		}
+	}
+
+	private void migrateWidgetPanels() {
+		OsmandSettings settings = app.getSettings();
+		CommonPreference<String> originalMapControls = settings.getMapInfoControls(null);
+		ListStringPreference originalCustomWidgetsKeys = settings.getCustomWidgetsKeys(null);
+		CommonPreference<Boolean> originalTransparentPreference = settings.getTransparentMapThemePreference(null);
+
+		for (ApplicationMode appMode : ApplicationMode.allPossibleValues()) {
+			if (originalMapControls.isSetForMode(appMode)) {
+				String value = originalMapControls.getModeValue(appMode);
+				for (ScreenLayoutMode layoutMode : ScreenLayoutMode.values()) {
+					settings.getMapInfoControls(layoutMode).setModeValue(appMode, value);
+				}
+			}
+			if (originalCustomWidgetsKeys.isSetForMode(appMode)) {
+				String value = originalCustomWidgetsKeys.getModeValue(appMode);
+				for (ScreenLayoutMode layoutMode : ScreenLayoutMode.values()) {
+					settings.getCustomWidgetsKeys(layoutMode).setModeValue(appMode, value);
+				}
+			}
+			if (originalTransparentPreference.isSetForMode(appMode)) {
+				Boolean value = originalTransparentPreference.getModeValue(appMode);
+				for (ScreenLayoutMode layoutMode : ScreenLayoutMode.values()) {
+					settings.getTransparentMapThemePreference(layoutMode).setModeValue(appMode, value);
+				}
+			}
+		}
+	}
+
+	private void migrateWidgetPanelsPages() {
+		OsmandSettings settings = app.getSettings();
+		for (WidgetsPanel panel : WidgetsPanel.values()) {
+			ListStringPreference originalPreference = panel.getOrderPreference(settings, null);
+			for (ApplicationMode appMode : ApplicationMode.allPossibleValues()) {
+				if (originalPreference.isSetForMode(appMode)) {
+					String value = originalPreference.getModeValue(appMode);
+					for (ScreenLayoutMode layoutMode : ScreenLayoutMode.values()) {
+						ListStringPreference preference = panel.getOrderPreference(settings, layoutMode);
+						if (!preference.isSetForMode(appMode)) {
+							preference.setModeValue(appMode, value);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	private void migrateAstronomyPreferences() {
+		OsmandSettings settings = app.getSettings();
+		CommonPreference<String> newPreference = settings.registerStringPreference("astronomy_settings", "").makeProfile().makeShared();
+		CommonPreference<String> oldPreference = settings.registerStringPreference("star_watcher_settings", "").makeProfile().makeShared();
+
+		for (ApplicationMode appMode : ApplicationMode.allPossibleValues()) {
+			if (oldPreference.isSetForMode(appMode)) {
+				String value = oldPreference.getModeValue(appMode);
+				newPreference.setModeValue(appMode, value);
+			}
+		}
+	}
+
+	private void migrateProfileIconsToMx(@NonNull OsmandSettings settings) {
+		for (ApplicationMode mode : ApplicationMode.allPossibleValues()) {
+			String currentIconName = settings.ICON_RES_NAME.getModeValue(mode);
+			String canonicalIconName = ProfileIcons.getCanonicalIconName(app, currentIconName);
+			if (!Algorithms.isEmpty(canonicalIconName) && !Algorithms.stringsEqual(currentIconName, canonicalIconName)) {
+				settings.ICON_RES_NAME.setModeValue(mode, canonicalIconName);
+			}
+		}
+	}
+
+	private void migrateRouteRecalculationValues() {
+		OsmandSettings settings = app.getSettings();
+		for (ApplicationMode mode : ApplicationMode.allPossibleValues()) {
+			boolean recalcDisabled = settings.DISABLE_OFFROUTE_RECALC.getModeValue(mode);
+			float recalcDistance = settings.ROUTE_RECALCULATION_DISTANCE.getModeValue(mode);
+
+			if (Float.compare(recalcDistance, DISABLE_MODE) == 0 && !recalcDisabled) {
+				settings.ROUTE_RECALCULATION_DISTANCE.resetModeToDefault(mode);
+			} else if (Float.compare(recalcDistance, DISABLE_MODE) != 0 && recalcDisabled) {
+				settings.ROUTE_RECALCULATION_DISTANCE.setModeValue(mode, DISABLE_MODE);
+			}
+		}
+	}
+
+	private void migrateShowNextTurnInfoPrefToWidgetSpecific() {
+		final String BASE_PREF_ID = "show_next_turn_info";
+		final String BASE_WIDGET_ID = "street_name";
+		final String CUSTOM_ID_DELIMITER = "__";
+
+		OsmandSettings settings = app.getSettings();
+		CommonPreference<Boolean> oldPref = new BooleanPreference(settings, BASE_PREF_ID, false).makeProfile();;
+
+		for (ApplicationMode appMode : ApplicationMode.allPossibleValues()) {
+			if (!oldPref.isSetForMode(appMode)) {
+				continue;
+			}
+			boolean showNextTurn = oldPref.getModeValue(appMode);
+
+			// apply this setting to ALL existing StreetNameWidgets (customIds) for this profile
+			List<String> widgetIds = settings.getCustomWidgetsKeys(null).getStringsListForProfile(appMode);
+			if (widgetIds != null) {
+				for (String widgetId : widgetIds) {
+					if (widgetId.startsWith(BASE_WIDGET_ID) && widgetId.contains(CUSTOM_ID_DELIMITER)) {
+						String prefId = BASE_PREF_ID + "_" + widgetId;
+						settings.registerBooleanPreference(prefId, false)
+								.makeProfile().cache().setModeValue(appMode, showNextTurn);
+					}
+				}
+			}
+		}
+	}
+
+	private void migrateAudioVideoNotesToFavorites() {
+		AudioVideoNotesPlugin plugin = PluginsHelper.getPlugin(AudioVideoNotesPlugin.class);
+		if (plugin != null) {
+			plugin.indexingFiles(true, false);
+			new AttachedMediaDataHelper(app).convertRecordingsToFavorites(plugin.getAllRecordings());
+		}
+	}
+
+	private void migrateCoordinateFormatSettings(@NonNull OsmandSettings settings) {
+		CoordinateFormatSettingsStorage storage = settings.getCoordinateFormatSettingsStorage();
+		for (ApplicationMode appMode : ApplicationMode.allPossibleValues()) {
+			int legacyFormat = storage.getLegacyFormatPreference().getModeValue(appMode);
+			if (!storage.isPreferredIdsSetForMode(appMode)) {
+				storage.setPreferredIds(appMode, getLegacyCoordinateFormatPreferredIds(legacyFormat));
+			}
+			if (!settings.COORDINATE_GRID_FORMAT.isSetForMode(appMode)) {
+				settings.COORDINATE_GRID_FORMAT.setModeValue(appMode, getLegacyCoordinateGridFormat(legacyFormat));
+			}
+		}
+	}
+
+	@NonNull
+	public static List<String> getLegacyCoordinateFormatPreferredIds(int legacyFormat) {
+		LinkedHashSet<String> ids = new LinkedHashSet<>();
+		String primaryId = CoordinateFormatIds.fromOldFormat(legacyFormat);
+		if (primaryId != null) {
+			ids.add(primaryId);
+		}
+		ids.addAll(CoordinateFormatIds.ALL_BUILT_IN_FORMAT_IDS);
+		return Collections.unmodifiableList(new ArrayList<>(ids));
+	}
+
+	@NonNull
+	public static GridFormat getLegacyCoordinateGridFormat(int legacyFormat) {
+		return switch (legacyFormat) {
+			case LocationConvert.FORMAT_SECONDS -> GridFormat.DMS;
+			case LocationConvert.FORMAT_MINUTES -> GridFormat.DM;
+			case LocationConvert.FORMAT_DEGREES -> GridFormat.DIGITAL;
+			case LocationConvert.UTM_FORMAT -> GridFormat.UTM;
+			case LocationConvert.MGRS_FORMAT -> GridFormat.MGRS;
+			default -> GridFormat.DIGITAL;
+		};
+	}
+
+	private static final String DISABLE_MODE_STRING = "-1.0";
+	private static final String DEFAULT_DISTANCE_STRING = "0.0";
+
+	public static void migrateRouteRecalculationJsonValues(@NonNull JSONObject json) {
+		if (json.has(DISABLE_OFFROUTE_RECALC) && json.has(ROUTING_RECALC_DISTANCE)) {
+			try {
+				String disableOffrouteRecalc = json.getString(DISABLE_OFFROUTE_RECALC);
+				String routingRecalcDistance = json.getString(ROUTING_RECALC_DISTANCE);
+
+				if (DISABLE_MODE_STRING.equals(routingRecalcDistance) && "false".equals(disableOffrouteRecalc)) {
+					json.put(ROUTING_RECALC_DISTANCE, DEFAULT_DISTANCE_STRING);
+				} else if (!DISABLE_MODE_STRING.equals(routingRecalcDistance) && "true".equals(disableOffrouteRecalc)) {
+					json.put(ROUTING_RECALC_DISTANCE, DISABLE_MODE_STRING);
+				}
+			} catch (JSONException e) {
+				SettingsHelper.LOG.error("Error migrating route recalculation JSON values", e);
 			}
 		}
 	}

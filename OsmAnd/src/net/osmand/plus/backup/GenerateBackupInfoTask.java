@@ -11,7 +11,6 @@ import androidx.annotation.Nullable;
 import net.osmand.OperationLog;
 import net.osmand.PlatformUtil;
 import net.osmand.plus.OsmandApplication;
-import net.osmand.plus.backup.BackupDbHelper.UploadedFileInfo;
 import net.osmand.plus.backup.BackupListeners.OnGenerateBackupInfoListener;
 import net.osmand.plus.plugins.PluginsHelper;
 import net.osmand.plus.settings.backend.backup.exporttype.ExportType;
@@ -30,30 +29,33 @@ public class GenerateBackupInfoTask extends AsyncTask<Void, Void, BackupInfo> {
 	private final OperationLog operationLog = new OperationLog("generateBackupInfo", DEBUG, 200);
 
 	private final OsmandApplication app;
-	private final BackupDbHelper dbHelper;
+	private final BackupHelper backupHelper;
 
 	private final Map<String, LocalFile> localFiles;
 	private final Map<String, RemoteFile> uniqueRemoteFiles;
 	private final Map<String, RemoteFile> deletedRemoteFiles;
 	private final OnGenerateBackupInfoListener listener;
+	private final boolean autoSync;
 
 	protected GenerateBackupInfoTask(@NonNull OsmandApplication app,
 			@NonNull Map<String, LocalFile> localFiles,
 			@NonNull Map<String, RemoteFile> uniqueRemoteFiles,
 			@NonNull Map<String, RemoteFile> deletedRemoteFiles,
+			@NonNull boolean autoSync,
 			@Nullable OnGenerateBackupInfoListener listener) {
 		this.app = app;
-		this.dbHelper = app.getBackupHelper().getDbHelper();
+		this.backupHelper = app.getBackupHelper();
 		this.localFiles = localFiles;
 		this.uniqueRemoteFiles = uniqueRemoteFiles;
 		this.deletedRemoteFiles = deletedRemoteFiles;
 		this.listener = listener;
+		this.autoSync = autoSync;
 		operationLog.startOperation();
 	}
 
 	@Override
 	protected BackupInfo doInBackground(Void... voids) {
-		BackupInfo info = new BackupInfo();
+		BackupInfo info = new BackupInfo(autoSync);
 				/*
 				operationLog.log("=== localFiles ===");
 				for (LocalFile localFile : localFiles.values()) {
@@ -75,7 +77,7 @@ public class GenerateBackupInfoTask extends AsyncTask<Void, Void, BackupInfo> {
 		remoteFiles.addAll(deletedRemoteFiles.values());
 		for (RemoteFile remoteFile : remoteFiles) {
 			ExportType exportType = ExportType.findBy(remoteFile);
-			if (exportType == null || !exportType.isEnabled() || remoteFile.isRecordedVoiceFile()) {
+			if (exportType == null || !exportType.isAvailable() || remoteFile.isRecordedVoiceFile()) {
 				continue;
 			}
 			LocalFile localFile = localFiles.get(remoteFile.getTypeNamePath());
@@ -100,7 +102,7 @@ public class GenerateBackupInfoTask extends AsyncTask<Void, Void, BackupInfo> {
 					}
 				}
 			} else if (!remoteFile.isDeleted()) {
-				UploadedFileInfo fileInfo = dbHelper.getUploadedFileInfo(remoteFile.getType(), remoteFile.getName());
+				UploadedFileInfo fileInfo = backupHelper.getUploadedFileInfo(remoteFile.getType(), remoteFile.getName());
 				// suggest to remove only if file exists in db
 				if (fileInfo != null && fileInfo.getUploadTime() >= remoteFile.getUpdatetimems()) {
 					// conflicts not supported yet
@@ -113,14 +115,14 @@ public class GenerateBackupInfoTask extends AsyncTask<Void, Void, BackupInfo> {
 		}
 		for (LocalFile localFile : localFiles.values()) {
 			ExportType exportType = ExportType.findBy(localFile.item);
-			if (exportType == null || !exportType.isEnabled()) {
+			if (exportType == null || !exportType.isAvailable()) {
 				continue;
 			}
 			boolean hasRemoteFile = uniqueRemoteFiles.containsKey(localFile.getTypeFileName());
 			boolean toDelete = info.localFilesToDelete.contains(localFile);
 			if (!hasRemoteFile && !toDelete) {
-				boolean isEmpty = localFile.item instanceof CollectionSettingsItem<?> && ((CollectionSettingsItem<?>) localFile.item).isEmpty();
-				if (!isEmpty) {
+				boolean shouldSkip = shouldSkip(localFile);
+				if (!shouldSkip) {
 					info.filesToUpload.add(localFile);
 				}
 			}
@@ -158,6 +160,13 @@ public class GenerateBackupInfoTask extends AsyncTask<Void, Void, BackupInfo> {
 		}
 		operationLog.log("=== filesToMerge ===");
 		return info;
+	}
+
+	private boolean shouldSkip(@NonNull LocalFile localFile) {
+		if (localFile.item instanceof CollectionSettingsItem<?> collectionItem) {
+			return collectionItem.isEmpty();
+		}
+		return false;
 	}
 
 	@Override

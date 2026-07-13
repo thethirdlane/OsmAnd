@@ -26,13 +26,12 @@ import net.osmand.plus.base.ContextMenuScrollFragment;
 import net.osmand.plus.card.base.multistate.IMultiStateCardController;
 import net.osmand.plus.card.base.multistate.MultiStateCard;
 import net.osmand.plus.card.color.ColoringStyle;
-import net.osmand.plus.card.color.palette.gradient.GradientColorsPaletteController;
-import net.osmand.plus.card.color.palette.gradient.PaletteGradientColor;
-import net.osmand.plus.card.color.palette.main.data.PaletteColor;
+import net.osmand.plus.card.color.palette.gradient.GradientPaletteController;
 import net.osmand.plus.helpers.AndroidUiHelper;
 import net.osmand.plus.inapp.InAppPurchaseHelper;
 import net.osmand.plus.profiles.LocationIcon;
 import net.osmand.plus.routepreparationmenu.MapRouteInfoMenu;
+import net.osmand.shared.palette.domain.PaletteItem;
 import net.osmand.shared.routing.ColoringType;
 import net.osmand.plus.routing.PreviewRouteLineInfo;
 import net.osmand.plus.routing.RoutingHelper;
@@ -74,6 +73,11 @@ public class RouteLineAppearanceFragment extends ContextMenuScrollFragment
 	@Override
 	public int getMainLayoutId() {
 		return R.layout.route_line_appearance;
+	}
+
+	@Override
+	protected int getToolbarViewId() {
+		return R.id.route_menu_top_shadow_all;
 	}
 
 	@Override
@@ -269,7 +273,7 @@ public class RouteLineAppearanceFragment extends ContextMenuScrollFragment
 	public int getStatusBarColorId() {
 		View view = getView();
 		if (!isNightMode() && view != null) {
-			AndroidUiHelper.setStatusBarContentColor(view, view.getSystemUiVisibility(), true);
+			AndroidUiHelper.setStatusBarContentColor(view, true);
 		}
 		return isNightMode() ? R.color.status_bar_main_dark : R.color.divider_color_light;
 	}
@@ -284,7 +288,7 @@ public class RouteLineAppearanceFragment extends ContextMenuScrollFragment
 	}
 
 	private void setupButtons(View view) {
-		View buttonsContainer = view.findViewById(R.id.buttons_container);
+		View buttonsContainer = view.findViewById(R.id.bottom_buttons_container);
 		buttonsContainer.setBackgroundColor(AndroidUtils.getColorFromAttr(view.getContext(), R.attr.bg_color));
 		saveButton = view.findViewById(R.id.right_bottom_button);
 		saveButton.setButtonType(DialogButtonType.PRIMARY);
@@ -306,10 +310,10 @@ public class RouteLineAppearanceFragment extends ContextMenuScrollFragment
 	}
 
 	private void onSaveButtonClicked() {
-		getColorCardController().getColorsPaletteController().refreshLastUsedTime();
-		GradientColorsPaletteController gradientColorsPaletteController = getColorCardController().getGradientPaletteController();
+		getColorCardController().getColorsPaletteController().renewLastUsedTime();
+		GradientPaletteController gradientColorsPaletteController = getColorCardController().getGradientPaletteController();
 		if (gradientColorsPaletteController != null) {
-			gradientColorsPaletteController.refreshLastUsedTime();
+			gradientColorsPaletteController.renewLastUsedTime();
 		}
 		saveRouteLineAppearance();
 		dismiss();
@@ -526,21 +530,19 @@ public class RouteLineAppearanceFragment extends ContextMenuScrollFragment
 	}
 
 	@Override
-	public void onColorSelectedFromPalette(@NonNull PaletteColor paletteColor) {
-		if (paletteColor instanceof PaletteGradientColor paletteGradientColor) {
-			previewRouteLineInfo.setGradientPalette(paletteGradientColor.getPaletteName());
-			if (getMapActivity() != null) {
-				getMapActivity().refreshMap();
-			}
-		} else {
+	public void onPaletteItemSelected(@NonNull PaletteItem item) {
+		if (item instanceof PaletteItem.Gradient gradientItem) {
+			previewRouteLineInfo.setGradientPalette(gradientItem.getId());
+			callMapActivity(MapActivity::refreshMap);
+		} else if (item instanceof PaletteItem.Solid solidItem) {
 			RouteLineColorController colorController = getColorCardController();
-			previewRouteLineInfo.setCustomColor(paletteColor.getColor(), colorController.isNightMap());
+			previewRouteLineInfo.setCustomColor(solidItem.getColorInt(), colorController.isNightMap());
 			updateColorItems();
 		}
 	}
 
 	@Override
-	public void onColorsPaletteModeChanged() {
+	public void onPaletteModeChanged() {
 		updateColorItems();
 	}
 

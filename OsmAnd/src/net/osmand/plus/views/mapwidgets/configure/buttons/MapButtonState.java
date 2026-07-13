@@ -26,7 +26,7 @@ import net.osmand.plus.settings.backend.OsmandSettings;
 import net.osmand.plus.settings.backend.preferences.CommonPreference;
 import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.UiUtilities;
-import net.osmand.plus.views.controls.maphudbuttons.ButtonPositionSize;
+import net.osmand.shared.grid.ButtonPositionSize;
 import net.osmand.util.Algorithms;
 
 import java.util.ArrayList;
@@ -52,7 +52,7 @@ public abstract class MapButtonState {
 
 	private final StateChangedListener<Integer> sizeListener;
 
-	private boolean portrait;
+	protected boolean portrait;
 
 	public MapButtonState(@NonNull OsmandApplication app, @NonNull String id) {
 		this.id = id;
@@ -91,7 +91,7 @@ public abstract class MapButtonState {
 	public abstract boolean isEnabled();
 
 	@NonNull
-	public ButtonAppearanceParams createDefaultAppearanceParams() {
+	public ButtonAppearanceParams createDefaultAppearanceParams(@Nullable Boolean nightMode) {
 		MapButtonsHelper buttonsHelper = app.getMapButtonsHelper();
 		int size = buttonsHelper.getDefaultSizePref().get();
 		if (size <= 0) {
@@ -105,14 +105,14 @@ public abstract class MapButtonState {
 		if (cornerRadius < 0) {
 			cornerRadius = getDefaultCornerRadius();
 		}
-		return new ButtonAppearanceParams(getDefaultIconName(), size, opacity, cornerRadius);
+		return new ButtonAppearanceParams(getDefaultIconName(nightMode), size, opacity, cornerRadius);
 	}
 
 	@LayoutRes
 	public abstract int getDefaultLayoutId();
 
 	@NonNull
-	public abstract String getDefaultIconName();
+	public abstract String getDefaultIconName(@Nullable Boolean nightMode);
 
 	public int getDefaultSize() {
 		return BIG_SIZE_DP;
@@ -167,8 +167,8 @@ public abstract class MapButtonState {
 	}
 
 	@NonNull
-	public ButtonAppearanceParams createAppearanceParams() {
-		ButtonAppearanceParams defaultParams = createDefaultAppearanceParams();
+	public ButtonAppearanceParams createAppearanceParams(@Nullable Boolean nightMode) {
+		ButtonAppearanceParams defaultParams = createDefaultAppearanceParams(nightMode);
 
 		String iconName = getSavedIconName();
 		if (Algorithms.isEmpty(iconName)) {
@@ -195,12 +195,12 @@ public abstract class MapButtonState {
 	@NonNull
 	protected ButtonPositionSize setupButtonPosition(@NonNull ButtonPositionSize position,
 	                                                 int posH, int posV, boolean xMove, boolean yMove) {
-		position.posH = posH;
-		position.posV = posV;
-		position.xMove = xMove;
-		position.yMove = yMove;
-		position.marginX = 0;
-		position.marginY = 0;
+		position.setPosH(posH);
+		position.setPosV(posV);
+		position.setXMove(xMove);
+		position.setYMove(yMove);
+		position.setMarginX(0);
+		position.setMarginY(0);
 
 		return position;
 	}
@@ -218,26 +218,26 @@ public abstract class MapButtonState {
 		preference.set(positionSize.toLongValue());
 	}
 
-	private void updatePosition(@NonNull ButtonPositionSize position) {
+	protected void updatePosition(@NonNull ButtonPositionSize position) {
 		CommonPreference<Long> preference = portrait ? portraitPositionPref : landscapePositionPref;
 		Long value = preference.get();
 		if (value != null && value > 0) {
 			position.fromLongValue(value);
 		}
-		int size = createAppearanceParams().getSize();
+		int size = createAppearanceParams(null).getSize();
 		size = (size / 8) + 1;
 		position.setSize(size, size);
 	}
 
 	@Nullable
 	public Drawable getIcon(@ColorInt int color, boolean nightMode, boolean mapIcon) {
-		int iconId = getIconId();
+		int iconId = getIconId(nightMode);
 		return iconId != 0 ? getIcon(iconId, color, nightMode, mapIcon) : null;
 	}
 
 	@DrawableRes
-	public int getIconId() {
-		String iconName = createAppearanceParams().getIconName();
+	public int getIconId(boolean nightMode) {
+		String iconName = createAppearanceParams(nightMode).getIconName();
 		int iconId = AndroidUtils.getDrawableId(app, iconName);
 		return iconId != 0 ? iconId : RenderingIcons.getBigIconResourceId(iconName);
 	}
@@ -278,7 +278,7 @@ public abstract class MapButtonState {
 	}
 
 	public boolean hasCustomAppearance() {
-		return !Algorithms.objectEquals(createAppearanceParams(), createDefaultAppearanceParams());
+		return !Algorithms.objectEquals(createAppearanceParams(null), createDefaultAppearanceParams(null));
 	}
 
 	@NonNull

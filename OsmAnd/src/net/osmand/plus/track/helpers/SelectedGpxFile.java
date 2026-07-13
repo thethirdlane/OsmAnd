@@ -166,20 +166,45 @@ public class SelectedGpxFile {
 		}
 	}
 
+	public long getPointsToDisplayCount() {
+		long total = 0;
+		for (TrkSegment segment : getPointsToDisplay()) {
+			total += segment.getPoints().size();
+		}
+		return total;
+	}
+
 	public final void addEmptySegmentToDisplay() {
 		processedPointsToDisplay.add(new TrkSegment());
 	}
 
-	public final void appendTrackPointToDisplay(@NonNull WptPt point, @NonNull OsmandApplication app) {
+	public final void appendTrackPointToDisplay(@NonNull OsmandApplication app,
+	                                            @NonNull WptPt point, boolean firstPoint) {
 		TrkSegment lastSegment;
-		if (processedPointsToDisplay.size() == 0) {
+		if (processedPointsToDisplay.isEmpty()) {
 			lastSegment = new TrkSegment();
 			processedPointsToDisplay.add(lastSegment);
 		} else {
 			lastSegment = processedPointsToDisplay.get(processedPointsToDisplay.size() - 1);
 		}
-
 		lastSegment.getPoints().add(point);
+
+		// Add current point to the general segment
+		TrkSegment generalSegment = gpxFile != null ? gpxFile.getGeneralSegment() : null;
+		if (generalSegment != null) {
+			WptPt wptPt = new WptPt(point);
+			List<WptPt> points = generalSegment.getPoints();
+			if (firstPoint) {
+				// Mark current point as start for segment
+				wptPt.setFirstPoint(true);
+				if (!points.isEmpty()) {
+					// Mark previous point as last for segment
+					WptPt previousPoint = points.get(points.size() - 1);
+					previousPoint.setLastPoint(true);
+				}
+			}
+			points.add(wptPt);
+		}
 
 		boolean hasCalculatedBounds = !bounds.hasInitialState();
 		if (hasCalculatedBounds) {
@@ -329,13 +354,17 @@ public class SelectedGpxFile {
 	}
 
 	public void setSplitGroups(List<GpxDisplayGroup> displayGroups, OsmandApplication app) {
+		setSplitGroups(displayGroups, app, false);
+	}
+
+	public void setSplitGroups(List<GpxDisplayGroup> displayGroups, OsmandApplication app, boolean forceUpdate) {
 		if (filteredSelectedGpxFile != null) {
 			filteredSelectedGpxFile.setSplitGroups(displayGroups, app);
 		} else {
 			this.splitProcessed = true;
 			this.splitGroups = displayGroups;
 
-			if (modifiedTime != gpxFile.getModifiedTime()) {
+			if (modifiedTime != gpxFile.getModifiedTime() || forceUpdate) {
 				update(app);
 			}
 		}
@@ -355,5 +384,9 @@ public class SelectedGpxFile {
 	@Nullable
 	public FilteredSelectedGpxFile getFilteredSelectedGpxFile() {
 		return filteredSelectedGpxFile;
+	}
+
+	public boolean hasFilters() {
+		return filteredSelectedGpxFile != null;
 	}
 }

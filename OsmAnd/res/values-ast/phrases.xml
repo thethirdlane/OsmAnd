@@ -235,7 +235,7 @@
     <string name="poi_parking_layby">Layby</string>
     <string name="poi_parking_sheds">Sheds</string>
     <string name="poi_parking_rooftop">Rooftop</string>
-    <string name="poi_gpx_point">GPX point</string>
+    <string name="poi_gpx_point">Puntu GPX</string>
     <string name="poi_fuel_lng">LNG</string>
     <string name="poi_nuts">Nut store</string>
     <string name="poi_beehive">Beehive</string>
@@ -1027,7 +1027,7 @@
     <string name="poi_water_utility">Water utility office</string>
     <string name="poi_barbecue_grill">Barbecue grill: yes</string>
     <string name="poi_outpost">Shop\'s delivery point</string>
-    <string name="poi_whitewater_rapid_name">Name of the river rapids</string>
+    <string name="poi_rapids_name">Name of the river rapids</string>
     <string name="poi_pottery">Pottery</string>
     <string name="poi_flooring">Flooring store</string>
     <string name="poi_socket_schuko_output_low">Low</string>
@@ -1067,7 +1067,6 @@
     <string name="poi_cuisine_udon">Udon</string>
     <string name="poi_cuisine_suki">Suki</string>
     <string name="poi_cuisine_yakiniku">Yakiniku</string>
-    <string name="poi_cuisine_crepes">Crepes</string>
     <string name="poi_cuisine_empanada">Empanada</string>
     <string name="poi_cuisine_gyros">Gyros</string>
     <string name="poi_cuisine_burger">Hamburgesa</string>
@@ -1551,7 +1550,7 @@
     <string name="poi_cuisine_doner">Doner kebab (shawarma)</string>
     <string name="poi_cuisine_kebab">Kebab</string>
     <string name="poi_cuisine_sandwich">Sandwich</string>
-    <string name="poi_cuisine_coffee">Café</string>
+    <string name="poi_cuisine_coffee_shop">Café</string>
     <string name="poi_social_facility_assisted_living">Assisted living</string>
     <string name="poi_social_facility_group_home">Group home</string>
     <string name="poi_refugee_no">Refugees: no</string>
@@ -2384,7 +2383,6 @@
     <string name="poi_training_hairdressing">Training: hairdressing</string>
     <string name="poi_training_aviation">Entrenamientu: aviación</string>
     <string name="poi_training_martial_art">Training: martial art</string>
-    <string name="poi_training_yoga">Entrenamientu: yoga</string>
     <string name="poi_training_computer">Training: computer</string>
     <string name="poi_training_cooking">Entrenamientu: cocina</string>
     <string name="poi_training_art">Training: art</string>
@@ -3020,7 +3018,7 @@
     <string name="poi_craft_tinsmith">Tinsmith</string>
     <string name="poi_craft_tiler">Tiler</string>
     <string name="poi_craft_tailor">Tailor</string>
-    <string name="poi_craft_sweep">Sweep</string>
+    <string name="poi_craft_chimney_sweeper">Sweep</string>
     <string name="poi_craft_sun_protection">Sun protection craft</string>
     <string name="poi_craft_stonemason">Stonemason</string>
     <string name="poi_craft_stand_builder">Stand builder</string>
@@ -3108,7 +3106,6 @@
     <string name="poi_piste_hike">Hike piste</string>
     <string name="poi_piste_skitour">Skitour piste</string>
     <string name="poi_piste_nordic">Nordic piste</string>
-    <string name="poi_piste_downhill">Downhill piste</string>
     <string name="poi_piste">Piste</string>
     <string name="poi_club_scout">Scout club</string>
     <string name="poi_club_sailing">Sailing club</string>
@@ -3307,7 +3304,7 @@
     <string name="poi_orienteering">Orienteering</string>
     <string name="poi_sport_multi">Multi sport</string>
     <string name="poi_sport_motor">Motor sport</string>
-    <string name="poi_korfbal">Korfball</string>
+    <string name="poi_korfball">Korfball</string>
     <string name="poi_ice_stock">Ice stock</string>
     <string name="poi_ice_skating">Ice skating</string>
     <string name="poi_horse_racing">Horse racing</string>
@@ -3629,7 +3626,6 @@
     <string name="poi_fuel">Gasolinera</string>
     <string name="poi_car_wash">Car wash</string>
     <string name="poi_vehicle_inspection">Vehicle inspection</string>
-    <string name="poi_service_tyres">Neumáticos</string>
     <string name="poi_car_repair">Car repair</string>
     <string name="poi_traffic_signals">Semáforu</string>
     <string name="poi_traffic_calming_island">Traffic island</string>

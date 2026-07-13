@@ -1,26 +1,41 @@
 package net.osmand.plus.plugins.development;
 
-import android.content.Context;
-import android.content.IntentFilter;
-import android.os.BatteryManager;
-import android.os.Handler;
-import android.os.Looper;
+import static net.osmand.aidlapi.OsmAndCustomizationConstants.DRAWER_BUILDS_ID;
+import static net.osmand.aidlapi.OsmAndCustomizationConstants.PLUGIN_OSMAND_DEV;
+import static net.osmand.plus.views.mapwidgets.WidgetType.DEV_CAMERA_DISTANCE;
+import static net.osmand.plus.views.mapwidgets.WidgetType.DEV_CAMERA_TILT;
+import static net.osmand.plus.views.mapwidgets.WidgetType.DEV_FPS;
+import static net.osmand.plus.views.mapwidgets.WidgetType.DEV_MEMORY;
+import static net.osmand.plus.views.mapwidgets.WidgetType.DEV_TARGET_DISTANCE;
+import static net.osmand.plus.views.mapwidgets.WidgetType.DEV_ZOOM_LEVEL;
+
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.drawable.Drawable;
+import android.os.BatteryManager;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.PowerManager;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 
 import com.github.mikephil.charting.charts.LineChart;
 import com.squareup.picasso.Picasso;
 
+import net.osmand.PlatformUtil;
 import net.osmand.StateChangedListener;
+import net.osmand.core.android.MapRendererContext;
 import net.osmand.core.android.MapRendererView;
-import net.osmand.plus.utils.PicassoUtils;
-import net.osmand.shared.gpx.GpxTrackAnalysis;
-import net.osmand.shared.gpx.GpxTrackAnalysis.TrackPointsAnalyser;
+import net.osmand.core.android.NativeCore;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.Version;
 import net.osmand.plus.activities.MapActivity;
+import net.osmand.plus.auto.NavigationSession;
 import net.osmand.plus.charts.GPXDataSetAxisType;
 import net.osmand.plus.charts.GPXDataSetType;
 import net.osmand.plus.charts.OrderedLineDataSet;
@@ -40,36 +55,31 @@ import net.osmand.plus.quickaction.actions.LocationSimulationAction;
 import net.osmand.plus.settings.backend.ApplicationMode;
 import net.osmand.plus.settings.backend.WidgetsAvailabilityHelper;
 import net.osmand.plus.settings.backend.preferences.OsmandPreference;
+import net.osmand.plus.settings.enums.ScreenLayoutMode;
 import net.osmand.plus.settings.fragments.SettingsScreenType;
 import net.osmand.plus.simulation.DashSimulateFragment;
-import net.osmand.plus.views.AnimateDraggingMapThread;
-import net.osmand.plus.views.AutoZoomBySpeedHelper;
+import net.osmand.plus.utils.AndroidUtils;
+import net.osmand.plus.utils.PicassoUtils;
 import net.osmand.plus.views.OsmandMapTileView;
+import net.osmand.plus.views.corenative.NativeCoreContext;
 import net.osmand.plus.views.mapwidgets.MapWidgetInfo;
 import net.osmand.plus.views.mapwidgets.WidgetInfoCreator;
 import net.osmand.plus.views.mapwidgets.WidgetType;
 import net.osmand.plus.views.mapwidgets.WidgetsPanel;
 import net.osmand.plus.views.mapwidgets.widgets.MapWidget;
+import net.osmand.plus.views.mapwidgets.widgetstates.MemoryWidgetState;
 import net.osmand.plus.views.mapwidgets.widgetstates.ZoomLevelWidgetState;
 import net.osmand.plus.widgets.ctxmenu.ContextMenuAdapter;
 import net.osmand.plus.widgets.ctxmenu.data.ContextMenuItem;
+import net.osmand.shared.gpx.GpxTrackAnalysis;
+import net.osmand.shared.gpx.GpxTrackAnalysis.TrackPointsAnalyser;
+
+import org.apache.commons.logging.Log;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-
-import static net.osmand.aidlapi.OsmAndCustomizationConstants.DRAWER_BUILDS_ID;
-import static net.osmand.aidlapi.OsmAndCustomizationConstants.PLUGIN_OSMAND_DEV;
-import static net.osmand.plus.views.mapwidgets.WidgetType.DEV_CAMERA_DISTANCE;
-import static net.osmand.plus.views.mapwidgets.WidgetType.DEV_CAMERA_TILT;
-import static net.osmand.plus.views.mapwidgets.WidgetType.DEV_FPS;
-import static net.osmand.plus.views.mapwidgets.WidgetType.DEV_MEMORY;
-import static net.osmand.plus.views.mapwidgets.WidgetType.DEV_TARGET_DISTANCE;
-import static net.osmand.plus.views.mapwidgets.WidgetType.DEV_ZOOM_LEVEL;
 
 public class OsmandDevelopmentPlugin extends OsmandPlugin {
 
@@ -78,11 +88,17 @@ public class OsmandDevelopmentPlugin extends OsmandPlugin {
 	public final OsmandPreference<Boolean> USE_RASTER_SQLITEDB;
 	public final OsmandPreference<Boolean> SAVE_BEARING_TO_GPX;
 	public final OsmandPreference<Boolean> SAVE_HEADING_TO_GPX;
-	public final OsmandPreference<Boolean> SHOW_SYMBOLS_DEBUG_INFO;
+	public final OsmandPreference<Boolean> SAVE_LOCATION_PROVIDER_TO_GPX;
+	public final OsmandPreference<Boolean> SHOW_PRIMITIVES_DEBUG_INFO;
 	public final OsmandPreference<Boolean> ALLOW_SYMBOLS_DISPLAY_ON_TOP;
 	private final StateChangedListener<Boolean> useRasterSQLiteDbListener;
 	private final StateChangedListener<Boolean> symbolsDebugInfoListener;
-	private final StateChangedListener<Boolean> batterySavingModeListener;
+	private final StateChangedListener<Boolean> debugRenderingInfoListener;
+	private final StateChangedListener<Boolean> msaaListener;
+	private final StateChangedListener<Boolean> sphericalListener;
+
+	private static final Log LOG_termal = PlatformUtil.getLog("ThermalState");
+
 
 	public OsmandDevelopmentPlugin(@NonNull OsmandApplication app) {
 		super(app);
@@ -100,6 +116,7 @@ public class OsmandDevelopmentPlugin extends OsmandPlugin {
 		pluginPreferences.add(settings.SIMULATE_OBD_DATA);
 		pluginPreferences.add(settings.DEBUG_RENDERING_INFO);
 		pluginPreferences.add(settings.SHOULD_SHOW_FREE_VERSION_BANNER);
+		pluginPreferences.add(settings.SHOULD_SHOW_DISCOUNT_BOTTOM_SHEET);
 		pluginPreferences.add(settings.TRANSPARENT_STATUS_BAR);
 		pluginPreferences.add(settings.MEMORY_ALLOCATED_FOR_ROUTING);
 		pluginPreferences.add(settings.SHOW_INFO_ABOUT_PRESSED_KEY);
@@ -107,7 +124,8 @@ public class OsmandDevelopmentPlugin extends OsmandPlugin {
 		USE_RASTER_SQLITEDB = registerBooleanPreference("use_raster_sqlitedb", false).makeGlobal().makeShared().cache();
 		SAVE_BEARING_TO_GPX = registerBooleanPreference("save_bearing_to_gpx", false).makeGlobal().makeShared().cache();
 		SAVE_HEADING_TO_GPX = registerBooleanPreference("save_heading_to_gpx", true).makeGlobal().makeShared().cache();
-		SHOW_SYMBOLS_DEBUG_INFO = registerBooleanPreference("show_symbols_debug_info", false).makeGlobal().makeShared().cache();
+		SAVE_LOCATION_PROVIDER_TO_GPX = registerBooleanPreference("save_location_provider_to_gpx", true).makeGlobal().makeShared().cache();
+		SHOW_PRIMITIVES_DEBUG_INFO = registerBooleanPreference("show_primitives_debug_info", false).makeGlobal().makeShared().cache();
 		ALLOW_SYMBOLS_DISPLAY_ON_TOP = registerBooleanPreference("allow_symbols_display_on_top", false).makeGlobal().makeShared().cache();
 
 		useRasterSQLiteDbListener = change -> {
@@ -125,17 +143,28 @@ public class OsmandDevelopmentPlugin extends OsmandPlugin {
 				mapView.applyDebugSettings(mapRenderer);
 			}
 		};
-		SHOW_SYMBOLS_DEBUG_INFO.addListener(symbolsDebugInfoListener);
+		SHOW_PRIMITIVES_DEBUG_INFO.addListener(symbolsDebugInfoListener);
 		ALLOW_SYMBOLS_DISPLAY_ON_TOP.addListener(symbolsDebugInfoListener);
+		settings.DEBUG_RENDERING_INFO.addListener(symbolsDebugInfoListener);
 
-		batterySavingModeListener = change -> {
+		debugRenderingInfoListener = NativeCore::enablePerformanceLogs;
+		settings.DEBUG_RENDERING_INFO.addListener(debugRenderingInfoListener);
+
+		msaaListener = change -> {
+			recreateRenderer();
+			recreateAndroidAutoRenderer();
+		};
+		settings.ENABLE_MSAA.addListener(msaaListener);
+
+		sphericalListener = change -> {
 			OsmandMapTileView mapView = app.getOsmandMap().getMapView();
 			MapRendererView mapRenderer = mapView.getMapRenderer();
 			if (mapRenderer != null) {
-				mapView.applyBatterySavingModeSetting(mapRenderer);
+				mapRenderer.setFlatEarth(!settings.SPHERICAL_MAP.get());
 			}
 		};
-		settings.BATTERY_SAVING_MODE.addListener(batterySavingModeListener);
+		settings.SPHERICAL_MAP.addListener(sphericalListener);
+
 	}
 
 	@Override
@@ -154,8 +183,8 @@ public class OsmandDevelopmentPlugin extends OsmandPlugin {
 	}
 
 	@Override
-	public void registerOptionsMenuItems(MapActivity mapActivity, ContextMenuAdapter helper) {
-		if (Version.isDeveloperVersion(mapActivity.getMyApplication())) {
+	public void registerOptionsMenuItems(@NonNull MapActivity mapActivity, @NonNull ContextMenuAdapter helper) {
+		if (Version.isDeveloperVersion(mapActivity.getApp())) {
 			Class<?> contributionVersionActivityClass = null;
 			try {
 				ClassLoader classLoader = OsmandDevelopmentPlugin.class.getClassLoader();
@@ -179,8 +208,9 @@ public class OsmandDevelopmentPlugin extends OsmandPlugin {
 	}
 
 	@Override
-	public void createWidgets(@NonNull MapActivity mapActivity, @NonNull List<MapWidgetInfo> widgetsInfos, @NonNull ApplicationMode appMode) {
-		WidgetInfoCreator creator = new WidgetInfoCreator(app, appMode);
+	public void createWidgets(@NonNull MapActivity mapActivity, @NonNull List<MapWidgetInfo> widgetsInfos,
+			@NonNull ApplicationMode appMode, @Nullable ScreenLayoutMode layoutMode) {
+		WidgetInfoCreator creator = new WidgetInfoCreator(app, appMode, layoutMode);
 
 		MapWidget fpsWidget = createMapWidgetForParams(mapActivity, DEV_FPS);
 		widgetsInfos.add(creator.createWidgetInfo(fpsWidget));
@@ -216,7 +246,8 @@ public class OsmandDevelopmentPlugin extends OsmandPlugin {
 			case DEV_TARGET_DISTANCE:
 				return new TargetDistanceWidget(mapActivity, customId, widgetsPanel);
 			case DEV_MEMORY:
-				return new MemoryInfoWidget(mapActivity, customId, widgetsPanel);
+				MemoryWidgetState memoryWidgetState = new MemoryWidgetState(app, customId);
+				return new MemoryInfoWidget(mapActivity, memoryWidgetState, customId, widgetsPanel);
 		}
 		return null;
 	}
@@ -247,7 +278,50 @@ public class OsmandDevelopmentPlugin extends OsmandPlugin {
 		super.init(app, activity);
 		avgStatsEnabled = true;
 		avgStatsCollector();
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+			startThermalStatusListening();
+		}
+
 		return true;
+	}
+
+	@RequiresApi(api = Build.VERSION_CODES.Q)
+	private void startThermalStatusListening() {
+		PowerManager powerManager = (PowerManager) app.getSystemService(Context.POWER_SERVICE);
+		PowerManager.OnThermalStatusChangedListener listener = status -> {
+			LOG_termal.debug("ThermalStatus changed: " + getThermalStateName(status));
+		};
+		powerManager.addThermalStatusListener(listener);
+	}
+
+	private String getThermalStateName(int stateCode) {
+		String name;
+		switch (stateCode) {
+			case PowerManager.THERMAL_STATUS_NONE:
+				name = "None";
+				break;
+			case PowerManager.THERMAL_STATUS_LIGHT:
+				name = "Light";
+				break;
+			case PowerManager.THERMAL_STATUS_MODERATE:
+				name = "Moderate";
+				break;
+			case PowerManager.THERMAL_STATUS_SEVERE:
+				name = "Severe";
+				break;
+			case PowerManager.THERMAL_STATUS_CRITICAL:
+				name = "Critical";
+				break;
+			case PowerManager.THERMAL_STATUS_EMERGENCY:
+				name = "Emergency";
+				break;
+			case PowerManager.THERMAL_STATUS_SHUTDOWN:
+				name = "Shutdown";
+				break;
+			default:
+				name = "Unknown";
+		}
+		return String.format("%s {%d}", name, stateCode);
 	}
 
 	@Override
@@ -285,21 +359,25 @@ public class OsmandDevelopmentPlugin extends OsmandPlugin {
 	}
 
 	@Override
-	public void getAvailableGPXDataSetTypes(@NonNull GpxTrackAnalysis analysis, @NonNull List<GPXDataSetType[]> availableTypes) {
-		AutoZoomBySpeedHelper.addAvailableGPXDataSetTypes(app, analysis, availableTypes);
+	public void getAvailableGPXDataSetTypes(@NonNull GpxTrackAnalysis analysis, @NonNull List<GPXDataSetType> availableTypes) {
+		// Disable AutoZoom dev chart
+		//AutoZoomBySpeedHelper.addAvailableGPXDataSetTypes(app, analysis, availableTypes);
 	}
 
 	@Nullable
 	@Override
 	public OrderedLineDataSet getOrderedLineDataSet(@NonNull LineChart chart, @NonNull GpxTrackAnalysis analysis, @NonNull GPXDataSetType graphType, @NonNull GPXDataSetAxisType chartAxisType, boolean calcWithoutGaps, boolean useRightAxis) {
-		return AutoZoomBySpeedHelper.getOrderedLineDataSet(app, chart, analysis, graphType, chartAxisType,
-				calcWithoutGaps, useRightAxis);
+		// Disable AutoZoom dev chart
+		// return AutoZoomBySpeedHelper.getOrderedLineDataSet(app, chart, analysis, graphType, chartAxisType, calcWithoutGaps, useRightAxis);
+		return null;
 	}
 
 	@Nullable
 	@Override
 	protected TrackPointsAnalyser getTrackPointsAnalyser() {
-		return AutoZoomBySpeedHelper.getTrackPointsAnalyser(app);
+		// Disable AutoZoom dev chart
+		// return AutoZoomBySpeedHelper.getTrackPointsAnalyser(app);
+		return null;
 	}
 
 	private boolean avgStatsEnabled = false;
@@ -329,12 +407,7 @@ public class OsmandDevelopmentPlugin extends OsmandPlugin {
 				float cpuBasic = renderer.getBasicThreadsCPULoad();
 				this.cpuBasic = cpuBasic > 0 ? cpuBasic : 0; // NaN
 
-				Intent batteryIntent;
-				if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-					batteryIntent = app.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED), Context.RECEIVER_NOT_EXPORTED);
-				} else {
-					batteryIntent = app.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-				}
+				Intent batteryIntent = AndroidUtils.registerBroadcastReceiver(app, Intent.ACTION_BATTERY_CHANGED, null, false);
 				if (batteryIntent != null) {
 					int level = batteryIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
 					int scale = batteryIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
@@ -361,7 +434,7 @@ public class OsmandDevelopmentPlugin extends OsmandPlugin {
 
 		private float avgFloat(List<AvgStatsEntry> allEntries, int periodMinutes, Function<AvgStatsEntry, Float> getter) {
 			long earliestTimestamp = System.currentTimeMillis() - periodMinutes * 60 * 1000;
-			final float[] pairSumCounter = { 0, 0 }; // sum, counter
+			final float[] pairSumCounter = {0, 0}; // sum, counter
 			allEntries.forEach(entry -> {
 				if (entry.timestamp > 0 && entry.timestamp >= earliestTimestamp) {
 					pairSumCounter[0] += getter.apply(entry);
@@ -387,8 +460,8 @@ public class OsmandDevelopmentPlugin extends OsmandPlugin {
 	}
 
 	private void avgStatsCleanup() {
-		long expirationTimestamp = System.currentTimeMillis() - (long)(AVG_STATS_LIFETIME_MINUTES * 60 * 1000);
-		long delayedCleanupTimestamp = System.currentTimeMillis() - (long)(AVG_STATS_LIFETIME_MINUTES * 60 * 1000 * 2);
+		long expirationTimestamp = System.currentTimeMillis() - (long) (AVG_STATS_LIFETIME_MINUTES * 60 * 1000);
+		long delayedCleanupTimestamp = System.currentTimeMillis() - (long) (AVG_STATS_LIFETIME_MINUTES * 60 * 1000 * 2);
 		if (!avgStats.isEmpty() && avgStats.get(0).timestamp < delayedCleanupTimestamp) {
 			avgStats = avgStats.stream().filter(entry -> entry.timestamp >= expirationTimestamp).collect(Collectors.toList());
 		}
@@ -408,5 +481,43 @@ public class OsmandDevelopmentPlugin extends OsmandPlugin {
 
 	protected AvgStatsEntry getAvgStats(int periodMinutes) {
 		return new AvgStatsEntry(avgStats, periodMinutes);
+	}
+
+	private void recreateRenderer() {
+		OsmandMapTileView mapView = app.getOsmandMap().getMapView();
+		MapRendererView currentMapRenderer = mapView.getMapRenderer();
+		if (currentMapRenderer != null) {
+			MapRendererContext mapRendererContext = NativeCoreContext.getMapRendererContext();
+			if (mapRendererContext != null) {
+				MapRendererView oldMapRendererView = mapRendererContext.getMapRendererView();
+				mapView.setMapRenderer(null, true);
+				mapRendererContext.setMapRendererView(null);
+				mapRendererContext.presetMapRendererOptions(currentMapRenderer, settings.ENABLE_MSAA.get());
+				currentMapRenderer.setupRenderer(app, 0, 0, oldMapRendererView);
+				mapRendererContext.setMapRendererView(currentMapRenderer);
+				mapView.setMapRenderer(currentMapRenderer, false);
+			}
+		}
+	}
+
+	private void recreateAndroidAutoRenderer() {
+		NavigationSession carNavigationSession = app.getCarNavigationSession();
+		if (carNavigationSession != null && carNavigationSession.hasStarted()) {
+			MapRendererContext mapRendererContext = NativeCoreContext.getMapRendererContext();
+			if (mapRendererContext != null) {
+				mapRendererContext.setMapRendererView(null);
+			}
+
+			NativeCoreContext.setMapRendererContext(app, 1.0f);
+			app.getOsmandMap().setupRenderingView();
+		}
+	}
+
+	@Override
+	public void updateMapPresentationEnvironment(@NonNull MapRendererContext rendererContext) {
+		MapRendererView rendererView = rendererContext.getMapRendererView();
+		if (rendererView != null) {
+			rendererView.setFlatEarth(!settings.SPHERICAL_MAP.get());
+		}
 	}
 }

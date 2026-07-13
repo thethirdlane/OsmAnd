@@ -7,29 +7,77 @@ import net.osmand.shared.gpx.PointAttributes
 import net.osmand.shared.routing.RouteColorize
 import net.osmand.shared.util.KAlgorithms
 
-class WptPt : GpxExtensions {
-	var firstPoint = false
-	var lastPoint = false
+class WptPt : GpxExtensions, Linkable {
+
 	var lat: Double = 0.0
 	var lon: Double = 0.0
-	var name: String? = null
-	var link: Link? = null
-	var category: String? = null
-	var desc: String? = null
-	var comment: String? = null
-	var time: Long = 0
-	var ele = Double.NaN
-	var speed = 0.0
-	var hdop = Double.NaN
-	var heading = Float.NaN
-	var bearing = Float.NaN
-	var deleted = false
-	var speedColor = 0
-	var altitudeColor = 0
-	var slopeColor = 0
-	var colourARGB = 0
-	var distance = 0.0
+
+	var time: Long = 0L
+	var distance: Double = 0.0
+	var ele: Double = Double.NaN
+	var speed: Float = 0.0f
+	var hdop: Float = Float.NaN
+	var bearing: Float = Float.NaN
+	var heading: Float = Float.NaN
+
+	var colourARGB: Int = 0
+	var altitudeColor: Int = 0
+	var speedColor: Int = 0
+	var slopeColor: Int = 0
+
+	var deleted: Boolean = false
+	var firstPoint: Boolean = false
+	var lastPoint: Boolean = false
+
 	var attributes: PointAttributes? = null
+	private var metadata: WaypointMetadata? = null
+
+	var name: String?
+		get() = metadata?.name
+		set(value) = setMetadataValue(value) { name = it }
+
+	var desc: String?
+		get() = metadata?.desc
+		set(value) = setMetadataValue(value) { desc = it }
+
+	var category: String?
+		get() = metadata?.category
+		set(value) = setMetadataValue(value) { category = it }
+
+	var comment: String?
+		get() = metadata?.comment
+		set(value) = setMetadataValue(value) { comment = it }
+
+	var link: Link?
+		get() = metadata?.links?.firstOrNull()
+		set(value) {
+			when {
+				value == null -> metadata?.links?.removeFirstOrNull()
+				metadata?.links.isNullOrEmpty() -> addLink(value)
+				else -> metadata?.links?.set(0, value)
+			}
+		}
+
+	override var links: List<Link>?
+		get() = metadata?.links
+		set(value) = setMetadataValue(if (value.isNullOrEmpty()) null else ArrayList(value)) { links = it }
+
+	private fun ensureMetadata() = metadata ?: WaypointMetadata().also { metadata = it }
+
+	private inline fun <T> setMetadataValue(value: T?, setter: WaypointMetadata.(T?) -> Unit) {
+		val data = metadata
+		if (value != null || data != null) {
+			(data ?: ensureMetadata()).setter(value)
+		}
+	}
+
+	private class WaypointMetadata {
+		var name: String? = null
+		var desc: String? = null
+		var category: String? = null
+		var comment: String? = null
+		var links: MutableList<Link>? = null
+	}
 
 	constructor()
 
@@ -51,8 +99,28 @@ class WptPt : GpxExtensions {
 		slopeColor = wptPt.slopeColor
 		colourARGB = wptPt.colourARGB
 		distance = wptPt.distance
-		link = wptPt.link?.let { Link(it) }
-		getExtensionsToWrite().putAll(wptPt.getExtensionsToWrite())
+		copyLinks(wptPt.metadata?.links)
+		copyExtensions(wptPt)
+	}
+
+	private fun copyLinks(sourceLinks: List<Link>?) {
+		if (!sourceLinks.isNullOrEmpty()) {
+			val links = ArrayList<Link>(sourceLinks.size)
+			for (i in 0 until sourceLinks.size) {
+				links.add(Link(sourceLinks[i]))
+			}
+			ensureMetadata().links = links
+		}
+	}
+
+	override fun addLink(link: Link) {
+		val data = ensureMetadata()
+		val links = data.links ?: ArrayList<Link>().also { data.links = it }
+		links.add(link)
+	}
+
+	override fun removeLink(link: Link) {
+		metadata?.links?.remove(link)
 	}
 
 	fun getColor(): Int {
@@ -77,8 +145,8 @@ class WptPt : GpxExtensions {
 		lon: Double,
 		time: Long,
 		ele: Double,
-		speed: Double,
-		hdop: Double
+		speed: Float,
+		hdop: Float
 	) : this(lat, lon, time, ele, speed, hdop, Float.NaN)
 
 	constructor(
@@ -86,8 +154,8 @@ class WptPt : GpxExtensions {
 		lon: Double,
 		time: Long,
 		ele: Double,
-		speed: Double,
-		hdop: Double,
+		speed: Float,
+		hdop: Float,
 		heading: Float
 	) {
 		this.lat = lat
@@ -119,12 +187,18 @@ class WptPt : GpxExtensions {
 		setBackgroundType(background)
 	}
 
-	fun isVisible(): Boolean {
-		return true
-	}
+	fun getKey() = "${name.orEmpty()}__${category.orEmpty()}"
 
 	fun getIconName(): String? {
 		return getExtensionsToRead()[GpxUtilities.ICON_NAME_EXTENSION]
+	}
+
+	fun isHidden(): Boolean {
+		return getExtensionsToRead()[GpxUtilities.HIDDEN_EXTENSION]?.toBoolean() ?: false
+	}
+
+	fun isPinned(): Boolean {
+		return getExtensionsToRead()[GpxUtilities.PINNED_EXTENSION]?.toBoolean() ?: false
 	}
 
 	fun getIconNameOrDefault(): String {
@@ -204,8 +278,13 @@ class WptPt : GpxExtensions {
 		}
 	}
 
-	fun setHidden(hidden: String) {
-		getExtensionsToWrite()[GpxUtilities.HIDDEN_EXTENSION] = hidden
+	fun setHidden(hidden: String?) {
+		val extensionsToWrite = getExtensionsToWrite()
+		if (hidden == "true") {
+			extensionsToWrite[GpxUtilities.HIDDEN_EXTENSION] = hidden
+		} else {
+			extensionsToWrite.remove(GpxUtilities.HIDDEN_EXTENSION)
+		}
 	}
 
 	fun setProfileType(profileType: String) {
@@ -279,8 +358,8 @@ class WptPt : GpxExtensions {
 				lonAdjusted,
 				currentTimeMillis(),
 				Double.NaN,
-				0.0,
-				Double.NaN
+				0.0f,
+				Float.NaN
 			)
 			point.name = name
 			point.category = category
@@ -314,26 +393,21 @@ class WptPt : GpxExtensions {
 		category = pt.category
 
 		val extensions = pt.getExtensionsToRead()
+
 		val color = extensions[GpxUtilities.COLOR_NAME_EXTENSION]
-		if (color != null) {
-			setColor(color)
-		}
+		setColor(color)
+
 		val iconName = extensions[GpxUtilities.ICON_NAME_EXTENSION]
-		if (iconName != null) {
-			setIconName(iconName)
-		}
+		setIconName(iconName)
+
 		val backgroundType = extensions[GpxUtilities.BACKGROUND_TYPE_EXTENSION]
-		if (backgroundType != null) {
-			setBackgroundType(backgroundType)
-		}
+		setBackgroundType(backgroundType)
+
 		val address = extensions[GpxUtilities.ADDRESS_EXTENSION]
-		if (address != null) {
-			setAddress(address)
-		}
+		setAddress(address)
+
 		val hidden = extensions[GpxUtilities.HIDDEN_EXTENSION]
-		if (hidden != null) {
-			setHidden(hidden)
-		}
+		setHidden(hidden)
 	}
 
 	fun getSpecialPointType(): String? {

@@ -5,7 +5,6 @@ import static android.bluetooth.BluetoothDevice.BOND_BONDING;
 import static android.bluetooth.BluetoothDevice.BOND_NONE;
 import static android.bluetooth.BluetoothGatt.GATT_SUCCESS;
 
-import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
@@ -16,13 +15,17 @@ import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothProfile;
+import android.bluetooth.le.BluetoothLeScanner;
+import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanFilter;
+import android.bluetooth.le.ScanResult;
+import android.bluetooth.le.ScanSettings;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.annotation.RequiresPermission;
 
 import net.osmand.PlatformUtil;
 import net.osmand.plus.plugins.externalsensors.GattAttributes;
@@ -34,10 +37,12 @@ import net.osmand.plus.plugins.externalsensors.devices.sensors.SensorData;
 import net.osmand.plus.plugins.externalsensors.devices.sensors.ble.BLEAbstractSensor;
 import net.osmand.plus.plugins.externalsensors.devices.sensors.ble.BLEBatterySensor;
 import net.osmand.plus.utils.AndroidUtils;
+import net.osmand.util.Algorithms;
 
 import org.apache.commons.logging.Log;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Queue;
@@ -46,7 +51,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 public abstract class BLEAbstractDevice extends AbstractDevice<BLEAbstractSensor> {
 
-	private static final Log LOG = PlatformUtil.getLog(BLEAbstractDevice.class);
+	protected static final Log LOG = PlatformUtil.getLog(BLEAbstractDevice.class);
 
 	protected BluetoothAdapter bluetoothAdapter;
 	protected BluetoothDevice device;
@@ -56,6 +61,10 @@ public abstract class BLEAbstractDevice extends AbstractDevice<BLEAbstractSensor
 	private final Handler mainHandler = new Handler(Looper.getMainLooper());
 	private final Queue<Runnable> commandQueue = new ConcurrentLinkedQueue<>();
 	private boolean commandQueueBusy;
+	private boolean currentHasActualDataState;
+	@Nullable
+	protected List<BluetoothGattCharacteristic> cachedCharacteristics;
+
 
 	public BLEAbstractDevice(@NonNull BluetoothAdapter bluetoothAdapter, @NonNull String deviceId) {
 		super(deviceId);
@@ -119,7 +128,7 @@ public abstract class BLEAbstractDevice extends AbstractDevice<BLEAbstractSensor
 	}
 
 	@NonNull
-	private List<BluetoothGattCharacteristic> getCharacteristics() {
+	protected List<BluetoothGattCharacteristic> getCharacteristics() {
 		List<BluetoothGattCharacteristic> characteristics = new ArrayList<>();
 		List<BluetoothGattService> services = getSupportedGattServices();
 		if (services != null) {
@@ -131,40 +140,70 @@ public abstract class BLEAbstractDevice extends AbstractDevice<BLEAbstractSensor
 		return characteristics;
 	}
 
+	@SuppressLint("MissingPermission")
+	protected void onGattConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
+		LOG.debug("status: " + status);
+		LOG.debug("newState: " + newState);
+		LOG.debug("currentState: " + getCurrentState());
+		if (status == GATT_SUCCESS) {
+			if (newState == BluetoothProfile.STATE_CONNECTED) {
+				int bondState = device.getBondState();
+
+				if (bondState == BOND_NONE || bondState == BOND_BONDED) {
+					LOG.debug("Discovering services");
+					boolean result = gatt.discoverServices();
+
+					if (!result) {
+						LOG.error("DiscoverServices failed to start");
+					}
+				} else if (bondState == BOND_BONDING) {
+					LOG.debug("Waiting for bonding to complete");
+				}
+				setCurrentState(DeviceConnectionState.CONNECTED);
+				fireDeviceConnectedEvent();
+			} else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+				fireDeviceDisconnectedEvent();
+				gatt.close();
+				LOG.debug("GATT disconnected (newState == BluetoothProfile.STATE_DISCONNECTED)");
+				bluetoothGatt = null;
+				setCurrentState(DeviceConnectionState.DISCONNECTED);
+			}
+		} else {
+			LOG.debug("GATT disconnected (status != GATT_SUCCESS)");
+			fireDeviceDisconnectedEvent();
+			gatt.close();
+			bluetoothGatt = null;
+			setCurrentState(DeviceConnectionState.DISCONNECTED);
+		}
+	}
+
+	@SuppressLint("MissingPermission")
+	protected void onGattServicesDiscovered(BluetoothGatt gatt, int status) {
+		if (status == BluetoothGatt.GATT_SUCCESS) {
+			gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
+			List<BluetoothGattService> services = gatt.getServices();
+			LOG.debug(String.format(Locale.US, "discovered %d services for '%s'", services.size(), gatt.getDevice().getName()));
+			if (Algorithms.isEmpty(cachedCharacteristics)) {
+				cachedCharacteristics = getCharacteristics();
+			}
+			for (BLEAbstractSensor sensor : sensors) {
+				sensor.requestCharacteristic(cachedCharacteristics);
+			}
+			enqueueCommand(() -> {
+				if (!gatt.readRemoteRssi()) {
+					completedCommand();
+				}
+			});
+		} else {
+			LOG.debug("onServicesDiscovered received: " + status);
+		}
+	}
+
 	private final BluetoothGattCallback gattCallback = new BluetoothGattCallback() {
 		@SuppressLint("MissingPermission")
 		@Override
 		public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
-			LOG.debug("status: " + status);
-			LOG.debug("newState: " + newState);
-			if (status == GATT_SUCCESS) {
-				if (newState == BluetoothProfile.STATE_CONNECTED) {
-					int bondState = device.getBondState();
-
-					if (bondState == BOND_NONE || bondState == BOND_BONDED) {
-						LOG.debug("Discovering services");
-						boolean result = gatt.discoverServices();
-
-						if (!result) {
-							LOG.error("DiscoverServices failed to start");
-						}
-					} else if (bondState == BOND_BONDING) {
-						LOG.debug("Waiting for bonding to complete");
-					}
-					setCurrentState(DeviceConnectionState.CONNECTED);
-					fireDeviceConnectedEvent();
-				} else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-					fireDeviceDisconnectedEvent();
-					gatt.close();
-					bluetoothGatt = null;
-					setCurrentState(DeviceConnectionState.DISCONNECTED);
-				}
-			} else {
-				fireDeviceDisconnectedEvent();
-				gatt.close();
-				bluetoothGatt = null;
-				setCurrentState(DeviceConnectionState.DISCONNECTED);
-			}
+			onGattConnectionStateChange(gatt, status, newState);
 		}
 
 		@SuppressLint("MissingPermission")
@@ -176,22 +215,7 @@ public abstract class BLEAbstractDevice extends AbstractDevice<BLEAbstractSensor
 				setCurrentState(DeviceConnectionState.DISCONNECTED);
 				return;
 			}
-			if (status == BluetoothGatt.GATT_SUCCESS) {
-				List<BluetoothGattService> services = gatt.getServices();
-				LOG.debug(String.format(Locale.US, "discovered %d services for '%s'", services.size(), gatt.getDevice().getName()));
-
-				List<BluetoothGattCharacteristic> characteristics = getCharacteristics();
-				for (BLEAbstractSensor sensor : sensors) {
-					sensor.requestCharacteristic(characteristics);
-				}
-				enqueueCommand(() -> {
-					if (!gatt.readRemoteRssi()) {
-						completedCommand();
-					}
-				});
-			} else {
-				LOG.debug("onServicesDiscovered received: " + status);
-			}
+			onGattServicesDiscovered(gatt, status);
 		}
 
 		@Override
@@ -215,8 +239,17 @@ public abstract class BLEAbstractDevice extends AbstractDevice<BLEAbstractSensor
 		public void onCharacteristicChanged(BluetoothGatt gatt,
 		                                    BluetoothGattCharacteristic characteristic) {
 			callbackHandler.post(() -> {
+				boolean hasActualState = false;
 				for (BLEAbstractSensor sensor : sensors) {
+					sensor.checkStaleData(characteristic);
 					sensor.onCharacteristicChanged(gatt, characteristic);
+					if (sensor.hasActualData()) {
+						hasActualState = true;
+					}
+				}
+				if (hasActualState != currentHasActualDataState) {
+					currentHasActualDataState = hasActualState;
+					fireDeviceActualStateChanged();
 				}
 			});
 		}
@@ -232,9 +265,14 @@ public abstract class BLEAbstractDevice extends AbstractDevice<BLEAbstractSensor
 		@Override
 		public void onDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor, int status) {
 			super.onDescriptorWrite(gatt, descriptor, status);
-			completedCommand();
+			onDescriptorWriteCompleted();
+
 		}
 	};
+
+	protected void onDescriptorWriteCompleted() {
+		completedCommand();
+	}
 
 	@SuppressLint("MissingPermission")
 	@Override
@@ -245,7 +283,13 @@ public abstract class BLEAbstractDevice extends AbstractDevice<BLEAbstractSensor
 		}
 		if (isDisconnected()) {
 			if (bluetoothAdapter == null) {
-				LOG.debug("BluetoothAdapter not initialized");
+				LOG.debug("BluetoothAdapter not initialized on connect");
+				return false;
+			}
+
+			device = bluetoothAdapter.getRemoteDevice(deviceId);
+			if (device == null) {
+				LOG.debug("Device not found");
 				return false;
 			}
 
@@ -257,19 +301,15 @@ public abstract class BLEAbstractDevice extends AbstractDevice<BLEAbstractSensor
 					}
 					return true;
 				} else {
+					bluetoothGatt.disconnect();
+					bluetoothGatt.close();
+					bluetoothGatt = null;
 					return false;
 				}
 			}
 
-			device = bluetoothAdapter.getRemoteDevice(deviceId);
-
-			if (device == null) {
-				LOG.debug("Device not found");
-				return false;
-			}
-
-			bluetoothGatt = device.connectGatt(context, true, gattCallback, BluetoothDevice.TRANSPORT_LE);
-			LOG.debug("Trying to create new connection");
+			connectAfterScan(context, deviceId);
+			LOG.debug("Trying to create new connection " + device.getAddress() + ". gatt " + bluetoothGatt);
 			setCurrentState(DeviceConnectionState.CONNECTING);
 			for (DeviceListener listener : listeners) {
 				listener.onDeviceConnecting(this);
@@ -278,15 +318,44 @@ public abstract class BLEAbstractDevice extends AbstractDevice<BLEAbstractSensor
 		return true;
 	}
 
+	public void connectAfterScan(Context ctx, String targetAddress) {
+		LOG.debug("scan to connect to " + targetAddress);
+		if (bluetoothAdapter != null && !bluetoothAdapter.isDiscovering()) {
+			BluetoothLeScanner scanner = bluetoothAdapter.getBluetoothLeScanner();
+			ScanSettings settings = new ScanSettings.Builder()
+					.setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+					.setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
+					.setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT)
+					.setReportDelay(0L)
+					.build();
+			ScanFilter filter = new ScanFilter.Builder().setDeviceAddress(targetAddress).build();
+			scanner.startScan(Collections.singletonList(filter), settings, new ScanCallback() {
+				@Override
+				public void onScanResult(int callbackType, ScanResult result) {
+					scanner.stopScan(this);
+					bluetoothGatt = result.getDevice().connectGatt(ctx, false, gattCallback, BluetoothDevice.TRANSPORT_AUTO);
+				}
+
+				@Override
+				public void onScanFailed(int errorCode) {
+					super.onScanFailed(errorCode);
+					LOG.debug("robustScan failed " + errorCode);
+				}
+			});
+		}
+	}
+
 	@SuppressLint("MissingPermission")
 	@Override
 	public boolean disconnect() {
 		setCurrentState(DeviceConnectionState.DISCONNECTED);
 		if (bluetoothAdapter == null || bluetoothGatt == null) {
-			LOG.debug("BluetoothAdapter not initialized");
+			LOG.debug("BluetoothAdapter not initialized on disconnect");
 			return false;
 		}
 		bluetoothGatt.disconnect();
+		bluetoothGatt.close();
+		bluetoothGatt = null;
 		device = null;
 		return true;
 	}
@@ -315,23 +384,30 @@ public abstract class BLEAbstractDevice extends AbstractDevice<BLEAbstractSensor
 	@SuppressLint("MissingPermission")
 	public void setCharacteristicNotification(BluetoothGattCharacteristic characteristic,
 	                                          boolean enabled) {
-		if (bluetoothAdapter == null || bluetoothGatt == null) {
+		BluetoothGatt gatt = bluetoothGatt;
+		if (bluetoothAdapter == null || gatt == null) {
 			return;
 		}
-		boolean res = bluetoothGatt.setCharacteristicNotification(characteristic, enabled);
+		boolean res = gatt.setCharacteristicNotification(characteristic, enabled);
 		if (!res) {
 			LOG.error("Device setCharacteristicNotification failed " + getName());
 		}
 
 		BluetoothGattDescriptor descriptor =
 				characteristic.getDescriptor(GattAttributes.UUID_CHARACTERISTIC_CLIENT_CONFIG);
-		descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-		enqueueCommand(() -> {
-			if (!bluetoothGatt.writeDescriptor(descriptor)) {
-				LOG.error("Device writeDescriptor failed " + getName());
-				completedCommand();
-			}
-		});
+		if (descriptor == null) {
+			LOG.error("Device CONFIG Descriptor missed for characteristic " + characteristic);
+		} else {
+			descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+			enqueueCommand(() -> {
+				if (!gatt.writeDescriptor(descriptor)) {
+					LOG.error("Device writeDescriptor failed " + getName());
+					completedCommand();
+				} else {
+					LOG.debug("Device writeDescriptor success " + characteristic);
+				}
+			});
+		}
 	}
 
 	private boolean enqueueCommand(@NonNull Runnable command) {

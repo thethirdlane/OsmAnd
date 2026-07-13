@@ -32,6 +32,7 @@ import androidx.appcompat.content.res.AppCompatResources;
 import androidx.appcompat.widget.AppCompatImageView;
 import androidx.cardview.widget.CardView;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
 import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
@@ -39,17 +40,19 @@ import androidx.fragment.app.FragmentManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import net.osmand.PlatformUtil;
+import net.osmand.plus.base.MenuBottomSheetDialogFragment;
 import net.osmand.plus.shared.SharedUtil;
 import net.osmand.data.LatLon;
 import net.osmand.plus.charts.ChartModeBottomSheet;
 import net.osmand.plus.charts.GPXDataSetType;
+import net.osmand.plus.utils.InsetTarget;
+import net.osmand.plus.utils.InsetTarget.Type;
+import net.osmand.plus.utils.InsetTargetsCollection;
 import net.osmand.shared.gpx.GpxFile;
 import net.osmand.shared.gpx.primitives.TrkSegment;
-import net.osmand.plus.NavigationService;
 import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
-import net.osmand.plus.base.SideMenuBottomSheetDialogFragment;
 import net.osmand.plus.base.bottomsheetmenu.BaseBottomSheetItem;
 import net.osmand.plus.charts.TrackChartPoints;
 import net.osmand.plus.helpers.AndroidUiHelper;
@@ -79,8 +82,9 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
-public class TripRecordingBottomSheet extends SideMenuBottomSheetDialogFragment implements SegmentActionsListener {
+public class TripRecordingBottomSheet extends MenuBottomSheetDialogFragment implements SegmentActionsListener {
 
 	public static final String TAG = TripRecordingBottomSheet.class.getSimpleName();
 	private static final Log LOG = PlatformUtil.getLog(TripRecordingBottomSheet.class);
@@ -89,8 +93,6 @@ public class TripRecordingBottomSheet extends SideMenuBottomSheetDialogFragment 
 	public static final GPXTabItemType[] INIT_TAB_ITEMS =
 			{GPX_TAB_ITEM_GENERAL, GPX_TAB_ITEM_ALTITUDE, GPX_TAB_ITEM_SPEED};
 
-	private OsmandApplication app;
-	private OsmandSettings settings;
 	private SavingTrackHelper helper;
 	private OsmandMonitoringPlugin plugin;
 
@@ -123,18 +125,9 @@ public class TripRecordingBottomSheet extends SideMenuBottomSheetDialogFragment 
 		return settings.SAVE_GLOBAL_TRACK_TO_GPX.get();
 	}
 
-	public static void showInstance(@NonNull FragmentManager fragmentManager) {
-		if (!fragmentManager.isStateSaved()) {
-			TripRecordingBottomSheet fragment = new TripRecordingBottomSheet();
-			fragment.show(fragmentManager, TAG);
-		}
-	}
-
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		app = requiredMyApplication();
-		settings = app.getSettings();
 		helper = app.getSavingTrackHelper();
 		plugin = PluginsHelper.getPlugin(OsmandMonitoringPlugin.class);
 		selectedGpxFile = helper.getCurrentTrack();
@@ -142,7 +135,7 @@ public class TripRecordingBottomSheet extends SideMenuBottomSheetDialogFragment 
 			graphsAdapter.updateGraph(graphTabPosition);
 			boolean showSegmentsTab = false;
 			if (graphsAdapter.isUseSingleMainTab()) {
-				List<GPXDataSetType[]> availableYAxis = new ArrayList<>();
+				List<GPXDataSetType> availableYAxis = new ArrayList<>();
 				availableYAxis.addAll(ChartModeBottomSheet.getAvailableDefaultYTypes(selectedGpxFile.getTrackAnalysis(app)));
 				availableYAxis.addAll(ChartModeBottomSheet.getAvailableSensorYTypes(selectedGpxFile.getTrackAnalysis(app)));
 				if (!Algorithms.isEmpty(availableYAxis)) {
@@ -157,9 +150,7 @@ public class TripRecordingBottomSheet extends SideMenuBottomSheetDialogFragment 
 
 	@Override
 	public void createMenuItems(Bundle savedInstanceState) {
-		LayoutInflater inflater = UiUtilities.getInflater(getContext(), nightMode);
-
-		View itemView = inflater.inflate(R.layout.trip_recording_fragment, null, false);
+		View itemView = inflate(R.layout.trip_recording_fragment);
 		items.add(new BaseBottomSheetItem.Builder()
 				.setCustomView(itemView)
 				.create());
@@ -181,15 +172,22 @@ public class TripRecordingBottomSheet extends SideMenuBottomSheetDialogFragment 
 		blockStatisticsBuilder.setBlocksView(statBlocks, false);
 		blockStatisticsBuilder.setBlocksClickable(false);
 		blockStatisticsBuilder.setTabItem(GPX_TAB_ITEM_GENERAL);
-		blockStatisticsBuilder.initStatBlocks(null,
-				ContextCompat.getColor(app, ColorUtilities.getActiveColorId(nightMode)), null);
+		blockStatisticsBuilder.initStatBlocks(
+				null, ColorUtilities.getActiveColor(app, nightMode), null);
+	}
+
+	@Override
+	public InsetTargetsCollection getInsetTargets() {
+		InsetTargetsCollection collection = super.getInsetTargets();
+		collection.removeType(Type.SCROLLABLE);
+		collection.replace(InsetTarget.createBottomContainer(R.id.quadruple_bottom_buttons));
+		return collection;
 	}
 
 	@Override
 	protected void setupBottomButtons(ViewGroup view) {
-		LayoutInflater themedInflater = UiUtilities.getInflater(view.getContext(), nightMode);
-		int contentPadding = getDimen(R.dimen.content_padding);
-		View buttonsContainer = themedInflater.inflate(R.layout.preference_button_with_icon_quadruple, null);
+		int contentPadding = getDimensionPixelSize(R.dimen.content_padding);
+		View buttonsContainer = inflate(R.layout.preference_button_with_icon_quadruple);
 		buttonsContainer.setPadding(contentPadding, contentPadding, contentPadding, contentPadding);
 		view.addView(buttonsContainer);
 
@@ -332,7 +330,7 @@ public class TripRecordingBottomSheet extends SideMenuBottomSheetDialogFragment 
 		graphsAdapter.setHideStatistics(true);
 		graphsAdapter.setHideJoinGapsBottomButtons(true);
 		graphsAdapter.setUseSingleMainTab(true);
-		graphsAdapter.setAxisPreferences(settings.TRIP_RECORDING_X_AXIS, settings.TRIP_RECORDING_Y_AXIS);
+		graphsAdapter.setAxisPreferences(settings.TRIP_RECORDING_Y_AXIS, settings.TRIP_RECORDING_X_AXIS);
 
 		pager.setAdapter(graphsAdapter);
 		tabLayout.setViewPager(pager);
@@ -704,16 +702,15 @@ public class TripRecordingBottomSheet extends SideMenuBottomSheetDialogFragment 
 	}
 
 	@Override
-	protected void setupHeightAndBackground(View mainView) {
+	protected void setupHeightAndBackground(@Nullable View mainView, @NonNull Insets sysBars) {
 		Activity activity = getActivity();
-		if (activity == null) {
+		if (activity == null || mainView == null) {
 			return;
 		}
 		if (AndroidUiHelper.isOrientationPortrait(activity)) {
-			super.setupHeightAndBackground(mainView);
+			super.setupHeightAndBackground(mainView, sysBars);
 			return;
 		}
-
 		mainView.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
 			@Override
 			public void onGlobalLayout() {
@@ -722,10 +719,17 @@ public class TripRecordingBottomSheet extends SideMenuBottomSheetDialogFragment 
 				View contentView = mainView.findViewById(R.id.scroll_view);
 				contentView.getLayoutParams().height = ViewGroup.LayoutParams.MATCH_PARENT;
 				contentView.requestLayout();
-				boolean showTopShadow = AndroidUtils.getScreenHeight(activity) - AndroidUtils.getStatusBarHeight(activity)
+				boolean showTopShadow = AndroidUtils.getScreenHeight(activity) - sysBars.top
 						- mainView.getHeight() >= AndroidUtils.dpToPx(activity, 8);
 				drawTopShadow(showTopShadow);
 			}
 		});
+	}
+
+	public static void showInstance(@NonNull FragmentManager fragmentManager) {
+		if (AndroidUtils.isFragmentCanBeAdded(fragmentManager, TAG)) {
+			TripRecordingBottomSheet fragment = new TripRecordingBottomSheet();
+			fragment.show(fragmentManager, TAG);
+		}
 	}
 }

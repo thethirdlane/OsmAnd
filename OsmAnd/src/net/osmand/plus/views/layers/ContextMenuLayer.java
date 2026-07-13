@@ -11,6 +11,7 @@ import android.graphics.PointF;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.os.Vibrator;
+import android.util.Pair;
 import android.view.GestureDetector;
 import android.view.GestureDetector.SimpleOnGestureListener;
 import android.view.MotionEvent;
@@ -31,9 +32,11 @@ import net.osmand.core.android.MapRendererView;
 import net.osmand.core.jni.*;
 import net.osmand.data.Amenity;
 import net.osmand.data.BackgroundType;
+import net.osmand.data.BaseDetailsObject;
 import net.osmand.data.LatLon;
 import net.osmand.data.PointDescription;
 import net.osmand.data.RotatedTileBox;
+import net.osmand.plus.OsmandApplication;
 import net.osmand.plus.R;
 import net.osmand.plus.activities.MapActivity;
 import net.osmand.plus.activities.MapActivityActions;
@@ -49,9 +52,7 @@ import net.osmand.plus.utils.AndroidUtils;
 import net.osmand.plus.utils.NativeUtilities;
 import net.osmand.plus.views.AddGpxPointBottomSheetHelper;
 import net.osmand.plus.views.AddGpxPointBottomSheetHelper.NewGpxPoint;
-import net.osmand.plus.views.MoveMarkerBottomSheetHelper;
 import net.osmand.plus.views.OsmandMapTileView;
-import net.osmand.plus.views.layers.MapSelectionResult.SelectedMapObject;
 import net.osmand.plus.views.layers.base.OsmandMapLayer;
 import net.osmand.plus.views.layers.geometry.GeometryWayDrawer;
 import net.osmand.plus.widgets.ctxmenu.ContextMenuAdapter;
@@ -62,15 +63,17 @@ import net.osmand.util.MapUtils;
 import org.apache.commons.logging.Log;
 
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map.Entry;
 
 import gnu.trove.list.array.TIntArrayList;
 
-public class ContextMenuLayer extends OsmandMapLayer {
+public class ContextMenuLayer extends OsmandMapLayer implements ChangeMarkerPositionHandler {
 
 	private static final Log LOG = PlatformUtil.getLog(ContextMenuLayer.class);
 	public static final int VIBRATE_SHORT = 100;
+	public static final int MARKER_ORDER_DIFF = 100;
 
 	private MapContextMenu menu;
 	private MapMultiSelectionMenu multiSelectionMenu;
@@ -85,13 +88,11 @@ public class ContextMenuLayer extends OsmandMapLayer {
 
 	private GestureDetector movementListener;
 
-	private MoveMarkerBottomSheetHelper mMoveMarkerBottomSheetHelper;
 	private AddGpxPointBottomSheetHelper mAddGpxPointBottomSheetHelper;
 	private boolean mInChangeMarkerPositionMode;
 	private boolean cancelApplyingNewMarkerPosition;
 	private LatLon applyingMarkerLatLon;
 	private IContextMenuProvider selectedObjectContextMenuProvider;
-	private boolean mInGpxDetailsMode;
 	private boolean mInAddGpxPointMode;
 	private boolean carView;
 
@@ -121,15 +122,12 @@ public class ContextMenuLayer extends OsmandMapLayer {
 			menu = mapActivity.getContextMenu();
 			multiSelectionMenu = menu.getMultiSelectionMenu();
 			movementListener = new GestureDetector(mapActivity, new MenuLayerOnGestureListener());
-			mMoveMarkerBottomSheetHelper = new MoveMarkerBottomSheetHelper(mapActivity, this);
 			mAddGpxPointBottomSheetHelper = new AddGpxPointBottomSheetHelper(mapActivity, this);
 		} else {
 			menu = null;
 			multiSelectionMenu = null;
 			movementListener = null;
-			mInChangeMarkerPositionMode = false;
 			mInAddGpxPointMode = false;
-			mMoveMarkerBottomSheetHelper = null;
 			mAddGpxPointBottomSheetHelper = null;
 		}
 	}
@@ -139,8 +137,8 @@ public class ContextMenuLayer extends OsmandMapLayer {
 	}
 
 	@Override
-	public void destroyLayer() {
-		super.destroyLayer();
+	protected void cleanupResources() {
+		super.cleanupResources();
 		clearContextMarkerCollection();
 		clearOutlineCollection();
 	}
@@ -210,21 +208,12 @@ public class ContextMenuLayer extends OsmandMapLayer {
 		boolean markerCustomized = false;
 		boolean clearSelectedObject = true;
 		if (selectedObject != null) {
-			TIntArrayList x = null;
-			TIntArrayList y = null;
-			if (selectedObject instanceof Amenity amenity) {
-				x = amenity.getX();
-				y = amenity.getY();
-			} else if (selectedObject instanceof RenderedObject object) {
-				x = object.getX();
-				y = object.getY();
-			}  else if (selectedObject instanceof PlaceDetailsObject object) {
-				Amenity amenity = object.getSyntheticAmenity();
-				x = amenity.getX();
-				y = amenity.getY();
-			} else if (selectedObject instanceof AidlMapPointWrapper) {
-				markerCustomized = true;
-			}
+			markerCustomized = selectedObject instanceof AidlMapPointWrapper;
+
+			Pair<TIntArrayList, TIntArrayList> pair = getCoordinates(selectedObject);
+			TIntArrayList x = pair != null ? pair.first : null;
+			TIntArrayList y = pair != null ? pair.second : null;
+
 			if (x != null && y != null && x.size() > 2) {
 				if (hasMapRenderer) {
 					clearSelectedObject = false;
@@ -233,7 +222,9 @@ public class ContextMenuLayer extends OsmandMapLayer {
 						VectorLinesCollection outlineCollection = new VectorLinesCollection();
 						QVectorPointI points = new QVectorPointI();
 						for (int i = 0; i < x.size(); i++) {
-							points.add(new PointI(x.get(i), y.get(i)));
+							int ix = x.get(i);
+							int iy = y.get(i);
+							points.add(new PointI(ix, iy));
 						}
 						VectorLineBuilder builder = new VectorLineBuilder();
 						builder.setPoints(points)
@@ -292,14 +283,12 @@ public class ContextMenuLayer extends OsmandMapLayer {
 			return;
 		}
 
-		boolean showMarker = false;
+		LatLon latLon = null;
 		if (mInChangeMarkerPositionMode) {
+			// is it needed?
 			if (menu != null && menu.getObject() == null) {
 				canvas.translate(box.getPixWidth() / 2f - contextMarker.getWidth() / 2f, box.getPixHeight() / 2f - contextMarker.getHeight());
 				contextMarker.draw(canvas);
-			}
-			if (mMoveMarkerBottomSheetHelper != null) {
-				mMoveMarkerBottomSheetHelper.onDraw(box);
 			}
 		} else if (mInAddGpxPointMode) {
 			canvas.translate(box.getPixWidth() / 2f - contextMarker.getWidth() / 2f, box.getPixHeight() / 2f - contextMarker.getHeight());
@@ -308,31 +297,61 @@ public class ContextMenuLayer extends OsmandMapLayer {
 				mAddGpxPointBottomSheetHelper.onDraw(box);
 			}
 		} else if (!markerCustomized) {
-			LatLon latLon = null;
 			if (menu != null && menu.isActive()) {
 				latLon = menu.getLatLon();
 			} else if (mapActivity.getFragmentsHelper().getTrackMenuFragment() != null) {
 				latLon = mapActivity.getFragmentsHelper().getTrackMenuFragment().getLatLon();
 			}
-			if (latLon != null) {
-				if (hasMapRenderer) {
-					PointI loc31 = new PointI(
-							MapUtils.get31TileNumberX(latLon.getLongitude()),
-							MapUtils.get31TileNumberY(latLon.getLatitude()));
-					contextCoreMarker.setPosition(loc31);
-					showMarker = true;
-				} else {
-					int x = (int) box.getPixXFromLatLon(latLon.getLatitude(), latLon.getLongitude());
-					int y = (int) box.getPixYFromLatLon(latLon.getLatitude(), latLon.getLongitude());
-					canvas.translate(x - contextMarker.getWidth() / 2f, y - contextMarker.getHeight());
-					contextMarker.draw(canvas);
+		}
+		drawContextMarker(canvas, box, mapRenderer, latLon);
+
+		mapActivityInvalidated = false;
+	}
+
+	private void drawContextMarker(@NonNull Canvas canvas, @NonNull RotatedTileBox tileBox,
+			@Nullable MapRendererView mapRenderer, @Nullable LatLon latLon) {
+		if (mapRenderer != null) {
+			PointI previous = contextCoreMarker.getPosition();
+			PointI target = latLon != null ? new PointI(MapUtils.get31TileNumberX(latLon.getLongitude()),
+					MapUtils.get31TileNumberY(latLon.getLatitude())) : null;
+
+			boolean wasHidden = contextCoreMarker.isHidden();
+			boolean changed = !NativeUtilities.arePointsEqual(target, previous);
+			if (changed && !wasHidden && previous != null) {
+				remove3DObjectColor(NativeUtilities.getLatLonFromPoint31(previous));
+			}
+			if (target != null) {
+				if (changed) {
+					contextCoreMarker.setPosition(target);
+				}
+				if (!hasHighlight3dObjectColor(latLon)) {
+					OsmandApplication app = getApplication();
+					Integer customColor = app.getAppCustomization().getHighlight3dObjectsColor();
+					int color = customColor != null ? customColor : outlinePaint.getColor();
+
+					add3DObjectColor(latLon, color);
 				}
 			}
+			contextCoreMarker.setIsHidden(target == null);
+		} else if (latLon != null) {
+			int x = (int) tileBox.getPixXFromLatLon(latLon.getLatitude(), latLon.getLongitude());
+			int y = (int) tileBox.getPixYFromLatLon(latLon.getLatitude(), latLon.getLongitude());
+			canvas.translate(x - contextMarker.getWidth() / 2f, y - contextMarker.getHeight());
+			contextMarker.draw(canvas);
 		}
-		if (hasMapRenderer) {
-			contextCoreMarker.setIsHidden(!showMarker);
+	}
+
+	@Nullable
+	private Pair<TIntArrayList, TIntArrayList> getCoordinates(@NonNull Object object) {
+		if (object instanceof Amenity amenity) {
+			return Pair.create(amenity.getX(), amenity.getY());
+		} else if (object instanceof RenderedObject renderedObject) {
+			return Pair.create(renderedObject.getX(), renderedObject.getY());
+		} else if (object instanceof BaseDetailsObject objectDetails) {
+			Amenity amenity = objectDetails.getSyntheticAmenity();
+			return Pair.create(amenity.getX(), amenity.getY());
 		}
-		mapActivityInvalidated = false;
+		return null;
 	}
 
 	public void setSelectOnMap(CallbackWithObject<LatLon> selectOnMap) {
@@ -340,12 +359,41 @@ public class ContextMenuLayer extends OsmandMapLayer {
 	}
 
 	public void updateContextMenu() {
+		resolveMoveableObjectProvider(selectedObject);
+	}
+
+	@Nullable
+	private Object resolveMoveableObject(@Nullable Object object) {
+		if (object instanceof PlaceDetailsObject detailsObject) {
+			Object moveableObject = detailsObject.getFavouritePoint();
+			if (moveableObject == null) {
+				moveableObject = detailsObject.getWptPt();
+			}
+			return moveableObject;
+		}
+		return object;
+	}
+
+	@Nullable
+	private IContextMenuProvider resolveMoveableObjectProvider(@Nullable Object object) {
+		Object moveableObject = resolveMoveableObject(object);
+		if (moveableObject == null) {
+			selectedObjectContextMenuProvider = null;
+			return null;
+		}
+		if (selectedObjectContextMenuProvider instanceof IMoveObjectProvider moveObjectProvider
+				&& moveObjectProvider.isObjectMovable(moveableObject)) {
+			return selectedObjectContextMenuProvider;
+		}
+		selectedObjectContextMenuProvider = null;
 		for (OsmandMapLayer layer : view.getLayers()) {
-			if (layer instanceof IMoveObjectProvider && ((IMoveObjectProvider) layer).isObjectMovable(selectedObject)) {
-				selectedObjectContextMenuProvider = (IContextMenuProvider) layer;
+			if (layer instanceof IContextMenuProvider provider && layer instanceof IMoveObjectProvider moveObjectProvider
+					&& moveObjectProvider.isObjectMovable(moveableObject)) {
+				selectedObjectContextMenuProvider = provider;
 				break;
 			}
 		}
+		return selectedObjectContextMenuProvider;
 	}
 
 	private void recreateContextMarkerCollection() {
@@ -358,7 +406,7 @@ public class ContextMenuLayer extends OsmandMapLayer {
 			}
 			contextMarkerCollection = new MapMarkersCollection();
 			MapMarkerBuilder builder = new MapMarkerBuilder();
-			builder.setBaseOrder(getPointsOrder() - 100);
+			builder.setBaseOrder(getMarkerBaseOrder());
 			builder.setIsAccuracyCircleSupported(false);
 			builder.setIsHidden(true);
 			builder.setPinIcon(NativeUtilities.createSkImageFromBitmap(contextMarkerImage));
@@ -370,9 +418,18 @@ public class ContextMenuLayer extends OsmandMapLayer {
 
 	private void clearContextMarkerCollection() {
 		MapRendererView mapRenderer = getMapRenderer();
-		if (mapRenderer != null && contextMarkerCollection != null) {
-			mapRenderer.removeSymbolsProvider(contextMarkerCollection);
-			contextMarkerCollection = null;
+		if (mapRenderer != null) {
+			if (contextCoreMarker != null) {
+				PointI position = contextCoreMarker.getPosition();
+				LatLon latLon = position != null ? NativeUtilities.getLatLonFromPoint31(position) : null;
+				if (latLon != null && hasHighlight3dObjectColor(latLon)) {
+					remove3DObjectColor(latLon);
+				}
+			}
+			if (contextMarkerCollection != null) {
+				mapRenderer.removeSymbolsProvider(contextMarkerCollection);
+				contextMarkerCollection = null;
+			}
 		}
 	}
 
@@ -438,7 +495,7 @@ public class ContextMenuLayer extends OsmandMapLayer {
 	}
 
 	public Object getMoveableObject() {
-		return mInChangeMarkerPositionMode ? menu.getObject() : null;
+		return mInChangeMarkerPositionMode && menu != null ? resolveMoveableObject(menu.getObject()) : null;
 	}
 
 	public boolean isInChangeMarkerPositionMode() {
@@ -446,7 +503,8 @@ public class ContextMenuLayer extends OsmandMapLayer {
 	}
 
 	public boolean isInGpxDetailsMode() {
-		return mInGpxDetailsMode;
+		MapActivity mapActivity = getMapActivity();
+		return mapActivity != null && mapActivity.getFragmentsHelper().getTrackDetailsMenuFragment() != null;
 	}
 
 	public boolean isInAddGpxPointMode() {
@@ -454,50 +512,46 @@ public class ContextMenuLayer extends OsmandMapLayer {
 	}
 
 	public boolean isObjectMoveable(Object o) {
-		if (o != null && selectedObjectContextMenuProvider != null
-				&& selectedObjectContextMenuProvider instanceof IMoveObjectProvider l) {
-			return l.isObjectMovable(o);
-		}
-		return false;
+		Object moveableObject = resolveMoveableObject(o);
+		return moveableObject != null && resolveMoveableObjectProvider(o) != null;
 	}
 
 	public void applyMovedObject(Object o, LatLon position, ApplyMovedObjectCallback callback) {
-		if (selectedObjectContextMenuProvider != null && !isInAddGpxPointMode()) {
-			if (selectedObjectContextMenuProvider instanceof IMoveObjectProvider l) {
-				if (l.isObjectMovable(o)) {
-					l.applyNewObjectPosition(o, position, callback);
-				}
-			}
+		Object moveableObject = resolveMoveableObject(o);
+		IContextMenuProvider provider = resolveMoveableObjectProvider(o);
+		if (provider instanceof IMoveObjectProvider moveObjectProvider && moveableObject != null && !isInAddGpxPointMode()) {
+			moveObjectProvider.applyNewObjectPosition(moveableObject, position, callback);
 		} else if (mInChangeMarkerPositionMode || mInAddGpxPointMode) {
 			callback.onApplyMovedObject(true, null);
 		}
 	}
 
-	public void applyNewMarkerPosition() {
+	@Nullable
+	@Override
+	public Object getChangeMarkerPositionObject() {
+		return menu != null ? resolveMoveableObject(menu.getObject()) : null;
+	}
+
+	@Nullable
+	@Override
+	public IContextMenuProvider getSelectedObjectContextMenuProvider() {
+		return menu != null ? resolveMoveableObjectProvider(menu.getObject()) : null;
+	}
+
+	public void applyNewMarkerPosition(@NonNull LatLon latLon) {
 		if (!mInChangeMarkerPositionMode) {
 			throw new IllegalStateException("Not in change marker position mode");
 		}
-		if (mMoveMarkerBottomSheetHelper == null) {
-			return;
-		}
 
-		RotatedTileBox tileBox = getMapView().getCurrentRotatedTileBox();
-		PointF newMarkerPosition = getMovableCenterPoint(tileBox);
-		LatLon ll = NativeUtilities.getLatLonFromElevatedPixel(getMapRenderer(), tileBox, newMarkerPosition);
-		applyingMarkerLatLon = ll;
-
+		applyingMarkerLatLon = latLon;
 		Object obj = getMoveableObject();
 		cancelApplyingNewMarkerPosition = false;
-		mMoveMarkerBottomSheetHelper.enterApplyPositionMode();
-		applyMovedObject(obj, ll, new ApplyMovedObjectCallback() {
+		applyMovedObject(obj, latLon, new ApplyMovedObjectCallback() {
 			@Override
 			public void onApplyMovedObject(boolean success, @Nullable Object newObject) {
-				mMoveMarkerBottomSheetHelper.exitApplyPositionMode();
 				if (success && !cancelApplyingNewMarkerPosition) {
-					mMoveMarkerBottomSheetHelper.hide();
 					quitMovingMarker();
 					menu.close();
-
 					view.refreshMap();
 				}
 				selectedObjectContextMenuProvider = null;
@@ -554,14 +608,7 @@ public class ContextMenuLayer extends OsmandMapLayer {
 
 		menu.updateMapCenter(null);
 		menu.hide();
-
-		mInGpxDetailsMode = true;
 		mapActivity.disableDrawer();
-		AndroidUiHelper.setVisibility(mapActivity, View.INVISIBLE,
-				R.id.map_ruler_layout,
-				R.id.map_left_widgets_panel,
-				R.id.map_right_widgets_panel,
-				R.id.map_center_info);
 	}
 
 	public void exitGpxDetailsMode() {
@@ -570,13 +617,7 @@ public class ContextMenuLayer extends OsmandMapLayer {
 			return;
 		}
 
-		mInGpxDetailsMode = false;
 		mapActivity.enableDrawer();
-		AndroidUiHelper.setVisibility(mapActivity, View.VISIBLE,
-				R.id.map_ruler_layout,
-				R.id.map_left_widgets_panel,
-				R.id.map_right_widgets_panel,
-				R.id.map_center_info);
 	}
 
 	private void quitMovingMarker() {
@@ -584,13 +625,7 @@ public class ContextMenuLayer extends OsmandMapLayer {
 		if (mapActivity == null) {
 			return;
 		}
-
 		mInChangeMarkerPositionMode = false;
-		AndroidUiHelper.setVisibility(mapActivity, View.VISIBLE,
-				R.id.map_ruler_layout,
-				R.id.map_left_widgets_panel,
-				R.id.map_right_widgets_panel,
-				R.id.map_center_info);
 	}
 
 	public void quitAddGpxPoint() {
@@ -629,9 +664,9 @@ public class ContextMenuLayer extends OsmandMapLayer {
 		view.refreshMap();
 	}
 
-	private void enterMovingMode(RotatedTileBox tileBox) {
+	private void enterMovingMode(@NonNull RotatedTileBox tileBox) {
 		MapActivity mapActivity = getMapActivity();
-		if (mapActivity == null || mMoveMarkerBottomSheetHelper == null) {
+		if (mapActivity == null) {
 			return;
 		}
 
@@ -656,12 +691,7 @@ public class ContextMenuLayer extends OsmandMapLayer {
 		}
 
 		mInChangeMarkerPositionMode = true;
-		mMoveMarkerBottomSheetHelper.show(menu.getRightIcon());
-		AndroidUiHelper.setVisibility(mapActivity, View.INVISIBLE,
-				R.id.map_ruler_layout,
-				R.id.map_left_widgets_panel,
-				R.id.map_right_widgets_panel,
-				R.id.map_center_info);
+		ChangeMarkerPositionController.showDialog(mapActivity, this);
 
 		view.refreshMap();
 	}
@@ -724,11 +754,32 @@ public class ContextMenuLayer extends OsmandMapLayer {
 		LatLon pointLatLon = result.getPointLatLon();
 		List<SelectedMapObject> selectedObjects = result.getProcessedObjects();
 
+		long objectSelectionThreshold = 0;
 		for (SelectedMapObject selectedObject : selectedObjects) {
+			if (selectedObject.provider() != null) {
+				long selectionThreshold = selectedObject.provider().getSelectionPointOrder(selectedObject.object());
+				if (selectionThreshold <= objectSelectionThreshold) {
+					objectSelectionThreshold = selectionThreshold;
+				}
+			}
+		}
+		ArrayList<SelectedMapObject> objectsAvailableForSelection = new ArrayList<>();
+		for (SelectedMapObject selectedObject : selectedObjects) {
+			if (objectSelectionThreshold < 0) {
+				IContextMenuProvider provider = selectedObject.provider();
+				if (provider instanceof OsmandMapLayer layer && layer.getPointOrder(selectedObject.object()) <= objectSelectionThreshold) {
+					objectsAvailableForSelection.add(selectedObject);
+				} else {
+					continue;
+				}
+			}
 			IContextMenuProvider provider = selectedObject.provider();
 			if (provider != null && provider.runExclusiveAction(selectedObject.object(), showUnknownLocation)) {
 				return true;
 			}
+		}
+		if (objectSelectionThreshold < 0) {
+			selectedObjects = objectsAvailableForSelection;
 		}
 		if (selectedObjects.size() == 1) {
 			SelectedMapObject selectedObject = selectedObjects.get(0);
@@ -737,7 +788,7 @@ public class ContextMenuLayer extends OsmandMapLayer {
 			PointDescription pointDescription = null;
 			IContextMenuProvider provider = selectedObject.provider();
 			if (provider != null) {
-				if (latLon == null) {
+				if (latLon == null || objectSelectionThreshold < 0) {
 					latLon = provider.getObjectLocation(selectedObj);
 				}
 				pointDescription = provider.getObjectName(selectedObj);
@@ -794,11 +845,12 @@ public class ContextMenuLayer extends OsmandMapLayer {
 	public boolean disableLongPressOnMap(PointF point, RotatedTileBox tileBox) {
 		MapActivity mapActivity = getMapActivity();
 		WeatherPlugin plugin = PluginsHelper.getActivePlugin(WeatherPlugin.class);
-		if (mInChangeMarkerPositionMode || mInGpxDetailsMode || mInAddGpxPointMode
+		if (mInChangeMarkerPositionMode || isInGpxDetailsMode() || mInAddGpxPointMode
 				|| mapActivity == null || mapActivity.getMapRouteInfoMenu().isVisible()
 				|| MapRouteInfoMenu.waypointsVisible || MapRouteInfoMenu.followTrackVisible
 				|| mapActivity.getFragmentsHelper().getGpsFilterFragment() != null
 				|| mapActivity.getFragmentsHelper().getDownloadTilesFragment() != null
+				|| mapActivity.getFragmentsHelper().getStarMapFragment() != null
 				|| (plugin != null && plugin.hasCustomForecast())) {
 			return true;
 		}
@@ -844,8 +896,9 @@ public class ContextMenuLayer extends OsmandMapLayer {
 	@Override
 	public boolean onSingleTap(@NonNull PointF point, @NonNull RotatedTileBox tileBox) {
 		MapActivity mapActivity = getMapActivity();
-		if (mapActivity == null || menu == null || mInChangeMarkerPositionMode || mInGpxDetailsMode
+		if (mapActivity == null || menu == null || mInChangeMarkerPositionMode || isInGpxDetailsMode()
 				|| mapActivity.getFragmentsHelper().getGpsFilterFragment() != null
+				|| mapActivity.getFragmentsHelper().getStarMapFragment() != null
 				|| mapActivity.getFragmentsHelper().getDownloadTilesFragment() != null) {
 			return true;
 		}
@@ -913,6 +966,10 @@ public class ContextMenuLayer extends OsmandMapLayer {
 				return true;
 			}
 		}
+		if(menu != null && menu.isActive()) {
+			menu.close();
+			return true;
+		}
 		return false;
 	}
 
@@ -938,7 +995,7 @@ public class ContextMenuLayer extends OsmandMapLayer {
 
 		switch (event.getAction()) {
 			case MotionEvent.ACTION_DOWN:
-				if (!mInChangeMarkerPositionMode && !mInGpxDetailsMode) {
+				if (!mInChangeMarkerPositionMode && !isInGpxDetailsMode()) {
 					PointF pointF = new PointF(event.getX(), event.getY());
 					selectionHelper.acquireTouchedMapObjects(tileBox, pointF, true);
 					if (selectionHelper.hasTouchedMapObjects()) {
@@ -956,14 +1013,21 @@ public class ContextMenuLayer extends OsmandMapLayer {
 		return false;
 	}
 
+	public int getMarkerBaseOrder() {
+		return getPointsOrder() - MARKER_ORDER_DIFF;
+	}
+
 	public interface IContextMenuProvider {
 
-		/**
-		 * @param excludeUntouchableObjects Touchable objects are objects that
-		 *                                  change appearance when touched on map
-		 */
-		void collectObjectsFromPoint(@NonNull MapSelectionResult result,
-		                             boolean unknownLocation, boolean excludeUntouchableObjects);
+		default boolean customizeMapSelectionRules(@NonNull MapSelectionRules rules) {
+			return false;
+		}
+
+		void collectObjectsFromPoint(@NonNull MapSelectionResult result, @NonNull MapSelectionRules rules);
+
+		default boolean collectMapSymbolByExtraId(int extraId, @NonNull MapSelectionResult result) {
+			return false;
+		}
 
 		LatLon getObjectLocation(Object o);
 
@@ -988,11 +1052,23 @@ public class ContextMenuLayer extends OsmandMapLayer {
 		default boolean showMenuAction(@Nullable Object o) {
 			return false;
 		}
+
+		default long getSelectionPointOrder(Object selectedObject) {
+			return 0L;
+		}
 	}
 
 	public interface IMoveObjectProvider {
 
-		boolean isObjectMovable(Object o);
+		boolean isObjectMovable(@Nullable Object o);
+
+		@Nullable
+		Object getMoveableObjectIcon(@NonNull Object o);
+
+		@Nullable
+		default String getMoveableObjectLabel(@NonNull Object o) {
+			return null;
+		}
 
 		void applyNewObjectPosition(@NonNull Object o,
 		                            @NonNull LatLon position,

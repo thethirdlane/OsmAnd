@@ -373,7 +373,7 @@ public abstract class InAppPurchaseHelper {
 
 	public void requestInventory(boolean userRequested) {
 		notifyShowProgress(InAppPurchaseTaskType.REQUEST_INVENTORY);
-//		new RequestInventoryTask(userRequested).executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, (Void) null);
+		new RequestInventoryTask(userRequested).executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, (Void) null);
 	}
 
 	public abstract void purchaseFullVersion(@NonNull Activity activity) throws UnsupportedOperationException;

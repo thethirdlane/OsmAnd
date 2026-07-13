@@ -751,7 +751,14 @@ public class OsmandRenderer {
 							post = vls[i].substring(i + 1);
 						}
 						if(pre.length() > 0) {
-							vs[i*2 ] = Float.parseFloat(pre);
+                            //AP - wrap in try and catch
+                            try {
+                                vs[i * 2] = Float.parseFloat(pre);
+                            }catch(NumberFormatException e) {
+                                log.error("OsmAndRenderer exception, pre: " + pre + ", ex: " + e.getMessage());
+                                e.printStackTrace();
+                            }
+                            //END AP
 						}
 						if(post.length() > 0) {
 							vs[i*2 +1] = Float.parseFloat(post);

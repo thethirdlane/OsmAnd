@@ -17,42 +17,53 @@ public class InAppPurchaseUtils {
 	public static final int TRIPLTEK_PROMO_MONTHS = 12;
 	private static final long ANDROID_AUTO_START_DATE_MS = 10L * 1000L * 60L * 60L * 24L; // 10 days
 
+    //AP - all these function return true.  Super Power.
 	public static boolean isFullVersionPurchased(@NonNull OsmandApplication app) {
-		return app.getSettings().FULL_VERSION_PURCHASED.get();
+//		return app.getSettings().FULL_VERSION_PURCHASED.get();
+        return true;
 	}
 
 	public static boolean isLiveUpdatesPurchased(@NonNull OsmandApplication app) {
-		return app.getSettings().LIVE_UPDATES_PURCHASED.get();
+//		return app.getSettings().LIVE_UPDATES_PURCHASED.get();
+        return true;
 	}
 
 	public static boolean isMapsPlusPurchased(@NonNull OsmandApplication app) {
-		return app.getSettings().OSMAND_MAPS_PURCHASED.get();
+//		return app.getSettings().OSMAND_MAPS_PURCHASED.get();
+        return true;
 	}
 
 	public static boolean isOsmAndProPurchased(@NonNull OsmandApplication app) {
-		return app.getSettings().OSMAND_PRO_PURCHASED.get();
+//		return app.getSettings().OSMAND_PRO_PURCHASED.get();
+        return true;
 	}
 
 	public static boolean isContourLinesPurchased(@NonNull OsmandApplication app) {
-		return app.getSettings().CONTOUR_LINES_PURCHASED.get();
+//		return app.getSettings().CONTOUR_LINES_PURCHASED.get();
+        return true;
 	}
 
 	public static boolean isDepthContoursPurchased(@NonNull OsmandApplication app) {
-		return app.getSettings().DEPTH_CONTOURS_PURCHASED.get();
+//		return app.getSettings().DEPTH_CONTOURS_PURCHASED.get();
+        return true;
 	}
 
 	public static boolean isPromoSubscribed(@NonNull OsmandApplication app) {
-		return app.getSettings().BACKUP_PURCHASE_ACTIVE.get();
+//		return app.getSettings().BACKUP_PURCHASE_ACTIVE.get();
+        return true;
 	}
 
 	public static boolean isMapperUpdatesSubscribed(@NonNull OsmandApplication app) {
-		return app.getSettings().MAPPER_LIVE_UPDATES_EXPIRE_TIME.get() > System.currentTimeMillis();
+//		return app.getSettings().MAPPER_LIVE_UPDATES_EXPIRE_TIME.get() > System.currentTimeMillis();
+        return true;
 	}
 
 
 	public static boolean isFullVersionAvailable(@NonNull OsmandApplication app) {
-		return isFullVersionAvailable(app, true);
+//		return isFullVersionAvailable(app, true);
+        return true;
 	}
+    //END AP
 
 	public static boolean isFullVersionAvailable(@NonNull OsmandApplication app, boolean checkDevBuild) {
 		return isFullVersionPurchased(app) || checkDeveloperBuildIfNeeded(app, checkDevBuild);

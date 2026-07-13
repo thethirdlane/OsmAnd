@@ -168,11 +168,13 @@ public class Version {
 	}
 
 	public static boolean isDeveloperVersion(@NonNull OsmandApplication app) {
-		return getAppName(app).contains("~") || app.getPackageName().equals(FREE_DEV_VERSION_NAME);
+//		return getAppName(app).contains("~") || app.getPackageName().equals(FREE_DEV_VERSION_NAME);
+        return true;
 	}
 
 	public static boolean isDeveloperBuild(@NonNull OsmandApplication app) {
-		return getAppName(app).contains("~");
+//		return getAppName(app).contains("~");
+        return true;
 	}
 
 	public static boolean isTripltekBuild() {

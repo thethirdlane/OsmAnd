@@ -48,11 +48,18 @@ public class InAppPurchaseHelperImpl extends InAppPurchaseHelper {
 	private BillingManager billingManager;
 	private List<ProductDetails> productDetailsList;
 
-	private boolean purchasedLocalFullVersion = false;
-	private boolean purchasedLocalDepthContours = false;
-	private boolean subscribedToLocalLiveUpdates = false;
-	private boolean subscribedToLocalOsmAndPro = false;
-	private boolean subscribedToLocalMaps = false;
+    //AP - Change all to true
+//	private boolean purchasedLocalFullVersion = false;
+//	private boolean purchasedLocalDepthContours = false;
+//	private boolean subscribedToLocalLiveUpdates = false;
+//	private boolean subscribedToLocalOsmAndPro = false;
+//	private boolean subscribedToLocalMaps = false;
+    private boolean purchasedLocalFullVersion = true;
+    private boolean purchasedLocalDepthContours = true;
+    private boolean subscribedToLocalLiveUpdates = true;
+    private boolean subscribedToLocalOsmAndPro = true;
+    private boolean subscribedToLocalMaps = true;
+    //END AP
 
 	/* base64EncodedPublicKey should be YOUR APPLICATION'S PUBLIC KEY
 	 * (that you got from the Google Play developer console). This is not your
@@ -466,16 +473,19 @@ public class InAppPurchaseHelperImpl extends InAppPurchaseHelper {
 					}
 				}
 
+                //AP - instance vars values set to true
 				List<Purchase> completePurchases = new ArrayList<>();
 				Purchase fullVersionPurchase = fullVersion != null ? getPurchase(fullVersion.getSku()) : null;
 				boolean fullVersionPurchased = fullVersionPurchase != null;
-				purchasedLocalFullVersion = fullVersionPurchased;
+//				purchasedLocalFullVersion = fullVersionPurchased;
+                purchasedLocalFullVersion = true;
 				if (fullVersionPurchased) {
 					completePurchases.add(fullVersionPurchase);
 				}
 
 				Purchase depthContoursPurchase = depthContours != null ? getPurchase(depthContours.getSku()) : null;
-				purchasedLocalDepthContours = depthContoursPurchase != null;
+//				purchasedLocalDepthContours = depthContoursPurchase != null;
+                purchasedLocalDepthContours = true;
 
 				boolean subscribedToLiveUpdates = false;
 				boolean subscribedToOsmAndPro = false;
@@ -497,9 +507,12 @@ public class InAppPurchaseHelperImpl extends InAppPurchaseHelper {
 						}
 					}
 				}
-				subscribedToLocalLiveUpdates = subscribedToLiveUpdates;
-				subscribedToLocalOsmAndPro = subscribedToOsmAndPro;
-				subscribedToLocalMaps = subscribedToMaps;
+//				subscribedToLocalLiveUpdates = subscribedToLiveUpdates;
+//				subscribedToLocalOsmAndPro = subscribedToOsmAndPro;
+//				subscribedToLocalMaps = subscribedToMaps;
+                subscribedToLocalLiveUpdates = true;
+                subscribedToLocalOsmAndPro = true;
+                subscribedToLocalMaps = true;
 
 				applyPurchases();
 

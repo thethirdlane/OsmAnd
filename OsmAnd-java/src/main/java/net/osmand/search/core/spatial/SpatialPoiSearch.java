@@ -32,7 +32,6 @@ import net.osmand.osm.PoiFilter;
 import net.osmand.osm.PoiType;
 import net.osmand.search.core.TopIndexFilter;
 import net.osmand.search.core.spatial.SpatialSearchToken.NameIndexAtom;
-import net.osmand.search.core.spatial.SpatialSearchToken.NameIndexAtomXY;
 import net.osmand.search.core.spatial.SpatialTextSearch.SpatialSearchFileCache;
 import net.osmand.search.core.spatial.SpatialTextSearch.SpatialSearchGlobalCache;
 import net.osmand.util.MapUtils;
@@ -48,8 +47,8 @@ public class SpatialPoiSearch {
 	Map<Integer, SpatialPoiType> byId = new ConcurrentHashMap<>();
 	
 	public static class SpatialPoiType {
-		final AbstractPoiType singleType;
-		final String poiAdditional;
+		public final AbstractPoiType singleType;
+		public final String poiAdditional;
 		final List<String> names = new ArrayList<String>();
 		final String key;
 		final int id;
@@ -67,6 +66,14 @@ public class SpatialPoiSearch {
 			this.key = key;
 			this.id = id;
 			this.poiAdditional = additional;
+		}
+
+		public String getKey() {
+			return key;
+		}
+
+		public List<AbstractPoiType> getParentTypes() {
+			return parentTypes;
 		}
 
 		public boolean accept(Amenity a) {
@@ -275,9 +282,8 @@ public class SpatialPoiSearch {
 					if (cs.tokens.contains(t)) {
 						continue;
 					}
-					NameIndexAtomXY xy = new NameIndexAtomXY(null, null, null);
-					NameIndexAtom atom = new NameIndexAtom(a.names.get(0), SpatialSearchToken.POI_CATEGORY_TYPE, 
-							a.id, 0, null, false, -total, total, xy, 0);
+					
+					NameIndexAtom atom = new NameIndexAtom(a.names.get(0), a.id, total);
 					cs.atoms.add(atom);
 					cs.tokens.add(t);
 				}

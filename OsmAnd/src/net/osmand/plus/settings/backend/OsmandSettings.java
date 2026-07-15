@@ -1581,13 +1581,22 @@ public class OsmandSettings {
 		DAYNIGHT_MODE.setModeDefaultValue(ApplicationMode.PEDESTRIAN, DayNightMode.DAY);
 	}
 
+	//AP
 	public final CommonPreference<Boolean> AUTO_ZOOM_MAP = new BooleanPreference(this, "auto_zoom_map_on_off", false).makeProfile().cache();
 
 	{
-		AUTO_ZOOM_MAP.setModeDefaultValue(ApplicationMode.CAR, true);
+		AUTO_ZOOM_MAP.setModeDefaultValue(ApplicationMode.CAR, false);
 		AUTO_ZOOM_MAP.setModeDefaultValue(ApplicationMode.BICYCLE, false);
 		AUTO_ZOOM_MAP.setModeDefaultValue(ApplicationMode.PEDESTRIAN, false);
 	}
+//	public final CommonPreference<Boolean> AUTO_ZOOM_MAP = new BooleanPreference(this, "auto_zoom_map_on_off", false).makeProfile().cache();
+//
+//	{
+//		AUTO_ZOOM_MAP.setModeDefaultValue(ApplicationMode.CAR, true);
+//		AUTO_ZOOM_MAP.setModeDefaultValue(ApplicationMode.BICYCLE, false);
+//		AUTO_ZOOM_MAP.setModeDefaultValue(ApplicationMode.PEDESTRIAN, false);
+//	}
+	//END AP
 
 	public final CommonPreference<AutoZoomMap> AUTO_ZOOM_MAP_SCALE =
 			new EnumStringPreference<AutoZoomMap>(this, "auto_zoom_map_scale", AutoZoomMap.FAR,
@@ -3584,4 +3593,14 @@ public class OsmandSettings {
 	public void setStopOnMissingMaps(boolean state) {
 		STOP_ON_MISSING_MAPS = state;
 	}
+
+    //AP
+    public final OsmandPreference<Boolean> USE_MAP_MARKERS = new BooleanPreference(this, "use_map_markers", true).makeGlobal().cache();
+    public final CommonPreference<Boolean> SHOW_DESTINATION_ARROW = new BooleanPreference(this, "show_destination_arrow", true).makeProfile();
+
+    {
+        SHOW_DESTINATION_ARROW.setModeDefaultValue(ApplicationMode.CAR, true);
+        SHOW_DESTINATION_ARROW.setModeDefaultValue(ApplicationMode.PEDESTRIAN, true);
+    }
+    //End AP
 }

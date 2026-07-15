@@ -482,9 +482,13 @@ public class MapViewTrackingUtilities implements OsmAndLocationListener, IMapLoc
 				: now - lastTimeAutoZooming > autoZoomFrequency;
 	}
 
+
+    //AP - turn off 'forceZoom'
 	public void backToLocationImpl() {
-		backToLocationImpl(15, true);
+//		backToLocationImpl(15, true);
+        backToLocationImpl(15, false);
 	}
+    //End AP
 
 	public void backToLocationImpl(int zoom, boolean forceZoom) {
 		if (mapView != null) {

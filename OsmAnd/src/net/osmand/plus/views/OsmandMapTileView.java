@@ -25,6 +25,7 @@ import android.os.SystemClock;
 import android.util.DisplayMetrics;
 import android.view.*;
 import android.view.GestureDetector.SimpleOnGestureListener;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -675,9 +676,15 @@ public class OsmandMapTileView implements IMapDownloaderCallback {
 		if (!linkedToLocation) {
 			showAndHideMapPosition();
 		}
-		if (app.accessibilityEnabled()) {
-			app.showShortToastMessage(app.getString(R.string.zoomIs) + " " + zoom.getBaseZoom());
-		}
+		//AP - Always show zoom toast
+//		if (application.accessibilityEnabled()) {
+//			Toast.makeText(application, application.getString(R.string.zoomIs) + " " + zoom.getBaseZoom(), Toast.LENGTH_SHORT).show();
+//		}
+			int newZoom = zoom.getBaseZoom();
+			Toast t = Toast.makeText(getApplication(), "Zoom " + newZoom, Toast.LENGTH_SHORT);
+			t.setGravity(Gravity.CENTER, 0, 0);
+			t.show();
+		//End AP
 
 		for (MapZoomChangeListener listener : manualZoomListeners) {
 			listener.onMapZoomChanged(true);

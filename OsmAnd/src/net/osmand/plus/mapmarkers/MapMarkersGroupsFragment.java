@@ -274,8 +274,13 @@ public class MapMarkersGroupsFragment extends BaseNestedFragment implements OsmA
 			}
 
 			private void showMap(LatLon latLon, PointDescription desc, Object objToShow) {
-				settings.setMapLocationToShow(latLon.getLatitude(),
-						latLon.getLongitude(), 15, desc, true, objToShow);
+				//AP dont zoom
+//				mapActivity.getMyApplication().getSettings().setMapLocationToShow(latLon.getLatitude(),
+//						latLon.getLongitude(), 15, desc, true, objToShow);
+                int zoom = mapActivity.getSettings().getLastKnownMapZoom();
+				mapActivity.getSettings().setMapLocationToShow(latLon.getLatitude(),
+						latLon.getLongitude(), zoom, desc, true, objToShow);
+				//END AP
 				MapActivity.launchMapActivityMoveToTop(mapActivity);
 				if (getParentFragment() instanceof DialogFragment parent) {
 					parent.dismiss();

@@ -153,7 +153,7 @@ android {
 			dimension "version"
 //			applicationId "net.osmand.plus.anilfourfive"
 			applicationId "net.osmand.plus.anilfivezero"
-			resValue "string", "app_name", "OsmAndFiveZero"
+			resValue "string", "app_name", "OsmAndFiveZero~"
 			resValue "string", "app_edition", System.getenv("APP_EDITION") ? System.getenv("APP_EDITION") : ""
 		}
 		//END AP

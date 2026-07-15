@@ -438,9 +438,14 @@ public class InAppPurchaseHelperImpl extends InAppPurchaseHelper {
 				}
 
 				// Do we have the live updates?
-				boolean subscribedToLiveUpdates = false;
-				boolean subscribedToOsmAndPro = false;
-				boolean subscribedToMaps = false;
+                //AP - changed initial to true
+//				boolean subscribedToLiveUpdates = false;
+//				boolean subscribedToOsmAndPro = false;
+//				boolean subscribedToMaps = false;
+                boolean subscribedToLiveUpdates = true;
+                boolean subscribedToOsmAndPro = true;
+                boolean subscribedToMaps = true;
+                //End AP
 				for (InAppSubscription s : getSubscriptions().getAllSubscriptions()) {
 					Purchase purchase = getPurchase(s.getSku());
 					if (purchase != null || s.getState().isActive()) {

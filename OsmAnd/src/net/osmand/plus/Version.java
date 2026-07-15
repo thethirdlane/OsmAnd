@@ -169,6 +169,7 @@ public class Version {
 
 	public static boolean isDeveloperVersion(@NonNull OsmandApplication app) {
 //		return getAppName(app).contains("~") || app.getPackageName().equals(FREE_DEV_VERSION_NAME);
+        log.info("AppName in isDeveloperVersion: " + getAppName(app));
         return true;
 	}
 

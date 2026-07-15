@@ -62,6 +62,7 @@ public class InAppPurchaseUtils {
 //		return isFullVersionAvailable(app, true);
         return true;
 	}
+    //END AP
 
 	public static boolean isFullVersionAvailable(@NonNull OsmandApplication app, boolean checkDevBuild) {
 		return isFullVersionPurchased(app) || checkDeveloperBuildIfNeeded(app, checkDevBuild);

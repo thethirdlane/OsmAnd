@@ -320,7 +320,10 @@ public abstract class InAppPurchaseHelper {
 				}
 			}
 		}
-		return false;
+        //AP
+//		return false;
+        return true;
+        //End AP
 	}
 
 	protected void exec(@NonNull InAppPurchaseTaskType taskType, @NonNull InAppCommand command) {

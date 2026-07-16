@@ -35,9 +35,14 @@ public class MyLocationButton extends MapButton {
 	public MyLocationButton(@NonNull Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
 		super(context, attrs, defStyleAttr);
 		buttonState = app.getMapButtonsHelper().getMyLocationButtonState();
+		//private final OnLongClickListener backToLocationWithMenu = v -> moveBackToLocation(true);
+		//AP
+//		setOnClickListener(v -> moveBackToLocation(false));
+//		setOnLongClickListener(v -> moveBackToLocation(true));
 
-		setOnClickListener(v -> moveBackToLocation(false));
-		setOnLongClickListener(v -> moveBackToLocation(true));
+		setOnClickListener(v -> moveBackToLocation(false, true));
+		setOnLongClickListener(v -> moveBackToLocation(false, false));
+		//END AP
 	}
 
 	@Nullable
@@ -81,8 +86,8 @@ public class MyLocationButton extends MapButton {
 					ColorUtilities.getColor(context, R.color.map_widget_blue_pressed));
 		}
 	}
-
-	private boolean moveBackToLocation(boolean showLocationMenu) {
+	//AP
+	private boolean moveBackToLocation(boolean showLocationMenu, boolean resetRatios) {
 		if (OsmAndLocationProvider.isLocationPermissionAvailable(mapActivity)) {
 			if (showLocationMenu) {
 				showContextMenuForMyLocation();
@@ -90,7 +95,9 @@ public class MyLocationButton extends MapButton {
 				if (app.accessibilityEnabled()) {
 					mapActivity.getMapActions().whereAmIDialog();
 				} else {
-					mapActivity.getMapViewTrackingUtilities().backToLocationImpl();
+//					mapActivity.getMapViewTrackingUtilities().backToLocationImpl();
+                    int zoom = mapActivity.getSettings().getLastKnownMapZoom();
+                    mapActivity.getMapViewTrackingUtilities().backToLocationImpl(zoom, false, resetRatios);
 				}
 			}
 		} else {
@@ -100,6 +107,7 @@ public class MyLocationButton extends MapButton {
 		}
 		return false;
 	}
+    //END AP
 
 	private void showContextMenuForMyLocation() {
 		ContextMenuLayer contextMenuLayer = app.getOsmandMap().getMapLayers().getContextMenuLayer();

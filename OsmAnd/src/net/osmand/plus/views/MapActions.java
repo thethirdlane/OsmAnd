@@ -508,7 +508,7 @@ public class MapActions {
                 //AP - turn off 'forceZoom'
 //				mapTrackingUtilities.backToLocationImpl(17, true);
                 int zoom = activity.getSettings().getLastKnownMapZoom();
-                mapTrackingUtilities.backToLocationImpl(zoom, false);
+                mapTrackingUtilities.backToLocationImpl(zoom, false, false);
                 //End AP
 				settings.FOLLOW_THE_ROUTE.set(true);
 				routingHelper.setFollowingMode(true);
